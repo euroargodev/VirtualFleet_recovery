@@ -1,7 +1,7 @@
 # VirtualFleet-recovery: Argo float recovery helper
 
 The goal of this repository is to provide a library to make Argo floats trajectory predictions in order to facilitate recovery.
-The prediction ``cone`` will be displayed on the map at: https://floatrecovery.euro-argo.eu/
+The prediction _patch_ or _cone_ will be displayed on the map at: https://floatrecovery.euro-argo.eu/
 
 ### How it works ?
 1. Given a specific float cycle, we extract:
@@ -14,4 +14,4 @@ The prediction ``cone`` will be displayed on the map at: https://floatrecovery.e
     - in addition to the past configuration, we define a list of modified configuration parameters, such as a reduced cycling frequency or parking depth
     - for each of these configurations, we set-up virtual floats with a random perturbations the float position in space/time
 
-4. For each of the virtual float configurations, we compute a probabilistic `recovery` patch (basically the next profiles positions probability).
+4. For each of the virtual float configurations, we compute a probabilistic _recovery_ patch (basically the next profiles positions probability).
