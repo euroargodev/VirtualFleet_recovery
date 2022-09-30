@@ -127,3 +127,16 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# pycharm
+.idea/
+
+#@quai20
+.vscode/
+.pytest_cache
+knotebooks/
+
+#@gmaze
+local_work/
+cli/build-pypi
+
