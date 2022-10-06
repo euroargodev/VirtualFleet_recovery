@@ -4,6 +4,8 @@ The goal of this repository is to provide a library to make Argo floats trajecto
 The prediction _patch_ or _cone_ could be displayed on the map at: https://floatrecovery.euro-argo.eu  
 More about Argo floats recovery in here: https://github.com/euroargodev/recovery/issues
 
+## POC #1
+
 ## Working design of the procedure
 1. Given a specific float cycle, we extract:
    - space/time position of the last cycle, 
@@ -16,8 +18,6 @@ More about Argo floats recovery in here: https://github.com/euroargodev/recovery
     - for each of these configurations, we set-up virtual floats with a random perturbations the float position in space/time
 
 4. For each of the virtual float configurations, we compute a probabilistic _recovery_ patch (basically the next profiles positions probability).
-
-## First POC
 
 ### Installation
 - Get this repository:
