@@ -11,6 +11,8 @@
 __author__ = 'gmaze@ifremer.fr'
 
 import sys, os, glob
+import warnings
+
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -24,12 +26,21 @@ import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import matplotlib
 matplotlib.use('Agg')
-from parcels import ParticleSet
+from parcels import ParticleSet, FieldSet, Field
 from abc import ABC
 
 
 PREF = "\033["
 RESET = f"{PREF}0m"
+class COLORS:
+    black = "30m"
+    red = "31m"
+    green = "32m"
+    yellow = "33m"
+    blue = "34m"
+    magenta = "35m"
+    cyan = "36m"
+    white = "37m"
 
 def puts(text, color=None, bold=False, file=sys.stdout):
     """Alternative to print, uses no color by default but accepts any color from the COLORS class."""
@@ -58,6 +69,7 @@ def get_glorys_forecast_with_opendap(a_box, a_start_date, n_days=1):
 
     store = xr.backends.PydapDataStore.open(serverset, session=session)
     ds = xr.open_dataset(store)
+    # puts(ds.__repr__())
 
     # Get the starting date:
     t = "%0.4d-%0.2d-%0.2d %0.2d:00:00" % (a_start_date.year, a_start_date.month, a_start_date.day,
@@ -66,6 +78,11 @@ def get_glorys_forecast_with_opendap(a_box, a_start_date, n_days=1):
     t = np.datetime64(pd.to_datetime(t))
     nt = n_days * 4  # 4 snapshot a day (6 hourly), over n_days days
     itim = np.argwhere(ds['time'].values >= t)[0][0], np.argwhere(ds['time'].values >= t)[0][0] + nt
+    if itim[1] > len(ds['time']):
+        puts("Requested time frame out of max range (%s). Fall back on the longest time frame available." %
+                      pd.to_datetime(ds['time'][-1].values).strftime("%Y-%m-%dT%H:%M:%S"), color=COLORS.yellow)
+        itim = np.argwhere(ds['time'].values >= t)[0][0], len(ds['time'])
+
     idpt = np.argwhere(ds['depth'].values > 2000)[0][0]
     ilon = np.argwhere(ds['longitude'].values >= a_box[0])[0][0], np.argwhere(ds['longitude'].values >= a_box[1])[0][0]
     ilat = np.argwhere(ds['latitude'].values >= a_box[2])[0][0], np.argwhere(ds['latitude'].values >= a_box[3])[0][0]
@@ -86,6 +103,10 @@ def get_velocity_field(a_box, a_date, n_days=1, root='.'):
         ds.to_netcdf(velocity_file)
     else:
         ds = xr.open_dataset(velocity_file)
+
+    puts("\tLoaded velocity field from %s to %s" %
+         (pd.to_datetime(ds['time'][0].values).strftime("%Y-%m-%dT%H:%M:%S"),
+          pd.to_datetime(ds['time'][-1].values).strftime("%Y-%m-%dT%H:%M:%S")), color=COLORS.green)
     return ds, velocity_file
 
 
@@ -451,41 +472,43 @@ if __name__ == '__main__':
     WORKDIR = os.path.abspath(WORKDIR)
     if not os.path.exists(WORKDIR):
         os.makedirs(WORKDIR)
-    puts("Data will be saved in: %s" % WORKDIR)
 
     # Load these profiles information:
-    puts("Float dashboard: %s" % argopy.plot.dashboard(WMO, url_only=True))
+    puts("\nYou can check the float dashboard here:")
+    puts("\t%s" % argopy.plot.dashboard(WMO, url_only=True), color=COLORS.green)
     THIS_PROFILE = store().search_wmo_cyc(WMO, CYC).to_dataframe()
     THIS_DATE = pd.to_datetime(THIS_PROFILE['date'].values[0])
+    puts("\nProfiles to work with:")
     puts(THIS_PROFILE.to_string())
 
-    # Get the cycling frequency:
-    dt = pd.to_datetime(THIS_PROFILE['date'].values[1]) - pd.to_datetime(THIS_PROFILE['date'].values[0])
-    CYCLING_FREQUENCY = int(np.round(dt.days + dt.seconds / 86400))
+    # Load real float configuration at the previous cycle:
+    puts("\nLoading float configuration...")
+    CFG = FloatConfiguration([WMO, CYC[0]])
+    # CFG.update('cycle_duration', CYCLING_FREQUENCY * 24)
+    puts(CFG.__repr__())
+
+    # Get the cycling frequency (in days):
+    # dt = pd.to_datetime(THIS_PROFILE['date'].values[1]) - pd.to_datetime(THIS_PROFILE['date'].values[0])
+    # CYCLING_FREQUENCY = int(np.round(dt.days + dt.seconds / 86400))
+    CYCLING_FREQUENCY = int(np.round(CFG.mission['cycle_duration'])/24)
 
     # Define domain to load velocity for, and get it:
     width = 10 + np.abs(np.ceil(THIS_PROFILE['longitude'].values[1] - THIS_PROFILE['longitude'].values[0]))
     height = 10 + np.abs(np.ceil(THIS_PROFILE['latitude'].values[1] - THIS_PROFILE['latitude'].values[0]))
     lonc, latc = THIS_PROFILE['longitude'].values[0], THIS_PROFILE['latitude'].values[0],
     VBOX = [lonc - width / 2, lonc + width / 2, latc - height / 2, latc + height / 2]
-    puts("Loading velocity field...")
-    ds, velocity_file = get_velocity_field(VBOX, THIS_DATE, n_days=CYCLING_FREQUENCY + 2, root=WORKDIR)
+    puts("\nLoading velocity field for %i days..." % (CYCLING_FREQUENCY+2))
+    ds, velocity_file = get_velocity_field(VBOX, THIS_DATE, n_days=CYCLING_FREQUENCY+2, root=WORKDIR)
     figure_velocity(ds, VBOX)
 
-    # Load default floats configuration:
-    puts("Loading float configuration...")
-    CFG = FloatConfiguration('default')
-    CFG.update('cycle_duration', CYCLING_FREQUENCY * 24)
-    puts(CFG.__repr__())
-
     # VirtualFleet, get a deployment plan:
-    puts("VirtualFleet, get a deployment plan...")
+    puts("\nVirtualFleet, get a deployment plan...")
     CENTER = [THIS_PROFILE['longitude'].values[0], THIS_PROFILE['latitude'].values[0]]
     DF_PLAN = setup_deployment_plan(CENTER, THIS_DATE, nfloats=args.nfloats)
-    puts("\t%i virtual floats to deploy" % DF_PLAN.shape[0])
+    puts("\t%i virtual floats to deploy" % DF_PLAN.shape[0], color=COLORS.green)
 
     # VirtualFleet, set-up the fleet:
-    puts("VirtualFleet, set-up the fleet...")
+    puts("\nVirtualFleet, set-up the fleet...")
     VFleet = VirtualFleet(lat=DF_PLAN['latitude'],
                           lon=DF_PLAN['longitude'],
                           time=np.array([np.datetime64(t) for t in DF_PLAN['date'].dt.strftime('%Y-%m-%d %H:%M').array]),
@@ -493,7 +516,7 @@ if __name__ == '__main__':
                           mission=CFG.mission)
 
     # VirtualFleet, execute the simulation:
-    puts("VirtualFleet, execute the simulation...")
+    puts("\nVirtualFleet, execute the simulation...")
     VFleet.simulate(duration=timedelta(hours=CYCLING_FREQUENCY*24+12),
                     step=timedelta(minutes=5),
                     record=timedelta(seconds=3600/2),
@@ -501,7 +524,7 @@ if __name__ == '__main__':
                     )
 
     # VirtualFleet, get simulated profiles index:
-    puts("VirtualFleet, extract simulated profiles index...")
+    puts("\nVirtualFleet, extract simulated profiles index...")
     ds_traj = xr.open_dataset(VFleet.run_params['output_file'])
     DF_SIM = simu2index(DF_PLAN, ds_traj)
     DF_SIM = postprocess_index(DF_SIM)
@@ -521,3 +544,6 @@ if __name__ == '__main__':
     H[H == 0] = np.NaN
     Hrel[Hrel == 0] = np.NaN
     figure_predictions(ds, weights, bin_x, bin_y, bin_res, Hrel)
+
+    puts("\nData saved in:")
+    puts("\t%s" % WORKDIR, color=COLORS.green)
