@@ -362,7 +362,7 @@ def setup_deployment_plan(a_profile, a_date, nfloats=15000):
 
 def simu2index(df_plan, this_ds):
     # Specific method for the recovery simulations
-    # This is very slow and could be optimized
+    # This is very slow but could be optimized
     ds_list = []
     for irow_plan, row_plan in tqdm(df_plan.iterrows()):
         ii = np.argwhere(((this_ds['lon'].isel(obs=0) - row_plan['longitude']) ** 2 + (
@@ -373,13 +373,14 @@ def simu2index(df_plan, this_ds):
             itraj = ii[0][0]
             for cyc, grp in this_ds.isel(traj=itraj).groupby(group='cycle_number'):
                 ds_cyc = grp.isel(obs=-1)
-                if ds_cyc['cycle_phase'] in [3, 4]:
-                    ds_cyc['wmo'] = xr.DataArray(np.full_like((1,), fill_value=wmo), dims='obs')
-                    ds_cyc['deploy_lon'] = xr.DataArray(np.full_like((1,), fill_value=deploy_lon, dtype=float),
-                                                        dims='obs')
-                    ds_cyc['deploy_lat'] = xr.DataArray(np.full_like((1,), fill_value=deploy_lat, dtype=float),
-                                                        dims='obs')
-                    ds_list.append(ds_cyc)
+                if cyc == 1:
+                    if ds_cyc['cycle_phase'] in [3, 4]:
+                        ds_cyc['wmo'] = xr.DataArray(np.full_like((1,), fill_value=wmo), dims='obs')
+                        ds_cyc['deploy_lon'] = xr.DataArray(np.full_like((1,), fill_value=deploy_lon, dtype=float),
+                                                            dims='obs')
+                        ds_cyc['deploy_lat'] = xr.DataArray(np.full_like((1,), fill_value=deploy_lat, dtype=float),
+                                                            dims='obs')
+                        ds_list.append(ds_cyc)
 
     ds_profiles = xr.concat(ds_list, dim='obs')
     df = ds_profiles.to_dataframe()
