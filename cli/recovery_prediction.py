@@ -130,12 +130,44 @@ def get_glorys_forecast_with_opendap(a_box, a_start_date, n_days=1):
     return glorys.load()
 
 
+def get_glorys_forecast_from_datarmor(a_box, a_start_date, n_days=1):
+    def get_forecast_files(a_date, n_days=1):
+        file_list = []
+        for n in range(0, n_days):
+            t = a_date + pd.Timedelta(n, 'D')
+            p = os.path.join(src, "%i" % t.year, "%0.3d" % t.day_of_year)
+            # print(p, os.path.exists(p))
+            if os.path.exists(p):
+                file_list.append(sorted(glob.glob(os.path.join(p, "*.nc")))[0])
+        return file_list
+
+    def preprocess(this_ds):
+        idpt = np.argwhere(this_ds['depth'].values > 2000)[0][0]
+        ilon = np.argwhere(this_ds['longitude'].values >= a_box[0])[0][0], \
+               np.argwhere(this_ds['longitude'].values >= a_box[1])[0][0]
+        ilat = np.argwhere(this_ds['latitude'].values >= a_box[2])[0][0], \
+               np.argwhere(this_ds['latitude'].values >= a_box[3])[0][0]
+        this_ds = this_ds.isel({'depth': range(0, idpt),
+                                'longitude': range(ilon[0], ilon[1]),
+                                'latitude': range(ilat[0], ilat[1])})
+        return this_ds
+
+    root = "/home/ref-ocean-model-public" if not os.uname()[0] == 'Darwin' else "/Volumes/MODEL-PUBLIC/"
+    src = os.path.join(root, "multiparameter/physic/global/cmems/global-analysis-forecast-phy-001-024")
+    flist = get_forecast_files(a_start_date, n_days=n_days)
+    if len(flist) == 0:
+        raise ValueError("This float cycle is too old for this velocity field.")
+    glorys = xr.open_mfdataset(flist, preprocess=preprocess, combine='nested', concat_dim='time')
+    return glorys
+
+
 def get_velocity_field(a_box, a_date, n_days=1, root='.'):
     """Download or load the velocity field as netcdf/xarray"""
     velocity_file = os.path.join(root, 'velocity.nc')
     if not os.path.exists(velocity_file):
         # Load
-        ds = get_glorys_forecast_with_opendap(a_box, a_date, n_days=n_days)
+        # ds = get_glorys_forecast_with_opendap(a_box, a_date, n_days=n_days)
+        ds = get_glorys_forecast_from_datarmor(a_box, a_date, n_days=n_days)
         # Save
         ds.to_netcdf(velocity_file)
     else:
@@ -605,7 +637,7 @@ if __name__ == '__main__':
 
     # Import the VirtualFleet library
     sys.path.insert(0, os.path.join(euroargodev, "VirtualFleet"))
-    from virtualargofleet import VirtualFleet, FloatConfiguration
+    from virtualargofleet import VelocityField, VirtualFleet, FloatConfiguration
     from virtualargofleet.app_parcels import ArgoParticle
 
     # Set-up the working directory:
@@ -660,7 +692,7 @@ if __name__ == '__main__':
     VFleet = VirtualFleet(lat=DF_PLAN['latitude'],
                           lon=DF_PLAN['longitude'],
                           time=np.array([np.datetime64(t) for t in DF_PLAN['date'].dt.strftime('%Y-%m-%d %H:%M').array]),
-                          fieldset=VelocityField_Recovery_Forecast(velocity_file).fieldset,
+                          fieldset=VelocityField('GLOBAL_ANALYSIS_FORECAST_PHY_001_024', src=ds).fieldset,
                           mission=CFG.mission)
 
     # VirtualFleet, execute the simulation:
