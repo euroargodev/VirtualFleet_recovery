@@ -195,7 +195,7 @@ def map_add_features(this_ax):
 
 
 def figure_velocity(ds_vel, box):
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 10), dpi=90, subplot_kw={'projection': ccrs.PlateCarree()})
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(20, 20), dpi=120, subplot_kw={'projection': ccrs.PlateCarree()})
     ax.set_extent(box)
     ax = map_add_features(ax)
     ax = map_add_profiles(ax)
@@ -213,7 +213,7 @@ def figure_velocity(ds_vel, box):
 def figure_positions(ds_vel, dd=1):
     ebox = get_HBOX(dd=dd)
 
-    fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(25, 7), dpi=90,
+    fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(25, 7), dpi=120,
                            subplot_kw={'projection': ccrs.PlateCarree()},
                            sharex=True, sharey=True)
     ax = ax.flatten()
@@ -260,7 +260,7 @@ def figure_predictions(ds_vel, weights, bin_X, bin_Y, bin_res, Hrel, dd=1, alpha
     # fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(25,7), dpi=90,
     #                        subplot_kw={'projection': ccrs.PlateCarree()},
     #                        sharex=True, sharey=True)
-    fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(15, 10), dpi=90,
+    fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(25, 15), dpi=120,
                            subplot_kw={'projection': ccrs.PlateCarree()},
                            sharex=True, sharey=True)
     ax = ax.flatten()
@@ -347,7 +347,7 @@ def figure_predictions(ds_vel, weights, bin_X, bin_Y, bin_res, Hrel, dd=1, alpha
         #              xave-THIS_PROFILE['longitude'][0],
         #              yave-THIS_PROFILE['latitude'][0],
         #              length_includes_head=True, fc='k', ec='c', head_width=0.025, zorder=10)
-        ax[ix].plot([THIS_PROFILE['longitude'][0], xave], [THIS_PROFILE['latitude'][0], yave], 'g', zorder=10)
+        ax[ix].plot([THIS_PROFILE['longitude'][0], xave], [THIS_PROFILE['latitude'][0], yave], 'g--', zorder=10)
 
         plt.colorbar(sc, ax=ax[ix], shrink=0.5)
 
@@ -503,7 +503,8 @@ def simu2index_legacy(df_plan, this_ds):
     df = df.reset_index(drop=True)
     return df
 
-def simu2index(this_ds):
+
+def ds_simu2index(this_ds):
     # Instead of really looking at the cycle phase and structure, we just pick the last trajectory point !
     # This is way much faster and a good approximation if the simulation length is the cycling frequency.
     data = {
@@ -513,6 +514,20 @@ def simu2index(this_ds):
         'wmo': 9000000 + this_ds['traj'].values,
         'deploy_lon': this_ds.isel(obs=0)['lon'],
         'deploy_lat': this_ds.isel(obs=0)['lat']
+    }
+    df = pd.DataFrame(data)
+    df['wmo'] = df['wmo'].astype(int)
+    return df
+
+
+def get_index(vf, df_plan):
+    data = {
+        'date': vf.ParticleSet.time,
+        'latitude': vf.ParticleSet.lat,
+        'longitude': vf.ParticleSet.lon,
+        'wmo': 9000000 + np.arange(0, vf.ParticleSet.lon.shape[0]),
+        'deploy_lon': df_plan['longitude'],
+        'deploy_lat': df_plan['latitude']
     }
     df = pd.DataFrame(data)
     df['wmo'] = df['wmo'].astype(int)
@@ -569,7 +584,7 @@ if __name__ == '__main__':
     # Add long and short arguments
     parser.add_argument('wmo', help="Float WMO number", type=int)
     parser.add_argument("cyc", help="Cycle number to predict", type=int)
-    parser.add_argument("--nfloats", help="Number of virtual floats used to make the prediction, default: 100", type=int, default=100)
+    parser.add_argument("--nfloats", help="Number of virtual floats used to make the prediction, default: 5000", type=int, default=5000)
     parser.add_argument("--output", help="Output folder, default: ./vfrecov/<WMO>/vfpred_<CYC>", default=None)
     parser.add_argument("--vf", help="Parent folder to the VirtualFleet repository clone", default=None)
 
@@ -630,8 +645,8 @@ if __name__ == '__main__':
     height = 10 + np.abs(np.ceil(THIS_PROFILE['latitude'].values[1] - THIS_PROFILE['latitude'].values[0]))
     lonc, latc = THIS_PROFILE['longitude'].values[0], THIS_PROFILE['latitude'].values[0],
     VBOX = [lonc - width / 2, lonc + width / 2, latc - height / 2, latc + height / 2]
-    puts("\nLoading velocity field for %i days..." % (CYCLING_FREQUENCY+2))
-    ds, velocity_file = get_velocity_field(VBOX, THIS_DATE, n_days=CYCLING_FREQUENCY+2, root=WORKDIR)
+    puts("\nLoading velocity field for %i days..." % (CYCLING_FREQUENCY+1))
+    ds, velocity_file = get_velocity_field(VBOX, THIS_DATE, n_days=CYCLING_FREQUENCY+1, root=WORKDIR)
     figure_velocity(ds, VBOX)
 
     # VirtualFleet, get a deployment plan:
@@ -652,15 +667,16 @@ if __name__ == '__main__':
     puts("\nVirtualFleet, execute the simulation...")
     VFleet.simulate(duration=timedelta(hours=CYCLING_FREQUENCY*24+1),
                     step=timedelta(minutes=5),
-                    record=timedelta(seconds=3600/2),
-                    output_folder=WORKDIR,
+                    record=timedelta(minutes=30),
+                    output_folder=None,
                     )
 
     # VirtualFleet, get simulated profiles index:
     puts("\nVirtualFleet, extract simulated profiles index...")
-    ds_traj = xr.open_dataset(VFleet.run_params['output_file'])
+    # ds_traj = xr.open_dataset(VFleet.run_params['output_file'])
     # DF_SIM = simu2index_legacy(DF_PLAN, ds_traj)
-    DF_SIM = simu2index(ds_traj)
+    # DF_SIM = ds_simu2index(ds_traj)
+    DF_SIM = get_index(VFleet, DF_PLAN)
     DF_SIM = postprocess_index(DF_SIM)
     puts(DF_SIM.head().to_string())
     figure_positions(ds, dd=1)
