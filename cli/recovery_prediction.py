@@ -32,7 +32,6 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import cartopy.crs as ccrs
 import matplotlib
-matplotlib.use('Agg')
 from parcels import ParticleSet, FieldSet, Field
 from abc import ABC
 # from memory_profiler import profile
@@ -169,6 +168,8 @@ def get_glorys_forecast_with_opendap(a_box, a_start_date, n_days=1):
     session.auth = (MOTU_USERNAME, MOTU_PASSWORD)
     # 6-hourly fields:
     serverset = 'https://nrt.cmems-du.eu/thredds/dodsC/global-analysis-forecast-phy-001-024-3dinst-uovo'
+    # Daily fields:
+    # serverset = 'https://nrt.cmems-du.eu/thredds/dodsC/global-analysis-forecast-phy-001-024'
     store = xr.backends.PydapDataStore.open(serverset, session=session)
     ds = xr.open_dataset(store)
     # puts(ds.__repr__())
@@ -464,7 +465,7 @@ def get_EBOX(df_sim, df_plan, this_profile, s=1):
     return ebox
 
 
-def save_figure(this_fig, a_name, folder='.'):
+def save_figurefile(this_fig, a_name, folder='.'):
     """
 
     Parameters
@@ -519,7 +520,9 @@ def map_add_features(this_ax):
     return this_ax
 
 
-def figure_velocity(box):
+def figure_velocity(box,
+                       vel, vel_name, this_profile, wmo, cyc,
+                       save_figure=False, workdir='.'):
     """
 
     Parameters
@@ -533,20 +536,25 @@ def figure_velocity(box):
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(20, 20), dpi=120, subplot_kw={'projection': ccrs.PlateCarree()})
     ax.set_extent(box)
     ax = map_add_features(ax)
-    ax = map_add_profiles(ax)
+    ax = map_add_profiles(ax, this_profile)
 
-    VEL.field.isel(time=0, depth=0).plot.quiver(x="longitude", y="latitude", u=VEL.var['U'], v=VEL.var['V'], ax=ax, color='grey', alpha=0.5,
+    vel.field.isel(time=0, depth=0).plot.quiver(x="longitude", y="latitude",
+                                                u=vel.var['U'], v=vel.var['V'], ax=ax, color='grey', alpha=0.5,
                                           add_guide=False)
 
     ax.set_title(
-        "VirtualFleet recovery system for WMO %i: starting from cycle %i, predicting cycle %i\nVelocity field domain, %0.2fm, %s" % (
-        WMO, CYC[0], CYC[1], VEL.field['depth'][0].values[np.newaxis][0], pd.to_datetime(VEL.field['time'][0].values).strftime("%Y/%m/%d %H:%M")), fontsize=15)
-    save_figure(fig, 'vfrecov_velocity')
-    return None
+        "VirtualFleet recovery system for WMO %i: starting from cycle %i, predicting cycle %i\n"
+        "Vectors: Velocity field full domain, z=%0.2fm, t=%s" %
+        (wmo, cyc[0], cyc[1], vel.field['depth'][0].values[np.newaxis][0],
+        pd.to_datetime(vel.field['time'][0].values).strftime("%Y/%m/%d %H:%M")), fontsize=15)
+    if save_figure:
+        save_figurefile(fig, 'vfrecov_velocity', workdir)
+        save_figurefile(fig, 'vfrecov_velocity_%s' % vel_name, workdir)
+    return fig, ax
 
 
-def figure_positions(vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name, workdir,
-                     dd=1):
+def figure_positions(vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name,
+                     dd=1, save_figure=False, workdir='.'):
     ebox = get_HBOX(df_sim, dd=dd)
 
     fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(25, 7), dpi=120,
@@ -586,13 +594,15 @@ def figure_positions(vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name
         ax[ix].set_title(title)
 
     fig.suptitle("VirtualFleet recovery prediction for WMO %i: starting from cycle %i, predicting cycle %i" % (wmo, cyc[0], cyc[1]), fontsize=15)
-    save_figure(fig, "vfrecov_positions", workdir)
-    return None
+    if save_figure:
+        save_figurefile(fig, "vfrecov_positions", workdir)
+        save_figurefile(fig, 'vfrecov_positions_%s' % vel_name, workdir)
+    return fig, ax
 
 
 def figure_predictions(weights, bin_X, bin_Y, bin_res, Hrel, recovery,
-                       vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name, workdir,
-                       s=0.2, alpha=False):
+                       vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name,
+                       s=0.2, alpha=False, save_figure=False, workdir='.'):
     ebox = get_EBOX(df_sim, df_plan, this_profile, s=s)
     # fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(25,7), dpi=90,
     #                        subplot_kw={'projection': ccrs.PlateCarree()},
@@ -711,8 +721,10 @@ def figure_predictions(weights, bin_X, bin_Y, bin_res, Hrel, recovery,
     fig.suptitle("VirtualFleet recovery prediction for WMO %i: \
     starting from cycle %i, predicting cycle %i\n%s\n%s" %
                  (wmo, cyc[0], cyc[1], err_str, "Prediction based on %s" % vel_name), fontsize=15)
-    save_figure(fig, 'vfrecov_predictions', workdir)
-    return None
+    if save_figure:
+        save_figurefile(fig, 'vfrecov_predictions', workdir)
+        save_figurefile(fig, 'vfrecov_predictions_%s' % vel_name, workdir)
+    return fig, ax
 
 
 def setup_deployment_plan(a_profile, a_date, nfloats=15000):
@@ -852,7 +864,7 @@ def postprocess_index(this_df, this_profile):
     return this_df
 
 
-def predict_position(workdir, wmo, cyc, cfg, vel, vel_name, df_sim, df_plan, this_profile):
+def predict_position(workdir, wmo, cyc, cfg, vel, vel_name, df_sim, df_plan, this_profile, save_figure=False):
     """ Compute the position of the next profile for recovery
 
     Prediction is based on weighted statistics from the last position of virtual floats
@@ -933,8 +945,8 @@ def predict_position(workdir, wmo, cyc, cfg, vel, vel_name, df_sim, df_plan, thi
     recovery['prediction_location_error'] = error
 
     # Final figure:
-    figure_predictions(weights, bin_x, bin_y, bin_res, Hrel, recovery,
-                       vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name, workdir)
+    fig, ax = figure_predictions(weights, bin_x, bin_y, bin_res, Hrel, recovery,
+                       vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name, save_figure=save_figure, workdir=WORKDIR)
 
     #
     return recovery
@@ -958,6 +970,7 @@ def setup_args():
     parser.add_argument("--output", help="Output folder, default: ./vfrecov/<WMO>/<CYC>", default=None)
     parser.add_argument("--velocity", help="Velocity field to use. Possible values are: 'ARMOR3D' (default), 'GLORYS'",
                         default='ARMOR3D')
+    parser.add_argument("--save_figure", help="Should we save figure on file or not ? Default: True", default=True)
     parser.add_argument("--vf", help="Parent folder to the VirtualFleet repository clone", default=None)
 
     return parser
@@ -973,6 +986,9 @@ if __name__ == '__main__':
         raise ValueError("Velocity field must be one in: ['ARMOR3D', 'GLORYS']")
     else:
         VEL_NAME = args.velocity.upper()
+
+    if args.save_figure:
+        matplotlib.use('Agg')
 
     # Where do we find the VirtualFleet repository ?
     if not args.vf:
@@ -1016,7 +1032,7 @@ if __name__ == '__main__':
     THIS_DATE = pd.to_datetime(THIS_PROFILE['date'].values[0])
     CENTER = [THIS_PROFILE['longitude'].values[0], THIS_PROFILE['latitude'].values[0]]
     puts("\nProfiles to work with:")
-    puts(THIS_PROFILE.to_string())
+    puts(THIS_PROFILE.to_string(max_colwidth=15), color=COLORS.green)
 
     # Load real float configuration at the previous cycle:
     puts("\nLoading float configuration...")
@@ -1025,7 +1041,8 @@ if __name__ == '__main__':
     except:
         puts("Can't load this profile config, falling back on default values", color=COLORS.red)
         CFG = FloatConfiguration('default')
-    puts(CFG.__repr__())
+    # puts(CFG.__repr__(), color=COLORS.green)
+    puts("\n".join(["\t%s" % line for line in CFG.__repr__().split("\n")]), color=COLORS.green)
 
     # Get the cycling frequency (in days):
     # dt = pd.to_datetime(THIS_PROFILE['date'].values[1]) - pd.to_datetime(THIS_PROFILE['date'].values[0])
@@ -1033,8 +1050,8 @@ if __name__ == '__main__':
     CYCLING_FREQUENCY = int(np.round(CFG.mission['cycle_duration'])/24)
 
     # Define domain to load velocity for, and get it:
-    width = 10 + np.abs(np.ceil(THIS_PROFILE['longitude'].values[-1] - CENTER[0]))
-    height = 10 + np.abs(np.ceil(THIS_PROFILE['latitude'].values[-1] - CENTER[1]))
+    width = 5 + np.abs(np.ceil(THIS_PROFILE['longitude'].values[-1] - CENTER[0]))
+    height = 5 + np.abs(np.ceil(THIS_PROFILE['latitude'].values[-1] - CENTER[1]))
     # lonc, latc = CENTER[0], CENTER[1],
     VBOX = [CENTER[0] - width / 2, CENTER[0] + width / 2, CENTER[1] - height / 2, CENTER[1] + height / 2]
     puts("\nLoading %s velocity field to cover %i days..." % (VEL_NAME, CYCLING_FREQUENCY+1))
@@ -1043,7 +1060,7 @@ if __name__ == '__main__':
                                            output=WORKDIR,
                                            dataset=VEL_NAME)
     VEL = VelocityField('GLORYS12V1' if VEL_NAME == 'GLORYS' else VEL_NAME, src=ds_vel)
-    figure_velocity(VBOX)
+    figure_velocity(VBOX, VEL, VEL_NAME, THIS_PROFILE, WMO, CYC, save_figure=args.save_figure, workdir=WORKDIR)
 
     # VirtualFleet, get a deployment plan:
     puts("\nVirtualFleet, get a deployment plan...")
@@ -1074,11 +1091,12 @@ if __name__ == '__main__':
     # DF_SIM = ds_simu2index(ds_traj)
     DF_SIM = get_index(VFleet, VEL, DF_PLAN)
     DF_SIM = postprocess_index(DF_SIM, THIS_PROFILE)
-    puts(DF_SIM.head().to_string())
-    figure_positions(VEL, DF_SIM, DF_PLAN, THIS_PROFILE, CFG, WMO, CYC, VEL_NAME, WORKDIR, dd=1)
+    puts(DF_SIM.head().to_string(), color=COLORS.green)
+    figure_positions(VEL, DF_SIM, DF_PLAN, THIS_PROFILE, CFG, WMO, CYC, VEL_NAME, dd=1, save_figure=args.save_figure, workdir=WORKDIR)
 
     # Recovery, make predictions based on simulated profile density:
-    results = predict_position(WORKDIR, WMO, CYC, CFG, VEL, VEL_NAME, DF_SIM, DF_PLAN, THIS_PROFILE)
+    results = predict_position(WORKDIR, WMO, CYC, CFG, VEL, VEL_NAME, DF_SIM, DF_PLAN, THIS_PROFILE,
+                               save_figure=args.save_figure)
     results['profile_to_predict'] = {'wmo': WMO,
                           'cycle_number': CYC[-1],
                           'url_float': argopy.plot.dashboard(WMO, url_only=True),
@@ -1112,5 +1130,7 @@ if __name__ == '__main__':
         json.dump(results, f, ensure_ascii=False, indent=4, default=str, sort_keys=True)
 
     puts("\nCheck results at:")
+    puts("\t%s" % WORKDIR, color=COLORS.green)
     puts("\t%s" % os.path.join(WORKDIR, 'prediction.json'), color=COLORS.yellow)
-    puts("\t%s" % os.path.join(WORKDIR, 'vfrecov_predictions.png'), color=COLORS.yellow)
+    if args.save_figure:
+        puts("\t%s" % os.path.join(WORKDIR, 'vfrecov_predictions.png'), color=COLORS.yellow)
