@@ -3,7 +3,7 @@
 #
 # This script can be used to make prediction of a specific float cycle position, given:
 # - the previous cycle
-# - the CMEMS GLORYS12 forecast at the time of the previous cycle
+# - the ARMORD3D or CMEMS GLORYS12 forecast at the time of the previous cycle
 #
 # This script is for testing the prediction system, and must be run on past float cycles.
 #
@@ -11,29 +11,35 @@
 # mprof plot
 # python -m line_profiler ../cli/recovery_prediction.py --output data 2903691 80
 #
+# Capital variables are considered global and usable anywhere
+#
 # Created by gmaze on 06/10/2022
-__author__ = 'gmaze@ifremer.fr'
 
 import sys, os, glob
-import warnings
+import logging
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 import requests
+import json
 from datetime import timedelta
 from tqdm import tqdm
 import argparse
 import argopy
 from argopy.stores.argo_index_pd import indexstore_pandas as store
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 import cartopy.crs as ccrs
 import matplotlib
 matplotlib.use('Agg')
 from parcels import ParticleSet, FieldSet, Field
 from abc import ABC
-from memory_profiler import profile
+# from memory_profiler import profile
 
+logging.getLogger("matplotlib").setLevel(logging.ERROR)
+logging.getLogger("parso").setLevel(logging.ERROR)
+DEBUGFORMATTER = '%(asctime)s [%(levelname)s] [%(name)s] %(filename)s:%(lineno)d: %(message)s'
 
 PREF = "\033["
 RESET = f"{PREF}0m"
@@ -48,7 +54,15 @@ class COLORS:
     white = "37m"
 
 def puts(text, color=None, bold=False, file=sys.stdout):
-    """Alternative to print, uses no color by default but accepts any color from the COLORS class."""
+    """Alternative to print, uses no color by default but accepts any color from the COLORS class.
+
+    Parameters
+    ----------
+    text
+    color
+    bold
+    file
+    """
     if color is None:
         print(f'{PREF}{1 if bold else 0}m' + text + RESET, file=file)
     else:
@@ -61,6 +75,13 @@ def haversine(lon1, lat1, lon2, lat2):
     on the earth (specified in decimal degrees)
 
     see: https://stackoverflow.com/questions/4913349/haversine-formula-in-python-bearing-and-distance-between-two-gps-points
+
+    Parameters
+    ----------
+    lon1
+    lat1
+    lon2
+    lat2
     """
     from math import radians, cos, sin, asin, sqrt
     # convert decimal degrees to radians
@@ -76,6 +97,19 @@ def haversine(lon1, lat1, lon2, lat2):
 
 
 def bearing(lon1, lat1, lon2, lat2):
+    """
+
+    Parameters
+    ----------
+    lon1
+    lat1
+    lon2
+    lat2
+
+    Returns
+    -------
+
+    """
     from math import cos, sin, atan2, degrees
     b = atan2(cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(lon2 - lon1), sin(lon2 - lon1) * cos(lat2))
     b = degrees(b)
@@ -83,8 +117,47 @@ def bearing(lon1, lat1, lon2, lat2):
     return b
 
 
+def strfdelta(tdelta, fmt):
+    """
+
+    Parameters
+    ----------
+    tdelta
+    fmt
+
+    Returns
+    -------
+
+    """
+    d = {"days": tdelta.days}
+    d["hours"], rem = divmod(tdelta.seconds, 3600)
+    d["minutes"], d["seconds"] = divmod(rem, 60)
+    return fmt.format(**d)
+
+
+def fixLON(x):
+    """Ensure a 0-360 longitude"""
+    if x < 0:
+        x = 360 + x
+    return x
+
+
 def get_glorys_forecast_with_opendap(a_box, a_start_date, n_days=1):
-    """Load a regional CMEMS forecast"""
+    """Load Global Ocean 1/12° Physics Analysis and Forecast updated Daily
+
+    Fields: 6-hourly, from 2020-01-01T00:00 to 'now' + 2 days
+    Src: https://resources.marine.copernicus.eu/product-detail/GLOBAL_ANALYSIS_FORECAST_PHY_001_024
+
+    Parameters
+    ----------
+    a_box
+    a_start_date
+    n_days
+
+    Returns
+    -------
+    :class:xarray.dataset
+    """
     MOTU_USERNAME, MOTU_PASSWORD = (
         os.getenv("MOTU_USERNAME"),
         os.getenv("MOTU_PASSWORD"),
@@ -94,15 +167,12 @@ def get_glorys_forecast_with_opendap(a_box, a_start_date, n_days=1):
 
     session = requests.Session()
     session.auth = (MOTU_USERNAME, MOTU_PASSWORD)
-    # serverset = 'https://my.cmems-du.eu/thredds/dodsC/cmems_mod_glo_phy_my_0.083_P1D-m' # Daily
-    # serverset = 'https://my.cmems-du.eu/thredds/dodsC/global-analysis-forecast-phy-001-024'
-    # serverset = 'https://nrt.cmems-du.eu/thredds/dodsC/global-analysis-forecast-phy-001-024-hourly-t-u-v-ssh' # Only surface fields
-    serverset = 'https://nrt.cmems-du.eu/thredds/dodsC/global-analysis-forecast-phy-001-024-3dinst-uovo'  # 3D (uo, vo), 6-hourly
-    # serverset = 'https://nrt.cmems-du.eu/thredds/dodsC/cmems_mod_glo_phy_anfc_merged-uv_PT1H-i' # hourly, surface
-
+    # 6-hourly fields:
+    serverset = 'https://nrt.cmems-du.eu/thredds/dodsC/global-analysis-forecast-phy-001-024-3dinst-uovo'
     store = xr.backends.PydapDataStore.open(serverset, session=session)
     ds = xr.open_dataset(store)
     # puts(ds.__repr__())
+    puts("\t%s" % serverset, color=COLORS.green)
 
     # Get the starting date:
     t = "%0.4d-%0.2d-%0.2d %0.2d:00:00" % (a_start_date.year, a_start_date.month, a_start_date.day,
@@ -127,10 +197,100 @@ def get_glorys_forecast_with_opendap(a_box, a_start_date, n_days=1):
                       'depth': range(0, idpt),
                       'longitude': range(ilon[0], ilon[1]),
                       'latitude': range(ilat[0], ilat[1])})
+
+    #
     return glorys.load()
 
 
+def get_glorys_reanalysis_with_opendap(a_box, a_start_date, n_days=1):
+    """Load GLORYS Re-analysis
+
+    Fields: daily, from 1993-01-01T12:00 to 2020-05-31T12:00
+    Src: https://resources.marine.copernicus.eu/product-detail/GLOBAL_MULTIYEAR_PHY_001_030
+
+    Parameters
+    ----------
+    a_box
+    a_start_date
+    n_days
+    """
+    MOTU_USERNAME, MOTU_PASSWORD = (
+        os.getenv("MOTU_USERNAME"),
+        os.getenv("MOTU_PASSWORD"),
+    )
+    if not MOTU_USERNAME:
+        raise ValueError("No MOTU_USERNAME in environment ! ")
+
+    session = requests.Session()
+    session.auth = (MOTU_USERNAME, MOTU_PASSWORD)
+    # Daily from 1993-01-01 to 2020-05-31:
+    serverset = 'https://my.cmems-du.eu/thredds/dodsC/cmems_mod_glo_phy_my_0.083_P1D-m'
+    store = xr.backends.PydapDataStore.open(serverset, session=session)
+    ds = xr.open_dataset(store)
+    # puts(ds.__repr__())
+    puts("\t%s" % serverset, color=COLORS.green)
+
+    if a_start_date > ds['time'][-1]:
+        raise ValueError("This float cycle is too young for this velocity field.\n%s > %s" % (a_start_date, ds['time'][-1].values))
+
+    itim = np.argwhere(ds['time'].values<a_start_date)[-1][0], np.argwhere(ds['time'].values<a_start_date+(n_days+1)*pd.Timedelta(1,'D'))[-1][0]+1
+    if itim[1] > len(ds['time']):
+        print("Requested time frame out of max range (%s). Fall back on the longest time frame available." %
+                      pd.to_datetime(ds['time'][-1].values).strftime("%Y-%m-%dT%H:%M:%S"))
+        itim = np.argwhere(ds['time'].values < a_start_date)[-1][0], len(ds['time'])
+    idpt = np.argwhere(ds['depth'].values>2000)[0][0]
+    ilon = np.argwhere(ds['longitude'].values>=a_box[0])[0][0], np.argwhere(ds['longitude'].values>=a_box[1])[0][0]
+    ilat = np.argwhere(ds['latitude'].values>=a_box[2])[0][0], np.argwhere(ds['latitude'].values>=a_box[3])[0][0]
+    glorys = ds.isel({'time': range(itim[0], itim[1]),
+                      'depth': range(0, idpt),
+                      'longitude': range(ilon[0], ilon[1]),
+                      'latitude': range(ilat[0], ilat[1])})
+    #
+    return glorys.load()
+
+
+def get_glorys_with_opendap(a_box, a_start_date, n_days=1):
+    """Load Global Ocean 1/12° Physics Re-Analysis and Forecast updated Daily
+
+    If ``a_start_date+n_days`` < 2020-05-31:
+        delivers the multi-year reprocessed (REP) daily data
+        https://resources.marine.copernicus.eu/product-detail/GLOBAL_MULTIYEAR_PHY_001_030
+
+    otherwise:
+        delivers near-real-time (NRT) Analysis and Forecast 6-hourly data
+        https://resources.marine.copernicus.eu/product-detail/GLOBAL_ANALYSIS_FORECAST_PHY_001_024
+
+    Parameters
+    ----------
+    a_box
+    a_start_date
+    n_days
+
+    Returns
+    -------
+    :class:xarray.dataset
+    """
+    if a_start_date + pd.Timedelta(n_days, 'D') <= pd.to_datetime('2020-05-31'):
+        loader = get_glorys_reanalysis_with_opendap
+    else:
+        loader = get_glorys_forecast_with_opendap
+
+    return loader(a_box, a_start_date, n_days=n_days)
+
+
 def get_glorys_forecast_from_datarmor(a_box, a_start_date, n_days=1):
+    """Load Datarmor Global Ocean 1/12° Physics Analysis and Forecast updated Daily
+
+    Fields: daily, from 2020-11-25T12:00 to 'now' + 5 days
+    Src: /home/ref-ocean-model-public/multiparameter/physic/global/cmems/global-analysis-forecast-phy-001-024
+    Info: https://resources.marine.copernicus.eu/product-detail/GLOBAL_ANALYSIS_FORECAST_PHY_001_024/INFORMATION
+
+    Parameters
+    ----------
+    a_box
+    a_start_date
+    n_days
+    """
     def get_forecast_files(a_date, n_days=1):
         file_list = []
         for n in range(0, n_days):
@@ -154,24 +314,104 @@ def get_glorys_forecast_from_datarmor(a_box, a_start_date, n_days=1):
 
     root = "/home/ref-ocean-model-public" if not os.uname()[0] == 'Darwin' else "/Volumes/MODEL-PUBLIC/"
     src = os.path.join(root, "multiparameter/physic/global/cmems/global-analysis-forecast-phy-001-024")
+    puts("\t%s" % src, color=COLORS.green)
     flist = get_forecast_files(a_start_date, n_days=n_days)
     if len(flist) == 0:
         raise ValueError("This float cycle is too old for this velocity field.")
-    glorys = xr.open_mfdataset(flist, preprocess=preprocess, combine='nested', concat_dim='time')
+    glorys = xr.open_mfdataset(flist, preprocess=preprocess, combine='nested', concat_dim='time', parallel=True)
+    #
     return glorys
 
 
-def get_velocity_field(a_box, a_date, n_days=1, root='.'):
-    """Download or load the velocity field as netcdf/xarray"""
-    velocity_file = os.path.join(root, 'velocity.nc')
+def get_armor3d_with_opendap(a_box, a_start_date, n_days=1):
+    """Load ARMOR3D Multi Observation Global Ocean 3D Temperature Salinity Height Geostrophic Current and MLD
+
+    Fields: weekly, from 1993-01-06T12:00 to current week
+    Src: https://resources.marine.copernicus.eu/product-detail/MULTIOBS_GLO_PHY_TSUV_3D_MYNRT_015_012/INFORMATION
+
+    If ``a_start_date+n_days`` < 2020-12-30, delivers the multi-year reprocessed (REP) weekly data, otherwise delivers near-real-time (NRT) weekly data.
+
+    Parameters
+    ----------
+    a_box
+    a_start_date
+    n_days
+
+    Returns
+    -------
+    :class:xarray.dataset
+    """
+    # Convert longitude to 0/360, because that's the ARMOR3D convention:
+    a_box[0] = fixLON(a_box[0])
+    a_box[1] = fixLON(a_box[1])
+
+    MOTU_USERNAME, MOTU_PASSWORD = (
+        os.getenv("MOTU_USERNAME"),
+        os.getenv("MOTU_PASSWORD"),
+    )
+    if not MOTU_USERNAME:
+        raise ValueError("No MOTU_USERNAME in environment ! ")
+
+    if a_start_date + pd.Timedelta(n_days, 'D') <= pd.to_datetime('20201230'):
+        serverset = 'https://nrt.cmems-du.eu/thredds/dodsC/dataset-armor-3d-rep-weekly'  # 1993-01-06 to 2020-12-30
+    else:
+        serverset = 'https://nrt.cmems-du.eu/thredds/dodsC/dataset-armor-3d-nrt-weekly'  # 2019-01-02 to present
+    puts("\t%s" % serverset, color=COLORS.green)
+
+    session = requests.Session()
+    session.auth = (MOTU_USERNAME, MOTU_PASSWORD)
+    store = xr.backends.PydapDataStore.open(serverset, session=session)
+    ds = xr.open_dataset(store)
+
+    if a_start_date > ds['time'][-1]:
+        raise ValueError("This float cycle is too young for this velocity field.%s > %s" % (a_start_date, ds['time'][-1]))
+
+    nt = int(np.ceil(n_days / 7))
+    itim = np.argwhere(ds['time'].values<a_start_date)[-1][0], \
+           np.argwhere(ds['time'].values<a_start_date+(nt+1)*pd.Timedelta(7, 'D'))[-1][0]+1
+    if itim[1] > len(ds['time']):
+        print("Requested time frame out of max range (%s). Fall back on the longest time frame available." %
+              pd.to_datetime(ds['time'][-1].values).strftime("%Y-%m-%dT%H:%M:%S"))
+        itim = np.argwhere(ds['time'].values < a_start_date)[-1][0], len(ds['time'])
+    idpt = np.argwhere(ds['depth'].values > 2000)[0][0]
+    ilon = np.argwhere(ds['longitude'].values >= a_box[0])[0][0], np.argwhere(ds['longitude'].values >= a_box[1])[0][0]
+    ilat = np.argwhere(ds['latitude'].values >= a_box[2])[0][0], np.argwhere(ds['latitude'].values >= a_box[3])[0][0]
+    armor3d = ds.isel({'time': range(itim[0], itim[1]),
+                       'depth': range(0, idpt),
+                       'longitude': range(ilon[0], ilon[1]),
+                       'latitude': range(ilat[0], ilat[1])})
+
+    # Move back to the Argo -180/180 longitude convention:
+    lon = armor3d['longitude'].values
+    lon[np.argwhere(lon>180)] = lon[np.argwhere(lon>180)] - 360
+    armor3d['longitude'] = lon
+    return armor3d
+
+
+def get_velocity_field(a_box, a_date, n_days=1, output='.', dataset='ARMOR3D'):
+    """Return the velocity field as an :class:xr.Dataset, download if needed
+
+    Parameters
+    ----------
+    a_box
+    a_date
+    n_days
+    output
+    dataset
+    """
+    velocity_file = os.path.join(output, 'velocity_%s.nc' % dataset)
     if not os.path.exists(velocity_file):
         # Load
-        # ds = get_glorys_forecast_with_opendap(a_box, a_date, n_days=n_days)
-        ds = get_glorys_forecast_from_datarmor(a_box, a_date, n_days=n_days)
-        # Save
+        if dataset == 'ARMOR3D':
+            ds = get_armor3d_with_opendap(a_box, a_date, n_days=n_days)
+        elif dataset == 'GLORYS':
+            ds = get_glorys_with_opendap(a_box, a_date, n_days=n_days)
+
+        # Save on file for later re-used:
         ds.to_netcdf(velocity_file)
     else:
         ds = xr.open_dataset(velocity_file)
+    # print(ds)
 
     puts("\tLoaded velocity field from %s to %s" %
          (pd.to_datetime(ds['time'][0].values).strftime("%Y-%m-%dT%H:%M:%S"),
@@ -179,71 +419,135 @@ def get_velocity_field(a_box, a_date, n_days=1, root='.'):
     return ds, velocity_file
 
 
-def get_HBOX(dd=1):
-    # dd: how much to extend maps outward the deployment 'box'
-    rx = DF_SIM['deploy_lon'].max() - DF_SIM['deploy_lon'].min()
-    ry = DF_SIM['deploy_lat'].max() - DF_SIM['deploy_lat'].min()
-    lonc, latc = DF_SIM['deploy_lon'].mean(), DF_SIM['deploy_lat'].mean()
+def get_HBOX(df_sim, dd=1):
+    """
+
+    Parameters
+    ----------
+    dd: how much to extend maps outward the deployment 'box'
+
+    Returns
+    -------
+    list
+    """
+    rx = df_sim['deploy_lon'].max() - df_sim['deploy_lon'].min()
+    ry = df_sim['deploy_lat'].max() - df_sim['deploy_lat'].min()
+    lonc, latc = df_sim['deploy_lon'].mean(), df_sim['deploy_lat'].mean()
     box = [lonc - rx / 2, lonc + rx / 2, latc - ry / 2, latc + ry / 2]
     ebox = [box[i] + [-dd, dd, -dd, dd][i] for i in range(0, 4)]  # Extended 'box'
 
     return ebox
 
-def get_EBOX(s=1):
-    # GEt a box for maps
-    box = [np.min([DF_SIM['deploy_lon'].min(), DF_SIM['longitude'].min(), DF_SIM['rel_lon'].min(), THIS_PROFILE['longitude'].min()]),
-       np.max([DF_SIM['deploy_lon'].max(), DF_SIM['longitude'].max(), DF_SIM['rel_lon'].max(), THIS_PROFILE['longitude'].max()]),
-       np.min([DF_SIM['deploy_lat'].min(), DF_SIM['latitude'].min(), DF_SIM['rel_lat'].min(), THIS_PROFILE['latitude'].min()]),
-       np.max([DF_SIM['deploy_lat'].max(), DF_SIM['latitude'].max(), DF_SIM['rel_lat'].max(), THIS_PROFILE['latitude'].max()])]
-    rx, ry = DF_PLAN['longitude'].max() - DF_PLAN['longitude'].min(), DF_PLAN['latitude'].max() - DF_PLAN['latitude'].min()
+
+def get_EBOX(df_sim, df_plan, this_profile, s=1):
+    """Get a box for maps
+
+    Use all data positions from DF_SIM to make sure all points are visible
+    Extend the domain by a 's' scaling factor of the deployment plan domain
+
+    Parameters
+    ----------
+    s: float, default:1
+
+    Returns
+    -------
+    list
+    """
+    box = [np.min([df_sim['deploy_lon'].min(), df_sim['longitude'].min(), df_sim['rel_lon'].min(), this_profile['longitude'].min()]),
+       np.max([df_sim['deploy_lon'].max(), df_sim['longitude'].max(), df_sim['rel_lon'].max(), this_profile['longitude'].max()]),
+       np.min([df_sim['deploy_lat'].min(), df_sim['latitude'].min(), df_sim['rel_lat'].min(), this_profile['latitude'].min()]),
+       np.max([df_sim['deploy_lat'].max(), df_sim['latitude'].max(), df_sim['rel_lat'].max(), this_profile['latitude'].max()])]
+    rx, ry = df_plan['longitude'].max() - df_plan['longitude'].min(), df_plan['latitude'].max() - df_plan['latitude'].min()
     r = np.min([rx, ry])
     ebox = [box[0]-s*r, box[1]+s*r, box[2]-s*r, box[3]+s*r]
 
     return ebox
 
 
-def save_figure(this_fig, a_name):
-    figname = os.path.join(WORKDIR, "%s.png" % a_name)
+def save_figure(this_fig, a_name, folder='.'):
+    """
+
+    Parameters
+    ----------
+    this_fig
+    a_name
+
+    Returns
+    -------
+    path
+    """
+    figname = os.path.join(folder, "%s.png" % a_name)
     this_fig.savefig(figname)
     return figname
 
 
-def map_add_profiles(this_ax):
-    this_ax.plot(THIS_PROFILE['longitude'][0], THIS_PROFILE['latitude'][0], 'k.', markersize=10, markeredgecolor='w')
-    this_ax.plot(THIS_PROFILE['longitude'][1], THIS_PROFILE['latitude'][1], 'r.', markersize=10, markeredgecolor='w')
-    this_ax.arrow(THIS_PROFILE['longitude'][0],
-             THIS_PROFILE['latitude'][0],
-             THIS_PROFILE['longitude'][1] - THIS_PROFILE['longitude'][0],
-             THIS_PROFILE['latitude'][1] - THIS_PROFILE['latitude'][0],
+def map_add_profiles(this_ax, this_profile):
+    """
+
+    Parameters
+    ----------
+    this_ax
+
+    Returns
+    -------
+    this_ax
+    """
+    this_ax.plot(this_profile['longitude'][0], this_profile['latitude'][0], 'k.', markersize=10, markeredgecolor='w')
+    this_ax.plot(this_profile['longitude'][1], this_profile['latitude'][1], 'r.', markersize=10, markeredgecolor='w')
+    this_ax.arrow(this_profile['longitude'][0],
+             this_profile['latitude'][0],
+             this_profile['longitude'][1] - this_profile['longitude'][0],
+             this_profile['latitude'][1] - this_profile['latitude'][0],
              length_includes_head=True, fc='k', ec='k', head_width=0.05, zorder=10)
 
     return this_ax
 
 
 def map_add_features(this_ax):
+    """
+
+    Parameters
+    ----------
+    this_ax
+
+    Returns
+    -------
+    this_ax
+    """
     argopy.plot.utils.latlongrid(this_ax)
     this_ax.add_feature(argopy.plot.utils.land_feature, edgecolor="black")
     return this_ax
 
 
-def figure_velocity(ds_vel, box):
+def figure_velocity(box):
+    """
+
+    Parameters
+    ----------
+    box
+
+    Returns
+    -------
+    None
+    """
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(20, 20), dpi=120, subplot_kw={'projection': ccrs.PlateCarree()})
     ax.set_extent(box)
     ax = map_add_features(ax)
     ax = map_add_profiles(ax)
 
-    ds_vel.isel(time=0, depth=0).plot.quiver(x="longitude", y="latitude", u="uo", v="vo", ax=ax, color='grey', alpha=0.5,
+    VEL.field.isel(time=0, depth=0).plot.quiver(x="longitude", y="latitude", u=VEL.var['U'], v=VEL.var['V'], ax=ax, color='grey', alpha=0.5,
                                           add_guide=False)
 
     ax.set_title(
         "VirtualFleet recovery system for WMO %i: starting from cycle %i, predicting cycle %i\nVelocity field domain, %0.2fm, %s" % (
-        WMO, CYC[0], CYC[1], ds_vel['depth'][0].values[np.newaxis][0], pd.to_datetime(ds_vel['time'][0].values).strftime("%Y/%m/%d %H:%M")), fontsize=15);
+        WMO, CYC[0], CYC[1], VEL.field['depth'][0].values[np.newaxis][0], pd.to_datetime(VEL.field['time'][0].values).strftime("%Y/%m/%d %H:%M")), fontsize=15)
     save_figure(fig, 'vfrecov_velocity')
     return None
 
 
-def figure_positions(ds_vel, dd=1):
-    ebox = get_HBOX(dd=dd)
+def figure_positions(vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name, workdir,
+                     dd=1):
+    ebox = get_HBOX(df_sim, dd=dd)
 
     fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(25, 7), dpi=120,
                            subplot_kw={'projection': ccrs.PlateCarree()},
@@ -254,41 +558,42 @@ def figure_positions(ds_vel, dd=1):
         ax[ix].set_extent(ebox)
         ax[ix] = map_add_features(ax[ix])
 
-        v = ds_vel.isel(time=0).interp(depth=CFG.mission['parking_depth']).plot.quiver(x="longitude",
+        v = vel.field.isel(time=0).interp(depth=cfg.mission['parking_depth']).plot.quiver(x="longitude",
                                                                                    y="latitude",
-                                                                                   u="uo",
-                                                                                   v="vo",
+                                                                                   u=vel.var['U'],
+                                                                                   v=vel.var['V'],
                                                                                    ax=ax[ix],
                                                                                    color='grey',
                                                                                    alpha=0.5,
                                                                                    scale=20,
                                                                                    add_guide=False)
 
-        ax[ix].plot(DF_SIM['deploy_lon'], DF_SIM['deploy_lat'], '.', markersize=3, color='grey', alpha=0.1, markeredgecolor=None, zorder=0)
+        ax[ix].plot(df_sim['deploy_lon'], df_sim['deploy_lat'], '.', markersize=3, color='grey', alpha=0.1, markeredgecolor=None, zorder=0)
         if ix == 0:
-            title = 'Velocity field at %0.2fm and deployment plan' % CFG.mission['parking_depth']
+            title = 'Velocity field at %0.2fm and deployment plan' % cfg.mission['parking_depth']
             v.set_alpha(1)
             # v.set_color('black')
         elif ix == 1:
-            x, y = DF_SIM['longitude'], DF_SIM['latitude']
+            x, y = df_sim['longitude'], df_sim['latitude']
             title = 'Final float positions'
             sc = ax[ix].plot(x, y, '.', markersize=3, color='cyan', alpha=0.9, markeredgecolor=None)
         elif ix == 2:
-            x, y = DF_SIM['rel_lon'], DF_SIM['rel_lat']
+            x, y = df_sim['rel_lon'], df_sim['rel_lat']
             title = 'Final floats position relative to last float position'
             sc = ax[ix].plot(x, y, '.', markersize=3, color='cyan', alpha=0.9, markeredgecolor=None)
 
-
-        ax[ix] = map_add_profiles(ax[ix])
+        ax[ix] = map_add_profiles(ax[ix], this_profile)
         ax[ix].set_title(title)
 
-    fig.suptitle("VirtualFleet recovery prediction for WMO %i: starting from cycle %i, predicting cycle %i" % (WMO, CYC[0], CYC[1]), fontsize=15);
-    save_figure(fig, "vfrecov_positions")
+    fig.suptitle("VirtualFleet recovery prediction for WMO %i: starting from cycle %i, predicting cycle %i" % (wmo, cyc[0], cyc[1]), fontsize=15)
+    save_figure(fig, "vfrecov_positions", workdir)
     return None
 
 
-def figure_predictions(ds_vel, weights, bin_X, bin_Y, bin_res, Hrel, dd=1, alpha=False):
-    ebox = get_EBOX(s=0.2)
+def figure_predictions(weights, bin_X, bin_Y, bin_res, Hrel, recovery,
+                       vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name, workdir,
+                       s=0.2, alpha=False):
+    ebox = get_EBOX(df_sim, df_plan, this_profile, s=s)
     # fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(25,7), dpi=90,
     #                        subplot_kw={'projection': ccrs.PlateCarree()},
     #                        sharex=True, sharey=True)
@@ -297,27 +602,24 @@ def figure_predictions(ds_vel, weights, bin_X, bin_Y, bin_res, Hrel, dd=1, alpha
                            sharex=True, sharey=True)
     ax = ax.flatten()
 
-    Hrel[np.isnan(Hrel)]=0
-    ixmax, iymax = np.unravel_index(Hrel.argmax(), Hrel.shape)
-    xpred, ypred = (bin_X[0:-1]+bin_res/2)[ixmax], (bin_Y[0:-1]+bin_res/2)[iymax]
-    Hrel[Hrel==0]=np.NaN
-
+    xpred, ypred = recovery['prediction_location']['longitude']['value'], \
+                   recovery['prediction_location']['latitude']['value']
 
     for ix in [0, 1, 2, 3]:
         ax[ix].set_extent(ebox)
         ax[ix] = map_add_features(ax[ix])
 
-        ds_vel.isel(time=0).interp(depth=CFG.mission['parking_depth']).plot.quiver(x="longitude",
+        vel.field.isel(time=0).interp(depth=cfg.mission['parking_depth']).plot.quiver(x="longitude",
                                                                                    y="latitude",
-                                                                                   u="uo",
-                                                                                   v="vo",
+                                                                                   u=vel.var['U'],
+                                                                                   v=vel.var['V'],
                                                                                    ax=ax[ix],
                                                                                    color='grey',
                                                                                    alpha=0.5,
                                                                                    scale=1,
                                                                                    add_guide=False)
 
-        ax[ix].plot(DF_SIM['deploy_lon'], DF_SIM['deploy_lat'], '.',
+        ax[ix].plot(df_sim['deploy_lon'], df_sim['deploy_lat'], '.',
                     markersize=3,
                     color='grey',
                     alpha=0.1,
@@ -328,7 +630,7 @@ def figure_predictions(ds_vel, weights, bin_X, bin_Y, bin_res, Hrel, dd=1, alpha
         cmap = plt.cm.cool
         # cmap = plt.cm.Reds
         if ix == 0:
-            x, y = DF_SIM['deploy_lon'], DF_SIM['deploy_lat']
+            x, y = df_sim['deploy_lon'], df_sim['deploy_lat']
             # title = 'Initial float positions\ncolored with histogram weights'
             title = 'Initial virtual float positions'
             # wp = weights_plan/np.nanmax(np.abs(weights_plan),axis=0)
@@ -337,7 +639,7 @@ def figure_predictions(ds_vel, weights, bin_X, bin_Y, bin_res, Hrel, dd=1, alpha
             else:
                 sc = ax[ix].scatter(x[ii], y[ii], c=w[ii], marker='o', s=4, alpha=w[ii], edgecolor=None, vmin=0, vmax=1, cmap=cmap)
         elif ix == 1:
-            x, y = DF_SIM['longitude'], DF_SIM['latitude']
+            x, y = df_sim['longitude'], df_sim['latitude']
             # title = 'Final float positions\ncolored with histogram weights'
             title = 'Final virtual float positions'
             if not alpha:
@@ -345,7 +647,7 @@ def figure_predictions(ds_vel, weights, bin_X, bin_Y, bin_res, Hrel, dd=1, alpha
             else:
                 sc = ax[ix].scatter(x, y, c=w, marker='o', s=4, alpha=w, edgecolor=None, vmin=0, vmax=1, cmap=cmap)
         elif ix == 2:
-            x, y = DF_SIM['rel_lon'], DF_SIM['rel_lat']
+            x, y = df_sim['rel_lon'], df_sim['rel_lat']
             # title = 'Final floats relative to last float position\ncolored with histogram weights'
             title = 'Final virtual floats positions relative to observed float'
             if not alpha:
@@ -354,8 +656,8 @@ def figure_predictions(ds_vel, weights, bin_X, bin_Y, bin_res, Hrel, dd=1, alpha
                 sc = ax[ix].scatter(x[ii], y[ii], c=w[ii], marker='o', s=4, alpha=w[ii], edgecolor=None, vmin=0, vmax=1, cmap=cmap)
         elif ix == 3:
             # Hs = H/(np.nanmax(H)-np.nanmin(H))
-            Hs = Hrel/(np.nanmax(Hrel)-np.nanmin(Hrel))
-            sc = ax[ix].pcolor(bin_x[0:-1]+bin_res/2, bin_y[0:-1]+bin_res/2, Hrel.T, cmap=cmap)
+            # Hs = Hrel/(np.nanmax(Hrel)-np.nanmin(Hrel))
+            sc = ax[ix].pcolor(bin_X[0:-1]+bin_res/2, bin_Y[0:-1]+bin_res/2, Hrel.T, cmap=cmap)
             # bin_X, bin_Y = np.meshgrid(bin_X[0:-1]+bin_res/2, bin_Y[0:-1]+bin_res/2)
             # bin_X, bin_Y = bin_X.flatten(), bin_Y.flatten()
             # c = (Hrel.T).flatten()
@@ -364,115 +666,61 @@ def figure_predictions(ds_vel, weights, bin_X, bin_Y, bin_res, Hrel, dd=1, alpha
             # sc = ax[ix].scatter(bin_X, bin_Y, c=c, marker='o', s=6, alpha=alp, edgecolor=None, vmin=0, vmax=1, cmap=cmap)
             title = 'Weighted profile density'
 
-
         # Trajectory prediction:
-        ax[ix].arrow(THIS_PROFILE['longitude'][0],
-                     THIS_PROFILE['latitude'][0],
-                     xpred-THIS_PROFILE['longitude'][0],
-                     ypred-THIS_PROFILE['latitude'][0],
+        ax[ix].arrow(this_profile['longitude'][0],
+                     this_profile['latitude'][0],
+                     xpred-this_profile['longitude'][0],
+                     ypred-this_profile['latitude'][0],
                      length_includes_head=True, fc='k', ec='c', head_width=0.025, zorder=10)
         ax[ix].plot(xpred, ypred, 'k+', zorder=10)
+        # distance_due_to_timelag
+        km2deg = 360 / (2 * np.pi * 6371)
+        ax[ix].add_patch(
+            mpatches.Circle(xy=[xpred, ypred],
+                            radius=recovery['prediction_location_error']['surface_drift']['value'] * km2deg,
+                            color='green',
+                            alpha=0.7,
+                            transform=ccrs.PlateCarree(),
+                            zorder=30))
 
-        xave, yave = np.average(DF_SIM['longitude'].values, weights=weights), np.average(DF_SIM['latitude'].values, weights=weights)
-        # ax[ix].arrow(THIS_PROFILE['longitude'][0],
-        #              THIS_PROFILE['latitude'][0],
-        #              xave-THIS_PROFILE['longitude'][0],
-        #              yave-THIS_PROFILE['latitude'][0],
-        #              length_includes_head=True, fc='k', ec='c', head_width=0.025, zorder=10)
-        ax[ix].plot([THIS_PROFILE['longitude'][0], xave], [THIS_PROFILE['latitude'][0], yave], 'g--', zorder=10)
+        # Another
+        # xave, yave = np.average(DF_SIM['longitude'].values, weights=weights), \
+        #              np.average(DF_SIM['latitude'].values, weights=weights)
+        # # ax[ix].arrow(THIS_PROFILE['longitude'][0],
+        # #              THIS_PROFILE['latitude'][0],
+        # #              xave-THIS_PROFILE['longitude'][0],
+        # #              yave-THIS_PROFILE['latitude'][0],
+        # #              length_includes_head=True, fc='k', ec='c', head_width=0.025, zorder=10)
+        # ax[ix].plot([THIS_PROFILE['longitude'][0], xave], [THIS_PROFILE['latitude'][0], yave], 'g--', zorder=10)
 
         plt.colorbar(sc, ax=ax[ix], shrink=0.5)
 
-        ax[ix] = map_add_profiles(ax[ix])
+        ax[ix] = map_add_profiles(ax[ix], this_profile)
         ax[ix].set_title(title)
 
-    err_str = "Prediction vs Truth: [%0.2fkm, $%0.2f^o$]" % (ERROR['distance'], ERROR['bearing'])
-    fig.suptitle("VirtualFleet recovery prediction for WMO %i: starting from cycle %i, predicting cycle %i\n%s" %
-                 (WMO, CYC[0], CYC[1], err_str), fontsize=15)
-    save_figure(fig, 'vfrecov_predictions')
+    err = recovery['prediction_location_error']
+    # err_str = "Prediction vs Truth: [%0.2fkm, $%0.2f^o$]" % (err['distance'], err['bearing'])
+    err_str = "Prediction errors: [dist=%0.2f%s, bearing=$%0.2f^o$, time=%s]\n" \
+              "Distance error represents %s of transit at 12kt" % (err['distance']['value'],
+                                              err['distance']['unit'],
+                                              err['bearing']['value'],
+                                              strfdelta(pd.Timedelta(err['time']['value'], 'h'),
+                                                        "{hours}H{minutes:02d}"),
+                                              strfdelta(pd.Timedelta(err['transit']['value'], 'h'),
+                                                        "{hours}H{minutes:02d}"))
+    fig.suptitle("VirtualFleet recovery prediction for WMO %i: \
+    starting from cycle %i, predicting cycle %i\n%s\n%s" %
+                 (wmo, cyc[0], cyc[1], err_str, "Prediction based on %s" % vel_name), fontsize=15)
+    save_figure(fig, 'vfrecov_predictions', workdir)
     return None
-
-
-class VelocityFieldProto(ABC):
-    def plot(self):
-        """Show ParticleSet"""
-        temp_pset = ParticleSet(fieldset=self.fieldset,
-                                pclass=ArgoParticle, lon=0, lat=0, depth=0)
-        temp_pset.show(field=self.fieldset.U, with_particles=False)
-        # temp_pset.show(field = self.fieldset.V,with_particles = False)
-
-
-class VelocityField_Recovery_Forecast(VelocityFieldProto):
-    """Velocity Field Helper for GLOBAL-ANALYSIS-FORECAST-PHY-001-024 product.
-
-    Reference
-    ---------
-    https://resources.marine.copernicus.eu/product-detail/GLOBAL_ANALYSIS_FORECAST_PHY_001_024/DATA-ACCESS
-    """
-
-    def __init__(self, src, isglobal: bool = False, **kwargs):
-        """
-
-        Parameters
-        ----------
-        src: pattern
-            Pattern to list netcdf source files
-        isglobal : bool, default False
-            Set to 1 if field is global, 0 otherwise
-        """
-        filenames = {'U': src, 'V': src}
-        variables = {'U': 'uo', 'V': 'vo'}
-        dimensions = {'time': 'time', 'depth': 'depth', 'lat': 'latitude', 'lon': 'longitude'}
-
-        self.field = filenames  # Dictionary with 'U' and 'V' as keys and list of corresponding files as values
-        self.var = variables  # Dictionary mapping 'U' and 'V' to netcdf VELocity variable names
-        self.dim = dimensions  # Dictionary mapping 'time', 'depth', 'lat' and 'lon' to netcdf VELocity variable names
-        self.isglobal = isglobal
-
-        # define parcels fieldset
-        self.fieldset = FieldSet.from_netcdf(
-            self.field, self.var, self.dim,
-            allow_time_extrapolation=True,
-            time_periodic=False,
-            deferred_load=True)
-
-        if self.isglobal:
-            self.fieldset.add_constant(
-                'halo_west', self.fieldset.U.grid.lon[0])
-            self.fieldset.add_constant(
-                'halo_east', self.fieldset.U.grid.lon[-1])
-            self.fieldset.add_constant(
-                'halo_south', self.fieldset.U.grid.lat[0])
-            self.fieldset.add_constant(
-                'halo_north', self.fieldset.U.grid.lat[-1])
-            self.fieldset.add_periodic_halo(zonal=True, meridional=True)
-
-        # create mask for grounding management
-        mask_file = glob.glob(self.field['U'])[0]
-        ds = xr.open_dataset(mask_file)
-        ds = eval("ds.isel("+self.dim['time']+"=0)")
-        ds = ds[[self.var['U'],self.var['V']]].squeeze()
-
-        mask = ~(ds.where((~ds[self.var['U']].isnull()) | (~ds[self.var['V']].isnull()))[
-                 self.var['U']].isnull()).transpose(self.dim['lon'], self.dim['lat'], self.dim['depth'])
-        mask = mask.values
-        # create a new parcels field that's going to be interpolated during simulation
-        self.fieldset.add_field(Field('mask', data=mask, lon=ds[self.dim['lon']].values, lat=ds[self.dim['lat']].values,
-                                      depth=ds[self.dim['depth']].values,
-                                      transpose=True, mesh='spherical', interp_method='nearest'))
-
-    def __repr__(self):
-        summary = ["<VelocityField.Recovery.GLOBAL_ANALYSIS_FORECAST_PHY_001_024>"]
-
-        return "\n".join(summary)
 
 
 def setup_deployment_plan(a_profile, a_date, nfloats=15000):
     # We will deploy a collection of virtual floats that are located around the real float with random perturbations in space and time
 
     # Amplitude of the profile position perturbations in the zonal (deg), meridional (deg), and temporal (hours) directions:
-    rx = 1
-    ry = 1
+    rx = 0.5
+    ry = 0.5
     rt = 0
 
     #
@@ -537,8 +785,8 @@ def simu2index_legacy(df_plan, this_ds):
 
 
 def ds_simu2index(this_ds):
-    # Instead of really looking at the cycle phase and structure, we just pick the last trajectory point !
-    # This is way much faster and a good approximation if the simulation length is the cycling frequency.
+    # Instead of really looking at the cycle phase and structure, we just pick the last trajectory point from output file !
+    # This is way much faster and a good approximation IF the simulation length is the cycling frequency.
     data = {
         'date': this_ds.isel(obs=-1)['time'],
         'latitude': this_ds.isel(obs=-1)['lat'],
@@ -552,9 +800,11 @@ def ds_simu2index(this_ds):
     return df
 
 
-def get_index(vf, df_plan):
+def get_index(vf, vel, df_plan):
+    # Instead of really looking at the cycle phase and structure, we just pick the last trajectory point in memory !
+    # This is way much faster and a good approximation IF the simulation length is the cycling frequency.
     data = {
-        'date': vf.ParticleSet.time,
+        'date': [vel.field['time'][0].values + pd.Timedelta(dt, 's') for dt in vf.ParticleSet.time],
         'latitude': vf.ParticleSet.lat,
         'longitude': vf.ParticleSet.lon,
         'wmo': 9000000 + np.arange(0, vf.ParticleSet.lon.shape[0]),
@@ -566,14 +816,14 @@ def get_index(vf, df_plan):
     return df
 
 
-def postprocess_index(this_df):
+def postprocess_index(this_df, this_profile):
     # Compute some distances
 
     # Compute distance between the predicted profile and the initial profile location from the deployment plan
     # We assume that virtual floats are sequentially taken from the deployment plan
     # Since distances are very short, we compute a simple rectangular distance
 
-    x2, y2 = THIS_PROFILE['longitude'].values[0], THIS_PROFILE['latitude'].values[0]  # real float initial position
+    x2, y2 = this_profile['longitude'].values[0], this_profile['latitude'].values[0]  # real float initial position
     this_df['distance'] = np.nan
     this_df['rel_lon'] = np.nan
     this_df['rel_lat'] = np.nan
@@ -602,12 +852,99 @@ def postprocess_index(this_df):
     return this_df
 
 
+def predict_position(workdir, wmo, cyc, cfg, vel, vel_name, df_sim, df_plan, this_profile):
+    """ Compute the position of the next profile for recovery
 
-if __name__ == '__main__':
+    Prediction is based on weighted statistics from the last position of virtual floats
+
+    Returns
+    -------
+    dict
+
+    """
+
+    def get_weights(scale=20):
+        """ Return weights as a gaussian distance with a std based on the size of the deployment domain"""
+        rx, ry = df_plan['longitude'].max() - df_plan['longitude'].min(), \
+                 df_plan['latitude'].max() - df_plan['latitude'].min()
+        r = np.min([rx, ry])  # Minimal size of the deployment domain
+        weights = np.exp(-(df_sim['distance_origin'] ** 2) / (r / scale))
+        weights[np.isnan(weights)] = 0
+        return weights
+
+    # Compute a weighted histogram of the virtual float positions
+    hbox = get_EBOX(df_sim, df_plan, this_profile, s=1)
+    bin_res = 1 / 12 / 2
+    bin_x, bin_y = np.arange(hbox[0], hbox[1], bin_res), np.arange(hbox[2], hbox[3], bin_res)
+    weights = get_weights(scale=20)
+    Hrel, xedges, yedges = np.histogram2d(df_sim['rel_lon'],
+                                          df_sim['rel_lat'],
+                                          bins=[bin_x, bin_y],
+                                          weights=weights,
+                                          density=True)
+
+    # Get coordinates of the most probable location (max of the histogram):
+    ixmax, iymax = np.unravel_index(Hrel.argmax(), Hrel.shape)
+    xpred, ypred = (bin_x[0:-1] + bin_res / 2)[ixmax], (bin_y[0:-1] + bin_res / 2)[iymax]
+    tpred = df_sim['date'].mean()
+    recovery = {'prediction_location': {'longitude': {'value': xpred, 'unit': 'degree East'},
+                                       'latitude': {'value': ypred, 'unit': 'degree North'},
+                                        'time': {'value': tpred}}}
+
+    # Nicer histogram
+    Hrel[Hrel == 0] = np.NaN
+
+    # Compute some metrics of the predicted position:
+    dd = haversine(this_profile['longitude'][1], this_profile['latitude'][1], xpred, ypred)
+    dt = pd.Timedelta(recovery['prediction_location']['time']['value']-
+                      this_profile['date'].values[-1]).seconds/3600.
+    error = {'distance': {'value': dd,
+                          'unit': 'km'},
+             'bearing': {'value': bearing(this_profile['longitude'][0],
+                                this_profile['latitude'][0],
+                                this_profile['longitude'][1],
+                                this_profile['latitude'][1]) - bearing(this_profile['longitude'][0],
+                                                                       this_profile['latitude'][0],
+                                                                       xpred,
+                                                                       ypred),
+                         'unit': 'degree'},
+             'time': {'value': dt,
+                      'unit': 'hour'}
+             }
+
+    # Compute a transit time to cover the distance error:
+    # (assume a 12 kts boat speed with 1 kt = 1.852 km/h)
+    error['transit'] = {'value': pd.Timedelta(error['distance']['value'] / (12 * 1.852), 'h').seconds/3600.,
+                        'unit': 'hour'}
+
+    # Compute the possible drift due to the time lag between the predicted profile timing and the expected one:
+    dsc = vel.field.interp(
+        {vel.dim['lon']: xpred,
+         vel.dim['lat']: ypred,
+         vel.dim['time']: tpred,
+         vel.dim['depth']: vel.field[{vel.dim['depth']: 0}][vel.dim['depth']].values[np.newaxis][0]}
+    )
+    velc = np.sqrt(dsc[vel.var['U']] ** 2 + dsc[vel.var['V']] ** 2).values[np.newaxis][0]
+    error['surface_drift'] = {'value': (error['time']['value']*3600 * velc / 1e3),
+                              'unit': 'km',
+                              'comment': 'Drift by surface currents due to the time error'}
+
+    #
+    recovery['prediction_location_error'] = error
+
+    # Final figure:
+    figure_predictions(weights, bin_x, bin_y, bin_res, Hrel, recovery,
+                       vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name, workdir)
+
+    #
+    return recovery
+
+
+def setup_args():
     icons_help_string = """This script can be used to make prediction of a specific float cycle position.
     This script is for testing the prediction system, and must be run on past float cycles.
-    Note that in order to download the velocity field from 'https://nrt.cmems-du.eu', you need to set the environment variables: MOTU_USERNAME and MOTU_PASSWORD.
-    """
+    Note that in order to download online velocity field from 'https://nrt.cmems-du.eu', you need to set the environment variables: MOTU_USERNAME and MOTU_PASSWORD.
+        """
 
     parser = argparse.ArgumentParser(description='VirtualFleet recovery predictor',
                                      formatter_class=argparse.RawTextHelpFormatter,
@@ -616,16 +953,26 @@ if __name__ == '__main__':
     # Add long and short arguments
     parser.add_argument('wmo', help="Float WMO number", type=int)
     parser.add_argument("cyc", help="Cycle number to predict", type=int)
-    parser.add_argument("--nfloats", help="Number of virtual floats used to make the prediction, default: 5000", type=int, default=5000)
-    parser.add_argument("--output", help="Output folder, default: ./vfrecov/<WMO>/vfpred_<CYC>", default=None)
+    parser.add_argument("--nfloats", help="Number of virtual floats used to make the prediction, default: 2000",
+                        type=int, default=2000)
+    parser.add_argument("--output", help="Output folder, default: ./vfrecov/<WMO>/<CYC>", default=None)
+    parser.add_argument("--velocity", help="Velocity field to use. Possible values are: 'ARMOR3D' (default), 'GLORYS'",
+                        default='ARMOR3D')
     parser.add_argument("--vf", help="Parent folder to the VirtualFleet repository clone", default=None)
 
+    return parser
+
+if __name__ == '__main__':
     # Read mandatory arguments from the command line
-    args = parser.parse_args()
+    args = setup_args().parse_args()
     if argopy.utilities.is_wmo(args.wmo):
         WMO = args.wmo
     if argopy.utilities.is_cyc(args.cyc):
         CYC = [args.cyc-1, args.cyc]
+    if args.velocity not in ['ARMOR3D', 'GLORYS']:
+        raise ValueError("Velocity field must be one in: ['ARMOR3D', 'GLORYS']")
+    else:
+        VEL_NAME = args.velocity.upper()
 
     # Where do we find the VirtualFleet repository ?
     if not args.vf:
@@ -642,18 +989,32 @@ if __name__ == '__main__':
 
     # Set-up the working directory:
     if not args.output:
-        WORKDIR = os.path.sep.join([".", "vfrecov", str(WMO), "vfpred_%0.4d" % (CYC[1])])
+        WORKDIR = os.path.sep.join([".", "vfrecov", str(WMO), str(CYC[1])])
     else:
-        WORKDIR = os.path.sep.join([args.output, str(WMO), "vfpred_%0.4d" % (CYC[1])])
+        WORKDIR = os.path.sep.join([args.output, str(WMO), str(CYC[1])])
     WORKDIR = os.path.abspath(WORKDIR)
     if not os.path.exists(WORKDIR):
         os.makedirs(WORKDIR)
 
+    puts("\nData will be saved in:")
+    puts("\t%s" % WORKDIR, color=COLORS.green)
+
+    # Set-up logger
+    logging.basicConfig(
+        # level=logging.WARNING,
+        format=DEBUGFORMATTER,
+        datefmt='%m/%d/%Y %I:%M:%S %p',
+        handlers=[logging.FileHandler(os.path.join(WORKDIR, "vfpred.log"), mode='w')]
+    )
+
     # Load these profiles information:
     puts("\nYou can check this float dashboard while we prepare the prediction:")
     puts("\t%s" % argopy.plot.dashboard(WMO, url_only=True), color=COLORS.green)
-    THIS_PROFILE = store().search_wmo_cyc(WMO, CYC).to_dataframe()
+    # host = "/home/ref-argo/gdac" if not os.uname()[0] == 'Darwin' else "https://data-argo.ifremer.fr"
+    host = "/home/ref-argo/gdac" if not os.uname()[0] == 'Darwin' else "~/data/ARGO"
+    THIS_PROFILE = store(host=host).search_wmo_cyc(WMO, CYC).to_dataframe()
     THIS_DATE = pd.to_datetime(THIS_PROFILE['date'].values[0])
+    CENTER = [THIS_PROFILE['longitude'].values[0], THIS_PROFILE['latitude'].values[0]]
     puts("\nProfiles to work with:")
     puts(THIS_PROFILE.to_string())
 
@@ -664,7 +1025,6 @@ if __name__ == '__main__':
     except:
         puts("Can't load this profile config, falling back on default values", color=COLORS.red)
         CFG = FloatConfiguration('default')
-    # CFG.update('cycle_duration', CYCLING_FREQUENCY * 24)
     puts(CFG.__repr__())
 
     # Get the cycling frequency (in days):
@@ -673,17 +1033,20 @@ if __name__ == '__main__':
     CYCLING_FREQUENCY = int(np.round(CFG.mission['cycle_duration'])/24)
 
     # Define domain to load velocity for, and get it:
-    width = 10 + np.abs(np.ceil(THIS_PROFILE['longitude'].values[1] - THIS_PROFILE['longitude'].values[0]))
-    height = 10 + np.abs(np.ceil(THIS_PROFILE['latitude'].values[1] - THIS_PROFILE['latitude'].values[0]))
-    lonc, latc = THIS_PROFILE['longitude'].values[0], THIS_PROFILE['latitude'].values[0],
-    VBOX = [lonc - width / 2, lonc + width / 2, latc - height / 2, latc + height / 2]
-    puts("\nLoading velocity field for %i days..." % (CYCLING_FREQUENCY+1))
-    ds, velocity_file = get_velocity_field(VBOX, THIS_DATE, n_days=CYCLING_FREQUENCY+1, root=WORKDIR)
-    figure_velocity(ds, VBOX)
+    width = 10 + np.abs(np.ceil(THIS_PROFILE['longitude'].values[-1] - CENTER[0]))
+    height = 10 + np.abs(np.ceil(THIS_PROFILE['latitude'].values[-1] - CENTER[1]))
+    # lonc, latc = CENTER[0], CENTER[1],
+    VBOX = [CENTER[0] - width / 2, CENTER[0] + width / 2, CENTER[1] - height / 2, CENTER[1] + height / 2]
+    puts("\nLoading %s velocity field to cover %i days..." % (VEL_NAME, CYCLING_FREQUENCY+1))
+    ds_vel, velocity_file = get_velocity_field(VBOX, THIS_DATE,
+                                           n_days=CYCLING_FREQUENCY+1,
+                                           output=WORKDIR,
+                                           dataset=VEL_NAME)
+    VEL = VelocityField('GLORYS12V1' if VEL_NAME == 'GLORYS' else VEL_NAME, src=ds_vel)
+    figure_velocity(VBOX)
 
     # VirtualFleet, get a deployment plan:
     puts("\nVirtualFleet, get a deployment plan...")
-    CENTER = [THIS_PROFILE['longitude'].values[0], THIS_PROFILE['latitude'].values[0]]
     DF_PLAN = setup_deployment_plan(CENTER, THIS_DATE, nfloats=args.nfloats)
     puts("\t%i virtual floats to deploy" % DF_PLAN.shape[0], color=COLORS.green)
 
@@ -692,7 +1055,7 @@ if __name__ == '__main__':
     VFleet = VirtualFleet(lat=DF_PLAN['latitude'],
                           lon=DF_PLAN['longitude'],
                           time=np.array([np.datetime64(t) for t in DF_PLAN['date'].dt.strftime('%Y-%m-%d %H:%M').array]),
-                          fieldset=VelocityField('GLOBAL_ANALYSIS_FORECAST_PHY_001_024', src=ds).fieldset,
+                          fieldset=VEL.fieldset,
                           mission=CFG.mission)
 
     # VirtualFleet, execute the simulation:
@@ -701,6 +1064,7 @@ if __name__ == '__main__':
                     step=timedelta(minutes=5),
                     record=timedelta(minutes=30),
                     output_folder=None,
+                    # output_folder=WORKDIR,
                     )
 
     # VirtualFleet, get simulated profiles index:
@@ -708,34 +1072,45 @@ if __name__ == '__main__':
     # ds_traj = xr.open_dataset(VFleet.run_params['output_file'])
     # DF_SIM = simu2index_legacy(DF_PLAN, ds_traj)
     # DF_SIM = ds_simu2index(ds_traj)
-    DF_SIM = get_index(VFleet, DF_PLAN)
-    DF_SIM = postprocess_index(DF_SIM)
+    DF_SIM = get_index(VFleet, VEL, DF_PLAN)
+    DF_SIM = postprocess_index(DF_SIM, THIS_PROFILE)
     puts(DF_SIM.head().to_string())
-    figure_positions(ds, dd=1)
+    figure_positions(VEL, DF_SIM, DF_PLAN, THIS_PROFILE, CFG, WMO, CYC, VEL_NAME, WORKDIR, dd=1)
 
     # Recovery, make predictions based on simulated profile density:
-    rx, ry = DF_PLAN['longitude'].max() - DF_PLAN['longitude'].min(), \
-             DF_PLAN['latitude'].max() - DF_PLAN['latitude'].min()
-    r = np.min([rx, ry])  # Minimal size of the deployment domain
+    results = predict_position(WORKDIR, WMO, CYC, CFG, VEL, VEL_NAME, DF_SIM, DF_PLAN, THIS_PROFILE)
+    results['profile_to_predict'] = {'wmo': WMO,
+                          'cycle_number': CYC[-1],
+                          'url_float': argopy.plot.dashboard(WMO, url_only=True),
+                          'url_profile': argopy.plot.dashboard(WMO, CYC[-1], url_only=True),
+                          'location': {'longitude': {'value': THIS_PROFILE['longitude'].values[-1],
+                                                     'unit': 'degree East'},
+                                       'latitude': {'value': THIS_PROFILE['latitude'].values[-1],
+                                                    'unit': 'degree North'},
+                                       'time': {'value': THIS_PROFILE['date'].values[-1]}}
+                                     }
 
-    HBOX = get_HBOX(dd=1)
-    bin_res = 1 / 12 / 2
-    bin_x, bin_y = np.arange(HBOX[0], HBOX[1], bin_res), np.arange(HBOX[2], HBOX[3], bin_res)
-    weights = np.exp(-(DF_SIM['distance_origin'] ** 2) / (r/20))
-    weights[np.isnan(weights)] = 0
-    # H, xedges, yedges = np.histogram2d(DF_SIM['longitude'], DF_SIM['latitude'], bins=[bin_x, bin_y], weights=weights,
-    #                                    density=True)
-    Hrel, xedges, yedges = np.histogram2d(DF_SIM['rel_lon'], DF_SIM['rel_lat'], bins=[bin_x, bin_y], weights=weights,
-                                          density=True)
-    # H[H == 0] = np.NaN
-    ixmax, iymax = np.unravel_index(Hrel.argmax(), Hrel.shape)
-    xpred, ypred = (bin_x[0:-1] + bin_res / 2)[ixmax], (bin_y[0:-1] + bin_res / 2)[iymax]
-    Hrel[Hrel == 0] = np.NaN
-    ERROR = {'distance': haversine(THIS_PROFILE['longitude'][1], THIS_PROFILE['latitude'][1], xpred, ypred),
-             'bearing': bearing(THIS_PROFILE['longitude'][0], THIS_PROFILE['latitude'][0], THIS_PROFILE['longitude'][1],
-                                THIS_PROFILE['latitude'][1]) - bearing(THIS_PROFILE['longitude'][0],
-                                                                       THIS_PROFILE['latitude'][0], xpred, ypred)}
-    figure_predictions(ds, weights, bin_x, bin_y, bin_res, Hrel)
+    results['previous_profile'] = {'wmo': WMO,
+                          'cycle_number': CYC[0],
+                          'url_float': argopy.plot.dashboard(WMO, url_only=True),
+                          'url_profile': argopy.plot.dashboard(WMO, CYC[0], url_only=True),
+                          'location': {'longitude': {'value': CENTER[0],
+                                                     'unit': 'degree East'},
+                                       'latitude': {'value': CENTER[1],
+                                                    'unit': 'degree North'},
+                                       'time': {'value': THIS_DATE}}
+                                   }
+    results['meta'] = {'Velocity field': VEL_NAME,
+                       'Computation date': pd.to_datetime('now', utc=True),
+                       }
 
-    puts("\nData saved in:")
-    puts("\t%s" % WORKDIR, color=COLORS.green)
+    puts("\nPredictions:")
+    results_js = json.dumps(results, indent=4, sort_keys=True, default=str)
+    puts(results_js, color=COLORS.green)
+
+    with open(os.path.join(WORKDIR, 'prediction.json'), 'w', encoding='utf-8') as f:
+        json.dump(results, f, ensure_ascii=False, indent=4, default=str, sort_keys=True)
+
+    puts("\nCheck results at:")
+    puts("\t%s" % os.path.join(WORKDIR, 'prediction.json'), color=COLORS.yellow)
+    puts("\t%s" % os.path.join(WORKDIR, 'vfrecov_predictions.png'), color=COLORS.yellow)
