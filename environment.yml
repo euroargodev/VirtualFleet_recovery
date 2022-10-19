@@ -49,3 +49,5 @@ dependencies:
     - progressbar
     - cgen
     - pymbolic
+    - memory-profiler
+    - line-profiler
