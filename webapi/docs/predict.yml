@@ -1,0 +1,31 @@
+Make a prediction
+---
+tags:
+  - prediction
+definitions:
+  - schema:
+      id: Group
+      properties:
+        name:
+         type: string
+         description: the group's name
+parameters:
+  - in: body
+    name: body
+    schema:
+      id: User
+      required:
+        - wmo
+        - cyc
+      properties:
+        wmo:
+          type: int
+          description: Float WMO
+        cyc:
+          type: int
+          description: Cycle number to predict
+        nfloats:
+          description: Number of virtual floats to simulate
+responses:
+  200:
+    description: Prediction files created
