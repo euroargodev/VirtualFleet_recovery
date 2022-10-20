@@ -37,7 +37,9 @@ conda create -f environment.yml
 git clone --branch gulf-stream git@github.com:euroargodev/VirtualFleet.git
 ```
 
-### Usage
+### CLI 
+
+#### Usage
 The ``recovery_prediction`` script allows making predictions, i.e. at this point, to produce a few figures to get an idea of where the float will make surface contact.
 
 For a simple help, you can type:
@@ -59,7 +61,7 @@ Don't forget to:
 - set the environment variables ``MOTU_USERNAME`` and ``MOTU_PASSWORD`` to be able to download the velocity field
 - use the option ``vf`` to specify where the VirtualFleet software has been cloned.
 
-### Example
+#### Example
 At this point, we're able to make test predictions for float cycles already observed.  
 
 ```bash
@@ -69,3 +71,49 @@ Below is an example of this prediction for the 99th cycle of the 6902919 float.
 The really observed 99th cycle is shown at the tip of the arrow (red point) starting from the previous 98th cycle.  
 The VirtualFleet Recovery prediction is in the probabilistic red shading: the most probable position predicted is in the redder region.
 ![Binder](data/6902919/vfpred_0099/vfrecov_predictions.png)
+
+### web API
+
+In order to easily make and get results of a prediction, we set-up a small web API based on [Flask](https://flask.palletsprojects.com/).
+
+#### Server set-up
+
+If you used the environment provided with this repo you already have Flask installed.
+In order to set-up the (dev) server to access the VirtualFleet Recovery web API, you can type:
+```bash
+export FLASK_DEBUG=True
+export FLASK_APP=app.py
+#flask run  # localhost
+#flask run --host=134.246.146.178  # Laptop @ Ifremer
+flask run --host=134.246.146.54  # Pacnet @ Ifremer
+```
+
+#### Usage
+
+You should know the ip address of the server where the Flask app is running.
+
+**Making a prediction**
+
+To make a prediction for the position of the ``CYC`` cycle from float ``WMO``, send a GET, or POST, request to:
+```bash
+    http://<IP>:5000/predict/<WMO>/<CYC>
+```
+This will return a json file with the prediction results. Predictions are saved in cache. 
+
+Two options are possible:
+   - ``velocity``: to select the velocity field to use, it can be ``ARMOR3D`` (default) or ``GLORYS``
+   - ``nfloats``: to set the number of virtual floats to use in the probabilistic prediction. The default value is 2000.
+
+Options can be used, or combined:
+```bash
+    http://<IP>:5000/predict/<WMO>/<CYC>?nfloats=1000
+    http://<IP>:5000/predict/<WMO>/<CYC>?velocity=ARMOR3D
+    http://<IP>:5000/predict/<WMO>/<CYC>?nfloats=1000&velocity=GLORYS
+```
+
+**Visualise prediction results**
+
+We made a small webpage with figures and prediction data results. It is accessible at
+```bash
+    http://<IP>:5000/results/<WMO>/<CYC>
+```
