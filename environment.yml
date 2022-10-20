@@ -51,3 +51,5 @@ dependencies:
     - pymbolic
     - memory-profiler
     - line-profiler
+    - Flask
+    - flask-swagger
