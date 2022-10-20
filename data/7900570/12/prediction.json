@@ -1,0 +1,80 @@
+{
+    "meta": {
+        "Computation date": "2022-10-19 11:20:04.770789+00:00",
+        "Velocity field": "ARMOR3D"
+    },
+    "prediction_location": {
+        "latitude": {
+            "unit": "degree North",
+            "value": 47.58326902952389
+        },
+        "longitude": {
+            "unit": "degree East",
+            "value": -10.901248385840665
+        },
+        "time": {
+            "value": "2020-10-20 06:20:00"
+        }
+    },
+    "prediction_location_error": {
+        "bearing": {
+            "unit": "degree",
+            "value": 323.0823099222808
+        },
+        "distance": {
+            "unit": "km",
+            "value": 21.747503351515956
+        },
+        "surface_drift": {
+            "comment": "Drift by surface currents due to the time error",
+            "unit": "km",
+            "value": 0.2004163583789722
+        },
+        "time": {
+            "unit": "hour",
+            "value": 0.7444444444444445
+        },
+        "transit": {
+            "unit": "hour",
+            "value": 0.9783333333333334
+        }
+    },
+    "previous_profile": {
+        "cycle_number": 11,
+        "location": {
+            "latitude": {
+                "unit": "degree North",
+                "value": 47.808
+            },
+            "longitude": {
+                "unit": "degree East",
+                "value": -10.821
+            },
+            "time": {
+                "value": "2020-10-10 05:22:20"
+            }
+        },
+        "url_float": "https://fleetmonitoring.euro-argo.eu/float/7900570",
+        "url_profile": "https://dataselection.euro-argo.eu/cycle/4879424",
+        "wmo": 7900570
+    },
+    "profile_to_predict": {
+        "cycle_number": 12,
+        "location": {
+            "latitude": {
+                "unit": "degree North",
+                "value": 47.511
+            },
+            "longitude": {
+                "unit": "degree East",
+                "value": -10.632
+            },
+            "time": {
+                "value": "2020-10-20T05:35:20.000000000"
+            }
+        },
+        "url_float": "https://fleetmonitoring.euro-argo.eu/float/7900570",
+        "url_profile": "https://dataselection.euro-argo.eu/cycle/4884110",
+        "wmo": 7900570
+    }
+}

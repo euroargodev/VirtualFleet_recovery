@@ -141,5 +141,4 @@ local_work/
 cli/build-pypi
 *.nc
 cli/vfrecov/
-data/
 webapi/static/data
