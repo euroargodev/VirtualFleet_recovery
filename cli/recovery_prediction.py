@@ -26,17 +26,18 @@ import json
 from datetime import timedelta
 from tqdm import tqdm
 import argparse
-import argopy
+from argopy.utilities import is_wmo, is_cyc
+import argopy.plot as argoplot
 from argopy.stores.argo_index_pd import indexstore_pandas as store
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import cartopy.crs as ccrs
 import matplotlib
-from parcels import ParticleSet, FieldSet, Field
-from abc import ABC
+# from parcels import ParticleSet, FieldSet, Field
+# from abc import ABC
 import time
 # from memory_profiler import profile
-import platform, socket, re, uuid , psutil
+import platform, socket, psutil
 
 logging.getLogger("matplotlib").setLevel(logging.ERROR)
 logging.getLogger("parso").setLevel(logging.ERROR)
@@ -535,8 +536,8 @@ def map_add_features(this_ax):
     -------
     this_ax
     """
-    argopy.plot.utils.latlongrid(this_ax)
-    this_ax.add_feature(argopy.plot.utils.land_feature, edgecolor="black")
+    argoplot.utils.latlongrid(this_ax)
+    this_ax.add_feature(argoplot.utils.land_feature, edgecolor="black")
     return this_ax
 
 
@@ -1015,9 +1016,9 @@ def predictor(args):
     execution_start = time.time()
     process_start = time.process_time()
 
-    if argopy.utilities.is_wmo(args.wmo):
+    if is_wmo(args.wmo):
         WMO = args.wmo
-    if argopy.utilities.is_cyc(args.cyc) and args.cyc > 1:
+    if is_cyc(args.cyc) and args.cyc > 1:
         CYC = [args.cyc-1, args.cyc]
     if args.velocity not in ['ARMOR3D', 'GLORYS']:
         raise ValueError("Velocity field must be one in: ['ARMOR3D', 'GLORYS']")
@@ -1064,7 +1065,7 @@ def predictor(args):
     # Load these profiles information:
     if not args.json:
         puts("\nYou can check this float dashboard while we prepare the prediction:")
-        puts("\t%s" % argopy.plot.dashboard(WMO, url_only=True), color=COLORS.green)
+        puts("\t%s" % argoplot.dashboard(WMO, url_only=True), color=COLORS.green)
     # host = "/home/ref-argo/gdac" if not os.uname()[0] == 'Darwin' else "https://data-argo.ifremer.fr"
     host = "/home/ref-argo/gdac" if not os.uname()[0] == 'Darwin' else "~/data/ARGO"
     THIS_PROFILE = store(host=host).search_wmo_cyc(WMO, CYC).to_dataframe()
@@ -1155,8 +1156,8 @@ def predictor(args):
                                save_figure=args.save_figure, quiet=~args.json)
     results['profile_to_predict'] = {'wmo': WMO,
                           'cycle_number': CYC[-1],
-                          'url_float': argopy.plot.dashboard(WMO, url_only=True),
-                          'url_profile': argopy.plot.dashboard(WMO, CYC[-1], url_only=True),
+                          'url_float': argoplot.dashboard(WMO, url_only=True),
+                          'url_profile': argoplot.dashboard(WMO, CYC[-1], url_only=True),
                           'location': {'longitude': {'value': THIS_PROFILE['longitude'].values[-1],
                                                      'unit': 'degree East'},
                                        'latitude': {'value': THIS_PROFILE['latitude'].values[-1],
@@ -1166,8 +1167,8 @@ def predictor(args):
 
     results['previous_profile'] = {'wmo': WMO,
                           'cycle_number': CYC[0],
-                          'url_float': argopy.plot.dashboard(WMO, url_only=True),
-                          'url_profile': argopy.plot.dashboard(WMO, CYC[0], url_only=True),
+                          'url_float': argoplot.dashboard(WMO, url_only=True),
+                          'url_profile': argoplot.dashboard(WMO, CYC[0], url_only=True),
                           'location': {'longitude': {'value': CENTER[0],
                                                      'unit': 'degree East'},
                                        'latitude': {'value': CENTER[1],
