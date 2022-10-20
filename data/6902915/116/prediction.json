@@ -1,0 +1,100 @@
+{
+    "meta": {
+        "Computation": {
+            "CPU-time": "0 days 00:00:46.221414",
+            "Date": "2022-10-20 13:24:38.249104+00:00",
+            "Wall-time": "0 days 00:00:39.469566345",
+            "system": {
+                "architecture": "x86_64",
+                "hostname": "br146-178.ifremer.fr",
+                "ip-address": "134.246.146.178",
+                "platform": "Darwin",
+                "platform-release": "18.7.0",
+                "platform-version": "Darwin Kernel Version 18.7.0: Tue Jun 22 19:37:08 PDT 2021; root:xnu-4903.278.70~1/RELEASE_X86_64",
+                "processor": "i386",
+                "ram": "16 GB"
+            }
+        },
+        "Nfloats": 2000,
+        "Velocity field": "ARMOR3D"
+    },
+    "prediction_location": {
+        "latitude": {
+            "unit": "degree North",
+            "value": 24.910921980011246
+        },
+        "longitude": {
+            "unit": "degree East",
+            "value": -54.75400792102424
+        },
+        "time": {
+            "value": "2022-04-09 12:39:59.999999744"
+        }
+    },
+    "prediction_location_error": {
+        "bearing": {
+            "unit": "degree",
+            "value": 13.574948586711287
+        },
+        "distance": {
+            "unit": "km",
+            "value": 26.9706653978394
+        },
+        "time": {
+            "unit": "hour",
+            "value": 0.9247222222222222
+        }
+    },
+    "prediction_metrics": {
+        "surface_drift": {
+            "comment": "Drift by surface currents due to the float ascent time error (difference between simulated profile time and the observed one).",
+            "surface_currents_speed": 0.09095679582070702,
+            "surface_currents_speed_unit": "m/s",
+            "unit": "km",
+            "value": 0.30279517328713373
+        },
+        "transit": {
+            "comment": "Boat transit time to cover the distance error (assume a 12 kts boat speed with 1 kt = 1.852 km/h)",
+            "unit": "hour",
+            "value": 1.2133333333333334
+        }
+    },
+    "previous_profile": {
+        "cycle_number": 115,
+        "location": {
+            "latitude": {
+                "unit": "degree North",
+                "value": 24.809
+            },
+            "longitude": {
+                "unit": "degree East",
+                "value": -55.317
+            },
+            "time": {
+                "value": "2022-03-30 11:40:30"
+            }
+        },
+        "url_float": "https://fleetmonitoring.euro-argo.eu/float/6902915",
+        "url_profile": "https://dataselection.euro-argo.eu/cycle/5196046",
+        "wmo": 6902915
+    },
+    "profile_to_predict": {
+        "cycle_number": 116,
+        "location": {
+            "latitude": {
+                "unit": "degree North",
+                "value": 24.797
+            },
+            "longitude": {
+                "unit": "degree East",
+                "value": -54.99
+            },
+            "time": {
+                "value": "2022-04-09T11:44:30.000000000"
+            }
+        },
+        "url_float": "https://fleetmonitoring.euro-argo.eu/float/6902915",
+        "url_profile": "https://dataselection.euro-argo.eu/cycle/5201191",
+        "wmo": 6902915
+    }
+}

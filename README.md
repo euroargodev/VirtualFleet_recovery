@@ -47,15 +47,17 @@ For a simple help, you can type:
 recovery_prediction -h
 ```
 
-Otherwise, to make prediction of where the 99th cycle of the 6902919 float will be, just type: 
+To make prediction of where the 99th cycle of the 6902919 float will be, just type: 
 ```bash
 recovery_prediction 6902919 99
 ```
 
-A few options are available, like control on the output folder and the number of virtual floats to use:
+A few options are available, like control on the output folder, the number of virtual floats or the velocity field to use:
 ```bash
-recovery_prediction 6902919 99 --output data --nfloats=5000
+recovery_prediction 6902919 99 --output data --nfloats=5000 --velocity=GLORYS
 ```
+
+Use the ``--json`` option to only get prediction results as a json string.
 
 Don't forget to:
 - set the environment variables ``MOTU_USERNAME`` and ``MOTU_PASSWORD`` to be able to download the velocity field
@@ -65,16 +67,16 @@ Don't forget to:
 At this point, we're able to make test predictions for float cycles already observed.  
 
 ```bash
-recovery_prediction 6902919 99
+recovery_prediction 6902915 116
 ```
 Below is an example of this prediction for the 99th cycle of the 6902919 float.  
 The really observed 99th cycle is shown at the tip of the arrow (red point) starting from the previous 98th cycle.  
 The VirtualFleet Recovery prediction is in the probabilistic red shading: the most probable position predicted is in the redder region.
-![Binder](data/6902919/vfpred_0099/vfrecov_predictions.png)
+![Binder](data/6902915/116/vfrecov_predictions.png)
 
 ### web API
 
-In order to easily make and get results of a prediction, we set-up a small web API based on [Flask](https://flask.palletsprojects.com/).
+In order to easily use prediction results with other (web)applications, we set-up a small web API based on [Flask](https://flask.palletsprojects.com/).
 
 #### Server set-up
 
