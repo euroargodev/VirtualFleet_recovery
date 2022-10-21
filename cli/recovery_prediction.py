@@ -38,6 +38,7 @@ import matplotlib
 import time
 # from memory_profiler import profile
 import platform, socket, psutil
+from sklearn.metrics import pairwise_distances
 
 logging.getLogger("matplotlib").setLevel(logging.ERROR)
 logging.getLogger("parso").setLevel(logging.ERROR)
@@ -986,6 +987,131 @@ def predict_position(workdir, wmo, cyc, cfg, vel, vel_name, df_sim, df_plan, thi
     return recovery
 
 
+def analyse_pairwise_distances(this_args, data):
+    workdir = os.path.sep.join([this_args.output, str(this_args.wmo), str(this_args.cyc)])
+
+    # Trajectory file:
+    ncfile = os.path.sep.join([workdir,
+                               'trajectories_%s_%i.nc' % (this_args.velocity, this_args.nfloats)])
+
+    if not os.path.exists(ncfile):
+        print('Cannot analyse pairwise distances because the trajectory file cannot be found at: %s' % ncfile)
+        return None
+
+    # Open trajectory file:
+    ds = xr.open_dataset(ncfile)
+
+    # Compute trajectory lengths:
+    ds['length'] = np.sqrt(ds.diff(dim='obs')['lon'] ** 2 + ds.diff(dim='obs')['lat'] ** 2).sum(dim='obs')
+
+    # Compute initial state pairwise distances:
+    X = ds.isel(obs=0)
+    X0 = np.array((X['lon'].values, X['lat'].values)).T
+    d0 = pairwise_distances(X0, n_jobs=-1)
+    d0 = np.triu(d0)
+    d0[d0 == 0] = np.nan
+
+    # Compute final state pairwise distances:
+    X = ds.isel(obs=-1)
+    X = np.array((X['lon'].values, X['lat'].values)).T
+    d = pairwise_distances(X, n_jobs=-1)
+    d = np.triu(d)
+    d[d == 0] = np.nan
+
+    # Metrics:
+    prediction_metrics = data['prediction_metrics']
+
+    prediction_metrics['trajectory_lengths'] = {'median': np.nanmedian(ds['length'].values),
+                                                'std': np.nanstd(ds['length'].values)}
+
+    prediction_metrics['pairwise_distances'] = {'initial_state': {'median': np.nanmedian(d0), 'std': np.nanstd(d0)},
+                                                'final_state': {'median': np.nanmedian(d), 'std': np.nanstd(d)},
+                                                }
+    ratio = prediction_metrics['pairwise_distances']['final_state']['std'] / \
+            prediction_metrics['pairwise_distances']['initial_state']['std']
+    prediction_metrics['pairwise_distances']['std_ratio'] = ratio
+
+    data['prediction_metrics'] = prediction_metrics
+
+    # Figure:
+    backend = matplotlib.get_backend()
+    if this_args.json:
+        matplotlib.use('Agg')
+
+    fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(18, 10), dpi=90)
+    ax, ix = ax.flatten(), -1
+    # hbox = get_HBOX(ds.isel(obs=0), lon='lon', lat='lat')
+    cmap = plt.cm.coolwarm
+    # vmax = np.nanmax(d)
+
+    # ix+=1
+    # ax[ix].plot(X0[:,0], X0[:, 1], '.', markersize=3)
+    # ax[ix].set_aspect('equal', 'box')
+    # ax[ix].grid()
+    # # ax[ix].set_xlim(hbox[0], hbox[1])
+    # # ax[ix].set_ylim(hbox[2], hbox[3])
+    # ax[ix].set_title('Initial positions')
+
+    ix += 1
+    ax[ix].plot(X0[:, 0], X0[:, 1], '.', markersize=3, color='grey', alpha=0.1, markeredgecolor=None, zorder=0)
+    ax[ix].plot(X[:, 0], X[:, 1], '.', markersize=3, color='lightblue', markeredgecolor=None)
+    ax[ix].set_aspect('equal', 'box')
+    ax[ix].grid()
+    # ax[ix].set_xlim(hbox[0], hbox[1])
+    # ax[ix].set_ylim(hbox[2], hbox[3])
+    ax[ix].set_title('Initial (grey) vs Final (blue) positions')
+
+    ix += 1
+    dd = ds['length'].values
+    str_lgth = "median / std = %0.2f / %0.2f" % (prediction_metrics['trajectory_lengths']['median'],
+                                                 prediction_metrics['trajectory_lengths']['std'])
+    ax[ix].scatter(X0[:, 0], X0[:, 1], c=dd, zorder=10, s=3, cmap=cmap)
+    # ax.plot(X0[:,0], X0[:,1], '.', color='grey')
+    ax[ix].grid()
+    ax[ix].set_aspect('equal', 'box')
+    ax[ix].scatter(X[:, 0], X[:, 1], c=dd, zorder=12, s=3, cmap=cmap)
+    ax[ix].plot(ds.isel(traj=np.argmax(dd))['lon'], ds.isel(traj=np.argmax(dd))['lat'], 'r', \
+                zorder=13, label='Longest traj.')
+    ax[ix].plot(ds.isel(traj=np.argmin(dd))['lon'], ds.isel(traj=np.argmin(dd))['lat'], 'b', \
+                zorder=13, label='Shortest traj.')
+    ax[ix].legend()
+    ax[ix].set_title('Trajectory lengths')
+
+    ix += 1
+    # Since we used a random sampling, d0 hist should be a normal distribution
+    ax[ix].hist(d0.flatten(), density=1, histtype='step', label='Initial', color='gray')
+    ax[ix].hist(d.flatten(), density=1, histtype='bar', label='Final', color='lightblue')
+    ax[ix].legend()
+    ax[ix].set_xlabel('Pairwise distance [degree]')
+    str_ratio = "Ratio of std: %0.4f" % prediction_metrics['pairwise_distances']['std_ratio']
+    ax[ix].set_title("Pairwise distances PDF\n%s" % str_ratio)
+
+    ix += 1
+    # Since we used a random sampling, d0 hist should be a normal distribution
+    ax[ix].hist(dd.flatten(), density=1, histtype='step', color='k')
+    # ax[ix].legend()
+    ax[ix].set_xlabel('Trajectory length [degree]')
+    ax[ix].set_title("Trajectory length PDF\n%s" % str_lgth)
+
+    line0 = "VirtualFleet recovery prediction for WMO %i: starting from cycle %i, predicting cycle %i" % \
+            (this_args.wmo, this_args.cyc - 1, this_args.cyc)
+    line1 = "Prediction made with %s and %i virtual floats" % (this_args.velocity, this_args.nfloats)
+    fig.suptitle("%s\n%s" % (line0, line1), fontsize=15)
+    if this_args.save_figure:
+        figfile = 'vfrecov_metrics01_%s_%i' % (this_args.velocity, this_args.nfloats)
+        figpath = os.path.sep.join([this_args.output, str(this_args.wmo), str(this_args.cyc)])
+        save_figurefile(fig, figfile, figpath)
+
+    # Save new data to json file:
+    # jsfile = os.path.join(workdir, 'prediction_%s_%i.json' % (this_args.velocity, this_args.nfloats))
+    # with open(jsfile, 'w', encoding='utf-8') as f:
+    #     json.dump(data, f, ensure_ascii=False, indent=4, default=str, sort_keys=True)
+
+    if this_args.json:
+        matplotlib.use(backend)
+    return data
+
+
 def setup_args():
     icons_help_string = """This script can be used to make prediction of a specific float cycle position.
     This script is for testing the prediction system, and must be run on past float cycles.
@@ -1005,6 +1131,7 @@ def setup_args():
     parser.add_argument("--velocity", help="Velocity field to use. Possible values are: 'ARMOR3D' (default), 'GLORYS'",
                         default='ARMOR3D')
     parser.add_argument("--save_figure", help="Should we save figure on file or not ? Default: True", default=True)
+    parser.add_argument("--save_sim", help="Should we save the simulation on file or not ? Default: False", default=False)
     parser.add_argument("--vf", help="Parent folder to the VirtualFleet repository clone", default=None)
     parser.add_argument("--json", help="Use to only return a json file and stay quiet", action='store_true')
 
@@ -1026,6 +1153,7 @@ def predictor(args):
         VEL_NAME = args.velocity.upper()
 
     if args.save_figure:
+        mplbackend = matplotlib.get_backend()
         matplotlib.use('Agg')
 
     # Where do we find the VirtualFleet repository ?
@@ -1133,8 +1261,8 @@ def predictor(args):
     VFleet.simulate(duration=timedelta(hours=CYCLING_FREQUENCY*24+1),
                     step=timedelta(minutes=5),
                     record=timedelta(minutes=30),
-                    output_folder=None,
-                    # output_folder=WORKDIR,
+                    output_folder=WORKDIR if args.save_sim else None,
+                    output_file='trajectories_%s_%i.nc' % (VEL_NAME, args.nfloats),
                     verbose_progress=not args.json,
                     )
 
@@ -1175,6 +1303,8 @@ def predictor(args):
                                                     'unit': 'degree North'},
                                        'time': {'value': THIS_DATE}}
                                    }
+    results = analyse_pairwise_distances(args, results)
+
     execution_end = time.time()
     process_end = time.process_time()
     computation = {
@@ -1206,6 +1336,10 @@ def predictor(args):
         puts("\t%s" % os.path.join(WORKDIR, 'prediction.json'), color=COLORS.yellow)
         if args.save_figure:
             puts("\t%s" % os.path.join(WORKDIR, 'vfrecov_predictions.png'), color=COLORS.yellow)
+
+    if args.save_figure:
+        # Restore Matplotlib backend
+        matplotlib.use(mplbackend)
 
     return results_js
 

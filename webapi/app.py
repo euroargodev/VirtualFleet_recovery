@@ -62,6 +62,11 @@ class Args:
         else:
             self.save_figure = True
 
+        if 'save_sim' in kwargs:
+            self.save_sim = kwargs['save_sim']
+        else:
+            self.save_sim = True
+
         if 'json' in kwargs:
             self.json = kwargs['json']
         else:
@@ -125,7 +130,7 @@ def complete_data_for(this_args, this_js):
     """
     # Add url to figures in the json result:
     figlist = {'predictions': simulation_file_url(this_args, "vfrecov_predictions_%s_%i.png" % (this_args.velocity, this_args.nfloats)),
-               # 'toto': simulation_file_url(this_args, "toto_%s_%i.png" % (this_args.velocity, this_args.nfloats)),
+               'metrics': simulation_file_url(this_args, "vfrecov_metrics01_%s_%i.png" % (this_args.velocity, this_args.nfloats)),
                'velocity': simulation_file_url(this_args, "vfrecov_velocity_%s.png" % (this_args.velocity)),
                'positions': simulation_file_url(this_args, "vfrecov_positions_%s_%i.png" % (this_args.velocity, this_args.nfloats))}
     this_js['meta']['figures'] = figlist
@@ -212,6 +217,7 @@ def results(wmo, cyc):
         'CYC': args.cyc,
         'url_predict': url_for("predict", wmo=args.wmo, cyc=args.cyc, nfloats=args.nfloats, velocity=args.velocity),
         'prediction_src': None,
+        'metric_src': None,
         'velocity_src': None,
         'data_js': None
     }
@@ -223,6 +229,7 @@ def results(wmo, cyc):
     if jsdata is not None:
         template_data['prediction_src'] = jsdata['meta']['figures']['predictions']
         template_data['velocity_src'] = jsdata['meta']['figures']['velocity']
+        template_data['metric_src'] = jsdata['meta']['figures']['metrics']
         template_data['data_js'] = url_for('predict', **args.amap)
         template_data['ea_float'] = jsdata['profile_to_predict']['url_float']
         template_data['ea_profile'] = jsdata['profile_to_predict']['url_profile']

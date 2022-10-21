@@ -12,10 +12,14 @@
 
 {% if prediction_src is not none %}
     <h2>Probabilistic prediction:</h2>
-    <img src="{{ prediction_src }}" width="100%">
+    <img src="{{ prediction_src }}" width="80%">
 {% else %}
     <p>This float cycle has never been predicted !</p>
     <a href="{{ url_predict }}" target="_blank">Click here to make a prediction<a/> and reload this page when it's done.
+{% endif %}
+{% if metric_src is not none %}
+    <h2>Probabilistic trajectory analysis:</h2>
+    <img src="{{ metric_src }}" width="80%">
 {% endif %}
 {% if velocity_src is not none %}
     <h2>Velocity field sample:</h2>
