@@ -24,6 +24,7 @@ Get a webpage with figures or link to make predictions:
 import os
 import sys
 import json
+import glob
 from flask import Flask, request, url_for, redirect, jsonify
 from flask import render_template
 from flask_swagger import swagger
@@ -117,10 +118,14 @@ def simulation_file_url(this_args, filename):
     this_path = os.path.sep.join([simulation_path(this_args), filename])
     # print("\n", filename, "\n", this_path, "\n", request.base_url, "\n", url_for('static', filename=this_path))
     url = "/".join([request.base_url, url_for('static', filename=this_path)])
+    # print(url, 'predict/' in url, 'results/' in url)
     if 'predict/' in url:
         url = url.replace("predict/%i/%i//" % (this_args.wmo, this_args.cyc), "")
     elif 'results/' in url:
+        # print("results/%i/%i//" % (this_args.wmo, this_args.cyc))
         url = url.replace("results/%i/%i//" % (this_args.wmo, this_args.cyc), "")
+    # url = url.replace("//", "/")
+    # print(url)
     return url
 
 
@@ -138,8 +143,9 @@ def complete_data_for(this_args, this_js):
 
 
 def load_data_for(this_args):
-    """Return raw json file data from a simulation
+    """Return the complete json file data from a simulation
     Simulation parameters are determined using args
+    Raw data are complemented with results from complete_data_for() function
     """
     js = os.path.sep.join(["data",
                            str(this_args.wmo),
@@ -158,6 +164,116 @@ def load_data_for(this_args):
     return jsdata
 
 
+def get_html_of_simulations_list(this_src, this_urlroot):
+    pattern = os.path.sep.join([this_src, "*", "*", "prediction_*.json"])
+    # print(pattern)
+    flist = sorted(glob.glob(pattern))
+    if len(flist) == 0:
+        return None
+    WMOs = {}
+    for f in flist:
+        p = f.replace(this_src, "").split(os.path.sep)
+        wmo, cyc, js = p[1], p[2], p[-1]
+        wmo, cyc = int(wmo), int(cyc)
+        cyc = "%.3d" % cyc
+        # velocity, nfloats = js.replace("prediction_", "").replace(".json", "").split("_")[0], \
+        #                     js.replace("prediction_", "").replace(".json", "").split("_")[1]
+        # print(wmo, cyc, velocity, nfloats)
+        if wmo not in WMOs:
+            WMOs[wmo] = {}
+        if cyc not in WMOs[wmo]:
+            WMOs[wmo][cyc] = []
+        WMOs[wmo][cyc].append(js)
+    WMOs = dict(sorted(WMOs.items()))
+
+    f_wline = "<li>\n<ul><h3>{wmo}</h3>\n{cycs}\n</ul>\n</li>".format
+    f_cline = "<li><b>{cyc}:</b> {links}</li>".format
+    f_html_link = "<a href=\"{url}\">{text}</a>".format
+    f_app_url = "{root}/results/{wmo}/{cyc}".format
+
+    lines = ["<ul>"]
+    for wmo in WMOs:
+        clines = []
+        cyc_list = dict(sorted(WMOs[wmo].items()))
+        for cyc in cyc_list:
+            links = []
+            for run in WMOs[wmo][cyc]:
+                # links.append(f_html_link(url = os.path.sep.join([src, str(wmo), str(cyc), run]),
+                #                          text = run.replace("prediction_","").replace(".json","").replace("_","-")))
+                links.append(f_html_link(url=f_app_url(root=this_urlroot, wmo=wmo, cyc=cyc),
+                                         text=run.replace("prediction_", "").replace(".json", "").replace("_", "-")))
+            links = ", ".join(links)
+            clines.append(f_cline(cyc=cyc, links=links))
+        clines = "\n".join(clines)
+        lines.append(f_wline(wmo=wmo, cycs=clines))
+    lines.append("</ul>")
+    return "\n".join(lines)
+
+
+def get_html_of_simulations_accordion(this_src, this_urlroot):
+    flist = sorted(glob.glob(os.path.sep.join([this_src, "*", "*", "prediction_*.json"])))
+    WMOs = {}
+    for f in flist:
+        p = f.replace(this_src, "").split(os.path.sep)
+        wmo, cyc, js = p[1], p[2], p[-1]
+        wmo, cyc = int(wmo), int(cyc)
+        cyc = "%.3d" % cyc
+        # velocity, nfloats = js.replace("prediction_", "").replace(".json", "").split("_")[0], \
+        #                     js.replace("prediction_", "").replace(".json", "").split("_")[1]
+        # print(wmo, cyc, velocity, nfloats)
+        if wmo not in WMOs:
+            WMOs[wmo] = {}
+        if cyc not in WMOs[wmo]:
+            WMOs[wmo][cyc] = []
+        WMOs[wmo][cyc].append(js)
+    WMOs = dict(sorted(WMOs.items()))
+
+    f_accordionItem = "<div class=\"accordion-item\">\
+    <h2 class=\"accordion-header\" id=\"{wmo}\">\
+    <button class=\"accordion-button {collapsed}\" type=\"button\" data-bs-toggle=\"collapse\" data-bs-target=\"#collapse{wmo}\" aria-expanded=\"true\" aria-controls=\"collapse{wmo}\">\
+        Float {wmo} ({ncyc} cycles simulated)\
+    </button>\
+    </h2>\
+    <div id=\"collapse{wmo}\" class=\"accordion-collapse collapse {show}\" aria-labelledby=\"{wmo}\" data-bs-parent=\"#accordionSimulations\">\
+        <div class=\"accordion-body\">\
+            {cycs}\
+        </div>\
+    </div>\
+    </div>".format
+
+    # f_wline = "<li>\n<ul><h3>{wmo}</h3>\n{cycs}\n</ul>\n</li>".format
+    f_cline = "<li><b>{cyc}:</b> {links}</li>".format
+    f_html_link = "<a href=\"{url}\" target=\"blank\">{text}</a>".format
+    # f_app_url = "{root}results/{wmo}/{cyc}".format
+    f_app_url = "{root}results/{wmo}/{cyc}?velocity={velocity}&nfloats={nfloats}".format
+
+    lines = ["<div class=\"accordion\" id=\"accordionSimulations\">"]
+    for iw, wmo in enumerate(WMOs):
+        clines = []
+        cyc_list = dict(sorted(WMOs[wmo].items()))
+        for cyc in cyc_list:
+            links = []
+            for run in WMOs[wmo][cyc]:
+                label = run.replace("prediction_", "").replace(".json", "")
+                # url = f_app_url(root=this_urlroot, wmo=wmo, cyc=int(cyc))
+                velocity, nfloats = label.split("_")[0], label.split("_")[1]
+                url = f_app_url(root=this_urlroot, wmo=wmo, cyc=int(cyc), velocity=velocity, nfloats=nfloats)
+                links.append(f_html_link(url=url, text=label.replace("_", "/N=")))
+            links = ", ".join(links)
+            clines.append(f_cline(cyc=cyc, links=links))
+        clines = "".join(clines)
+        # lines.append(f_wline(wmo=wmo, cycs=clines))
+        if iw == 0:
+            show = 'show'
+            collapsed = ''
+        else:
+            show = ''
+            collapsed = 'collapsed'
+        lines.append(f_accordionItem(wmo=wmo, cycs=clines, show=show, collapsed=collapsed, ncyc=len(cyc_list)))
+    lines.append("</div>")
+    return "\n".join(lines)
+
+
 def parse_args(wmo, cyc):
     """Return request parameters as an Args instance"""
     WMO = int(escape(wmo))
@@ -170,12 +286,17 @@ def parse_args(wmo, cyc):
 
 @app.route('/')
 def index():
-    return 'VirtualFleet Recovery Server Works!'
+    # Parse request parameters:
+    # (none in this case, we just need the `args` object)
+    args = parse_args(0, 0)
 
-# @app.route('/<wmo>/<cyc>', methods=['GET', 'POST'])
-# def get_user(wmo, cyc):
-#     s = f'WMO {escape(wmo)} CYC {escape(cyc)}'
-#     return s
+    template_data = {'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
+                     'cdn_prism': 'cdn.jsdelivr.net/npm/prismjs@1.29.0',
+                     'runs_html': get_html_of_simulations_accordion(args.output, request.base_url)}
+    # print(template_data['runs_html'])
+
+    html = render_template('index.html', **template_data)
+    return html
 
 
 @app.route('/test/<int:wmo>/<int:cyc>', methods=['GET', 'POST'])
@@ -224,7 +345,7 @@ def results(wmo, cyc):
 
     # Load data for this set-up:
     jsdata = load_data_for(args)
-    # print(jsdata)
+    print(jsdata)
 
     if jsdata is not None:
         template_data['prediction_src'] = jsdata['meta']['figures']['predictions']
@@ -234,7 +355,7 @@ def results(wmo, cyc):
         template_data['ea_float'] = jsdata['profile_to_predict']['url_float']
         template_data['ea_profile'] = jsdata['profile_to_predict']['url_profile']
 
-    html = render_template('results.html', **template_data)
+    html = render_template('results0.html', **template_data)
     return html
 
 

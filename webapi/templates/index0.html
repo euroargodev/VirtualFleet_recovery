@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>VirtualFleet Recovery</title>
+    <link href="https://{{cdn_bootstrap}}/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-Zenh87qX5JnK2Jl0vWa8Ck2rdkQ2Bzep5IDxbcnCeuOxjzrPF/et3URy9Bv1WTRi" crossorigin="anonymous">
+    <script src="https://{{cdn_bootstrap}}/dist/js/bootstrap.bundle.min.js" integrity="sha384-OERcA2EqjJCMA+/3y+gxIOqMEjwtxJY7qPCqsdltbNJuaOe923+mo//f6V8Qbsw3" crossorigin="anonymous"></script>
+    <link href="https://{{cdn_prism}}/themes/prism.min.css" rel="stylesheet" />
+</head>
+<body>
+
+<h1>VirtualFleet Recovery server is up and running !</h1>
+
+<h1>Usage:</h1>
+<p>To make a prediction for the position of cycle number CYC from float WMO, send a GET request to the following url:<br>
+
+<pre><code class="language-http">http://134.246.146.178:5000/predict/WMO/CYC</code></pre>
+
+Once the prediction is ready (about 1min30), this will return a json file with the prediction results.
+
+{% if runs_html is not none %}
+    <h1>List of simulations:</h1>
+    {{runs_html|safe}}
+{% endif %}
+
+<hr>
+<p><b>VirtualFleet Recovery</b><br>(c) Argo-France/Ifremer/LOPS, 2022</p>
+<script src="https://{{cdn_prism}}/components/prism-core.min.js"></script>
+<script src="https://{{cdn_prism}}/plugins/autoloader/prism-autoloader.min.js"></script>
+</body>
+</html>
