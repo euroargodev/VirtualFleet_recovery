@@ -521,7 +521,7 @@ def map_add_profiles(this_ax, this_profile):
              this_profile['latitude'][0],
              this_profile['longitude'][1] - this_profile['longitude'][0],
              this_profile['latitude'][1] - this_profile['latitude'][0],
-             length_includes_head=True, fc='k', ec='k', head_width=0.05, zorder=10)
+             length_includes_head=True, fc='k', ec='k', head_width=0.025, zorder=10)
 
     return this_ax
 
@@ -541,6 +541,28 @@ def map_add_features(this_ax):
     this_ax.add_feature(argoplot.utils.land_feature, edgecolor="black")
     return this_ax
 
+
+def map_add_cyc_nb(this_ax, this_df, lon='lon', lat='lat', cyc='cyc', pos='bt', fs=6, color='black'):
+    """ Add cycle number labels next to axis
+
+    Parameters
+    ----------
+    ax
+    df
+
+    Returns
+    -------
+    list of text label
+    """
+    t = []
+    if pos == 'bt':
+        ha, va, label = 'center', 'top', "\n{}".format
+    if pos == 'tp':
+        ha, va, label = 'center', 'bottom', "{}\n".format
+    for irow, row in this_df.iterrows():
+        this_t = this_ax.text(row[lon], row[lat], label(int(row[cyc])), ha=ha, va=va, fontsize=fs, color=color)
+        t.append(this_t)
+    return t
 
 def figure_velocity(box,
                        vel, vel_name, this_profile, wmo, cyc,
@@ -570,6 +592,7 @@ def figure_velocity(box,
         "Vectors: Velocity field at z=%0.2fm, t=%s" %
         (wmo, cyc[0], cyc[1], vel_name, vel.field['depth'][0].values[np.newaxis][0],
         pd.to_datetime(vel.field['time'][0].values).strftime("%Y/%m/%d %H:%M")), fontsize=15)
+    plt.tight_layout()
     if save_figure:
         save_figurefile(fig, 'vfrecov_velocity', workdir)
         save_figurefile(fig, 'vfrecov_velocity_%s' % vel_name, workdir)
@@ -617,6 +640,7 @@ def figure_positions(vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name
         ax[ix].set_title(title)
 
     fig.suptitle("VirtualFleet recovery prediction for WMO %i: starting from cycle %i, predicting cycle %i" % (wmo, cyc[0], cyc[1]), fontsize=15)
+    plt.tight_layout()
     if save_figure:
         save_figurefile(fig, "vfrecov_positions", workdir)
         save_figurefile(fig, "vfrecov_positions_%s_%i" % (vel_name, nfloats), workdir)
@@ -715,7 +739,7 @@ def figure_predictions(weights, bin_X, bin_Y, bin_res, Hrel, recovery,
                             color='green',
                             alpha=0.7,
                             transform=ccrs.PlateCarree(),
-                            zorder=30))
+                            zorder=9))
 
         # Another
         # xave, yave = np.average(DF_SIM['longitude'].values, weights=weights), \
@@ -746,9 +770,100 @@ def figure_predictions(weights, bin_X, bin_Y, bin_res, Hrel, recovery,
     fig.suptitle("VirtualFleet recovery prediction for WMO %i: \
     starting from cycle %i, predicting cycle %i\n%s\n%s" %
                  (wmo, cyc[0], cyc[1], err_str, "Prediction based on %s" % vel_name), fontsize=15)
+    plt.tight_layout()
     if save_figure:
         save_figurefile(fig, 'vfrecov_predictions', workdir)
         save_figurefile(fig, 'vfrecov_predictions_%s_%i' % (vel_name, nfloats), workdir)
+    return fig, ax
+
+
+def figure_predictions_recap(weights, bin_X, bin_Y, bin_res, Hrel, recovery,
+                       vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name,
+                       s=0.2, alpha=False, save_figure=False, workdir='.'):
+    ebox = get_EBOX(df_sim, df_plan, this_profile, s=s)
+    nfloats = df_plan.shape[0]
+    # fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(25,7), dpi=90,
+    #                        subplot_kw={'projection': ccrs.PlateCarree()},
+    #                        sharex=True, sharey=True)
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(18, 10), dpi=90,
+                           subplot_kw={'projection': ccrs.PlateCarree()},
+                           sharex=True, sharey=True)
+    ax, ix = np.array(ax)[np.newaxis], 0
+
+    xpred, ypred = recovery['prediction_location']['longitude']['value'], \
+                   recovery['prediction_location']['latitude']['value']
+
+    ax[ix].set_extent(ebox)
+    ax[ix] = map_add_features(ax[ix])
+
+    vel.field.isel(time=0).interp(depth=cfg.mission['parking_depth']).plot.quiver(x="longitude",
+                                                                                  y="latitude",
+                                                                                  u=vel.var['U'],
+                                                                                  v=vel.var['V'],
+                                                                                  ax=ax[ix],
+                                                                                  color='grey',
+                                                                                  alpha=0.5,
+                                                                                  scale=1,
+                                                                                  add_guide=False)
+
+    ax[ix].plot(df_sim['deploy_lon'], df_sim['deploy_lat'], '.',
+                markersize=3,
+                color='grey',
+                alpha=0.1,
+                markeredgecolor=None,
+                zorder=0)
+
+    w = weights/np.max(np.abs(weights), axis=0)
+    ii = np.argsort(w)
+    cmap = plt.cm.cool
+
+    x, y = df_sim['rel_lon'], df_sim['rel_lat']
+    title = 'Final virtual floats positions relative to observed starting float'
+    if not alpha:
+        sc = ax[ix].scatter(x[ii], y[ii], c=w[ii], marker='o', s=4, edgecolor=None, vmin=0, vmax=1, cmap=cmap)
+    else:
+        sc = ax[ix].scatter(x[ii], y[ii], c=w[ii], marker='o', s=4, alpha=w[ii], edgecolor=None, vmin=0, vmax=1, cmap=cmap)
+
+    # Trajectory prediction:
+    ax[ix].arrow(this_profile['longitude'][0],
+                 this_profile['latitude'][0],
+                 xpred-this_profile['longitude'][0],
+                 ypred-this_profile['latitude'][0],
+                 length_includes_head=True, fc='k', ec='r', head_width=0.025, zorder=10)
+    ax[ix].plot(xpred, ypred, 'k+', zorder=10)
+    # distance_due_to_timelag
+    km2deg = 360 / (2 * np.pi * 6371)
+    ax[ix].add_patch(
+        mpatches.Circle(xy=[xpred, ypred],
+                        radius=recovery['prediction_metrics']['surface_drift']['value'] * km2deg,
+                        color='green',
+                        alpha=0.6,
+                        transform=ccrs.PlateCarree(),
+                        zorder=9))
+
+    plt.colorbar(sc, ax=ax[ix], shrink=0.5, label='Norm. gaussian distance to starting position')
+
+    ax[ix] = map_add_profiles(ax[ix], this_profile)
+    ax[ix].set_title('')
+
+    err = recovery['prediction_location_error']
+    met = recovery['prediction_metrics']
+    # err_str = "Prediction vs Truth: [%0.2fkm, $%0.2f^o$]" % (err['distance'], err['bearing'])
+    err_str = "Prediction errors: [dist=%0.2f%s, bearing=$%0.2f^o$, time=%s], " \
+              "Distance error represents %s of transit at 12kt" % (err['distance']['value'],
+                                              err['distance']['unit'],
+                                              err['bearing']['value'],
+                                              strfdelta(pd.Timedelta(err['time']['value'], 'h'),
+                                                        "{hours}H{minutes:02d}"),
+                                              strfdelta(pd.Timedelta(met['transit']['value'], 'h'),
+                                                        "{hours}H{minutes:02d}"))
+    fig.suptitle("VirtualFleet recovery prediction for WMO %i: \
+starting from cycle %i, predicting cycle %i\n%s\n%s\nFigure: %s" %
+                 (wmo, cyc[0], cyc[1], err_str, "Prediction based on %s" % vel_name, title), fontsize=12)
+    plt.tight_layout()
+    if save_figure:
+        save_figurefile(fig, 'vfrecov_predictions_recap', workdir)
+        save_figurefile(fig, 'vfrecov_predictions_recap_%s_%i' % (vel_name, nfloats), workdir)
     return fig, ax
 
 
@@ -848,6 +963,8 @@ def get_index(vf, vel, df_plan):
         'deploy_lon': df_plan['longitude'],
         'deploy_lat': df_plan['latitude']
     }
+    if len(data['latitude']) != len(data['deploy_lat']):
+        raise ValueError('Virtual floats have been lost during the simulation ! %i simulated vs %i deployed' % (len(data['latitude']), len(data['deploy_lat'])))
     df = pd.DataFrame(data)
     df['wmo'] = df['wmo'].astype(int)
     return df
@@ -902,7 +1019,7 @@ def predict_position(workdir, wmo, cyc, cfg, vel, vel_name, df_sim, df_plan, thi
     """
 
     def get_weights(scale=20):
-        """ Return weights as a gaussian distance with a std based on the size of the deployment domain"""
+        """Return weights as a gaussian distance with a std based on the size of the deployment domain"""
         rx, ry = df_plan['longitude'].max() - df_plan['longitude'].min(), \
                  df_plan['latitude'].max() - df_plan['latitude'].min()
         r = np.min([rx, ry])  # Minimal size of the deployment domain
@@ -978,8 +1095,12 @@ def predict_position(workdir, wmo, cyc, cfg, vel, vel_name, df_sim, df_plan, thi
     recovery['prediction_location_error'] = error
     recovery['prediction_metrics'] = metrics
 
-    # Final figure:
+    # Final figures:
     fig, ax = figure_predictions(weights, bin_x, bin_y, bin_res, Hrel, recovery,
+                                 vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name,
+                                 save_figure=save_figure, workdir=workdir)
+
+    fig, ax = figure_predictions_recap(weights, bin_x, bin_y, bin_res, Hrel, recovery,
                                  vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name,
                                  save_figure=save_figure, workdir=workdir)
 
@@ -1006,6 +1127,7 @@ def analyse_pairwise_distances(this_args, data):
 
     # Compute initial state pairwise distances:
     X = ds.isel(obs=0)
+    X = X.isel(traj=~np.isnan(X['lon']))
     X0 = np.array((X['lon'].values, X['lat'].values)).T
     d0 = pairwise_distances(X0, n_jobs=-1)
     d0 = np.triu(d0)
@@ -1013,6 +1135,8 @@ def analyse_pairwise_distances(this_args, data):
 
     # Compute final state pairwise distances:
     X = ds.isel(obs=-1)
+    X = X.isel(traj=~np.isnan(X['lon']))
+    dsf = X
     X = np.array((X['lon'].values, X['lat'].values)).T
     d = pairwise_distances(X, n_jobs=-1)
     d = np.triu(d)
@@ -1062,17 +1186,21 @@ def analyse_pairwise_distances(this_args, data):
     ax[ix].set_title('Initial (grey) vs Final (blue) positions')
 
     ix += 1
-    dd = ds['length'].values
+    dd = dsf['length'].values
     str_lgth = "median / std = %0.2f / %0.2f" % (prediction_metrics['trajectory_lengths']['median'],
                                                  prediction_metrics['trajectory_lengths']['std'])
-    ax[ix].scatter(X0[:, 0], X0[:, 1], c=dd, zorder=10, s=3, cmap=cmap)
+    ax[ix].scatter(X0[:, 0], X0[:, 1], c=ds['length'].values, zorder=10, s=3, cmap=cmap)
     # ax.plot(X0[:,0], X0[:,1], '.', color='grey')
     ax[ix].grid()
     ax[ix].set_aspect('equal', 'box')
     ax[ix].scatter(X[:, 0], X[:, 1], c=dd, zorder=12, s=3, cmap=cmap)
-    ax[ix].plot(ds.isel(traj=np.argmax(dd))['lon'], ds.isel(traj=np.argmax(dd))['lat'], 'r', \
+    this_traj = int(dsf.isel(traj=np.argmax(dd))['trajectory'].values[np.newaxis][0])
+    ax[ix].plot(ds.where(ds['trajectory'] == this_traj, drop=True).isel(traj=0)['lon'],
+                ds.where(ds['trajectory'] == this_traj, drop=True).isel(traj=0)['lat'], 'r',
                 zorder=13, label='Longest traj.')
-    ax[ix].plot(ds.isel(traj=np.argmin(dd))['lon'], ds.isel(traj=np.argmin(dd))['lat'], 'b', \
+    this_traj = int(dsf.isel(traj=np.argmin(dd))['trajectory'].values[np.newaxis][0])
+    ax[ix].plot(ds.where(ds['trajectory'] == this_traj, drop=True).isel(traj=0)['lon'],
+                ds.where(ds['trajectory'] == this_traj, drop=True).isel(traj=0)['lat'], 'b',
                 zorder=13, label='Shortest traj.')
     ax[ix].legend()
     ax[ix].set_title('Trajectory lengths')
@@ -1194,8 +1322,8 @@ def predictor(args):
     if not args.json:
         puts("\nYou can check this float dashboard while we prepare the prediction:")
         puts("\t%s" % argoplot.dashboard(WMO, url_only=True), color=COLORS.green)
-    # host = "/home/ref-argo/gdac" if not os.uname()[0] == 'Darwin' else "https://data-argo.ifremer.fr"
-    host = "/home/ref-argo/gdac" if not os.uname()[0] == 'Darwin' else "~/data/ARGO"
+    host = "/home/ref-argo/gdac" if not os.uname()[0] == 'Darwin' else "https://data-argo.ifremer.fr"
+    # host = "/home/ref-argo/gdac" if not os.uname()[0] == 'Darwin' else "~/data/ARGO"
     THIS_PROFILE = store(host=host).search_wmo_cyc(WMO, CYC).to_dataframe()
     THIS_DATE = pd.to_datetime(THIS_PROFILE['date'].values[0])
     CENTER = [THIS_PROFILE['longitude'].values[0], THIS_PROFILE['latitude'].values[0]]
@@ -1272,7 +1400,11 @@ def predictor(args):
     # ds_traj = xr.open_dataset(VFleet.run_params['output_file'])
     # DF_SIM = simu2index_legacy(DF_PLAN, ds_traj)
     # DF_SIM = ds_simu2index(ds_traj)
-    DF_SIM = get_index(VFleet, VEL, DF_PLAN)
+    try:
+        DF_SIM = get_index(VFleet, VEL, DF_PLAN)
+    except ValueError:
+        ds_traj = xr.open_dataset(VFleet.run_params['output_file'])
+        DF_SIM = ds_simu2index(ds_traj)
     DF_SIM = postprocess_index(DF_SIM, THIS_PROFILE)
     if not args.json:
         puts(DF_SIM.head().to_string(), color=COLORS.green)
