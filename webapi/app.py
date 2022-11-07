@@ -33,6 +33,7 @@ from markupsafe import escape
 
 sys.path.insert(0, "../cli")
 from recovery_prediction import predictor
+import argopy
 
 app = Flask(__name__)
 
@@ -137,7 +138,8 @@ def complete_data_for(this_args, this_js):
     figlist = {'predictions': simulation_file_url(this_args, "vfrecov_predictions_%s_%i.png" % (this_args.velocity, this_args.nfloats)),
                'metrics': simulation_file_url(this_args, "vfrecov_metrics01_%s_%i.png" % (this_args.velocity, this_args.nfloats)),
                'velocity': simulation_file_url(this_args, "vfrecov_velocity_%s.png" % (this_args.velocity)),
-               'positions': simulation_file_url(this_args, "vfrecov_positions_%s_%i.png" % (this_args.velocity, this_args.nfloats))}
+               'positions': simulation_file_url(this_args, "vfrecov_positions_%s_%i.png" % (this_args.velocity, this_args.nfloats)),
+               'predictions_recap': simulation_file_url(this_args, "vfrecov_predictions_recap_%s_%i.png" % (this_args.velocity, this_args.nfloats))}
     this_js['meta']['figures'] = figlist
     return this_js
 
@@ -263,7 +265,7 @@ def get_html_of_simulations_accordion(this_src, this_urlroot):
             clines.append(f_cline(cyc=cyc, links=links))
         clines = "".join(clines)
         # lines.append(f_wline(wmo=wmo, cycs=clines))
-        if iw == 0:
+        if iw < 0:
             show = 'show'
             collapsed = ''
         else:
@@ -334,28 +336,51 @@ def results(wmo, cyc):
 
     # Init some variables used in template
     template_data = {
+        'css': url_for("static", filename="css"),
+        'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
+        'cdn_prism': 'cdn.jsdelivr.net/npm/prismjs@1.29.0',
         'WMO': args.wmo,
         'CYC': args.cyc,
+        'url': request.base_url,
         'url_predict': url_for("predict", wmo=args.wmo, cyc=args.cyc, nfloats=args.nfloats, velocity=args.velocity),
         'prediction_src': None,
         'metric_src': None,
         'velocity_src': None,
-        'data_js': None
+        'prediction_recap_src': None,
+        'data_js': None,
+        'prediction_lon': None,
+        'prediction_lat': None,
+        'error_bearing': None,
+        'error_dist': None,
     }
 
     # Load data for this set-up:
     jsdata = load_data_for(args)
-    print(jsdata)
+    # print(jsdata)
 
     if jsdata is not None:
         template_data['prediction_src'] = jsdata['meta']['figures']['predictions']
+        template_data['prediction_recap_src'] = jsdata['meta']['figures']['predictions_recap']
         template_data['velocity_src'] = jsdata['meta']['figures']['velocity']
         template_data['metric_src'] = jsdata['meta']['figures']['metrics']
         template_data['data_js'] = url_for('predict', **args.amap)
-        template_data['ea_float'] = jsdata['profile_to_predict']['url_float']
-        template_data['ea_profile'] = jsdata['profile_to_predict']['url_profile']
+        template_data['prediction_lon'] = "%0.4f" % jsdata['prediction_location']['longitude']['value']
+        template_data['prediction_lon_unit'] = "%s" % jsdata['prediction_location']['longitude']['unit']
+        template_data['prediction_lat'] = "%0.4f" % jsdata['prediction_location']['latitude']['value']
+        template_data['prediction_lat_unit'] = "%s" % jsdata['prediction_location']['latitude']['unit']
 
-    html = render_template('results0.html', **template_data)
+        template_data['error_bearing'] = "%0.1f" % jsdata['prediction_location_error']['bearing']['value']
+        template_data['error_bearing_unit'] = "%s" % jsdata['prediction_location_error']['bearing']['unit']
+        template_data['error_dist'] = "%0.1f" % jsdata['prediction_location_error']['distance']['value']
+        template_data['error_dist_unit'] = "%s" % jsdata['prediction_location_error']['distance']['unit']
+
+        # template_data['ea_float'] = jsdata['profile_to_predict']['url_float']
+        # template_data['ea_profile'] = jsdata['profile_to_predict']['url_profile']
+
+    template_data['ea_float'] = argopy.dashboard(argopy.utilities.check_wmo(args.wmo), url_only=True)
+    template_data['ea_profile'] = argopy.dashboard(argopy.utilities.check_wmo(args.wmo), argopy.utilities.check_cyc(args.cyc), url_only=True)
+
+    html = render_template('results.html', **template_data)
     return html
 
 

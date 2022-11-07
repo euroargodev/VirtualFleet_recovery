@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="">
+    <meta name="author" content="Guillaume Maze and LOPS contributors">
+    <title>VF Recovery: {{ WMO }} / {{ CYC }}</title>
+
+    <link href="https://{{cdn_bootstrap}}/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-Zenh87qX5JnK2Jl0vWa8Ck2rdkQ2Bzep5IDxbcnCeuOxjzrPF/et3URy9Bv1WTRi" crossorigin="anonymous">
+    <link href="https://{{cdn_prism}}/themes/prism.min.css" rel="stylesheet" />
+<!--    <link href="https://{{cdn_prism}}/themes/prism-solarizedlight.min.css" rel="stylesheet" />-->
+<!--    <link href="{{css}}/headers.css" rel="stylesheet">-->
+    <link href="{{css}}/pricing.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.9.1/font/bootstrap-icons.css">
+
+  </head>
+  <body>
+
+  <div class="container-lg">
+
+    <header class="d-flex flex-wrap justify-content-center py-3 mb-4 border-bottom">
+            <a href="/" class="d-flex align-items-center mb-3 mb-md-0 me-md-auto text-dark text-decoration-none">
+              <span class="fs-4">VirtualFleet Recovery</span>
+            </a>
+
+            <ul class="nav nav-pills">
+              <li class="nav-item"><a href="/" class="nav-link"><i class="bi bi-house"></i> Home</a></li>
+              <li class="nav-item"><a href="{{url}}" class="nav-link active" aria-current="page"><i class="bi bi-speedometer2"></i> Prediction results</a></li>
+              {% if data_js is not none %}
+              <li class="nav-item"><a href="{{data_js}}" class="nav-link"><i class="bi bi-filetype-json"></i> Download</a></li>
+              <li class="nav-item"><a href="{{url_predict}}" class="nav-link disabled"><i class="bi bi-cpu"></i> Predict</a></li>
+              {% endif %}
+              {% if prediction_src is none %}
+              <li class="nav-item"><a href="#" class="nav-link disabled"><i class="bi bi-filetype-json"></i> Download</a></li>
+              <li class="nav-item"><a href="{{url_predict}}" class="nav-link"><i class="bi bi-cpu"></i> Predict</a></li>
+              {% endif %}
+              <li class="nav-item dropdown">
+                  <a class="nav-link dropdown-toggle" data-bs-toggle="dropdown" href="#" role="button" aria-expanded="false">More</a>
+                  <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" href="{{ea_float}}">Float dashboard</a></li>
+                    <li><a class="dropdown-item" href="{{ea_profile}}">Profile page</a></li>
+<!--                    <li><hr class="dropdown-divider"></li>-->
+                  </ul>
+              </li>
+              <li class="nav-item"><a href="https://floatrecovery.euro-argo.eu/" class="nav-link"><i class="bi bi-recycle"></i></a></li>
+              <li class="nav-item"><a href="https://github.com/euroargodev/VirtualFleet_recovery" class="nav-link"><i class="bi bi-github"></i></a></li>
+
+            </ul>
+    </header>
+
+    <main>
+      {% if data_js is not none %}
+      <div class="row row-cols-1 row-cols-md-4 mb-4 text-center">
+        <div class="col">
+          <div class="card mb-4 rounded-3 shadow-sm">
+            <div class="card-header py-3">
+              <h4 class="my-0 fw-normal">Float cycle</h4>
+            </div>
+            <div class="card-body">
+              <h2 class="card-title pricing-card-title"><small class="text-muted fw-light">{{WMO}}/{{CYC}}</small></h2>
+              <ul class="list-unstyled mt-3 mb-4">
+                <li>WMO / CYC</li>
+              </ul>
+  <!--            <button type="button" class="w-100 btn btn-lg btn-primary">Get started</button>-->
+            </div>
+          </div>
+        </div>
+        <div class="col">
+          <div class="card mb-4 rounded-3 shadow-sm border-primary">
+            <div class="card-header py-3 text-bg-primary border-primary">
+              <h4 class="my-0 fw-normal">Predicted Position</h4>
+            </div>
+            <div class="card-body">
+              <h2 class="card-title pricing-card-title"><small class="text-muted fw-light">{{prediction_lon}}/{{prediction_lat}}</small></h2>
+              <ul class="list-unstyled mt-3 mb-4">
+                <li>lon. ({{prediction_lon_unit}}) / lat. ({{prediction_lat_unit}})</li>
+              </ul>
+  <!--            <button type="button" class="w-100 btn btn-lg btn-outline-primary">Sign up for free</button>-->
+            </div>
+          </div>
+        </div>
+        <div class="col">
+          <div class="card mb-4 rounded-3 shadow-sm">
+            <div class="card-header py-3">
+              <h4 class="my-0 fw-normal">Error</h4>
+            </div>
+            <div class="card-body">
+              <h2 class="card-title pricing-card-title"><small class="text-muted fw-light">{{error_bearing}}/{{error_dist}}</small></h2>
+              <ul class="list-unstyled mt-3 mb-4">
+                <li>bearing ({{error_bearing_unit}}) / distance ({{error_dist_unit}})</li>
+              </ul>
+  <!--            <button type="button" class="w-100 btn btn-lg btn-primary">Get started</button>-->
+            </div>
+          </div>
+        </div>
+        <div class="col">
+          <div class="card mb-4 rounded-3 shadow-sm">
+            <div class="card-header py-3">
+              <h4 class="my-0 fw-normal">Score</h4>
+            </div>
+            <div class="card-body">
+              <h2 class="card-title pricing-card-title"><small class="text-muted fw-light">X</small></h2>
+              <ul class="list-unstyled mt-3 mb-4">
+                <li>Prediction confidence</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if prediction_src is not none %}
+      <div class="row">
+        <div class="col-md-10">
+          <p>
+            <small class="text-muted fw-light">Figures:</small>
+            <a class="btn btn-outline-primary" data-bs-toggle="collapse" href="#multiCollapsePrediction" role="button" aria-expanded="false" aria-controls="multiCollapsePrediction">Probabilistic prediction details</a>
+            {% if metric_src is not none %}
+            <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#multiCollapseTrajectory" aria-expanded="false" aria-controls="multiCollapseTrajectory">Trajectory analysis details</button>
+            {% endif %}
+<!--<button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target=".multi-collapse" aria-expanded="false" aria-controls="multiCollapsePrediction multiCollapseTrajectory">Show all figures</button>-->
+          </p>
+          <div class="row">
+            <div class="col">
+              <div class="collapse multi-collapse" id="multiCollapsePrediction">
+                <div class="card card-body">
+                  <figure class="figure">
+                    <img src="{{prediction_src}}" class="figure-img img-fluid rounded" alt="prediction_src">
+                    <figcaption class="figure-caption">Probabilistic prediction details</figcaption>
+                  </figure>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col">
+              <div class="collapse multi-collapse" id="multiCollapseTrajectory">
+                <div class="card card-body">
+                  <figure class="figure">
+                    <img src="{{metric_src}}" class="figure-img img-fluid rounded" alt="prediction_src">
+                    <figcaption class="figure-caption">Trajectory analysis</figcaption>
+                  </figure>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if data_js is none %}
+      <div class="alert alert-info" role="alert">Prediction not available for this profile, please trigger a prediction using the menu button.</div>
+      {% endif %}
+
+    </main>
+    <footer class="pt-5 my-5 text-muted border-top">
+      Created by the Argo-France/Ifremer/LOPS team &middot; &copy; 2022
+    </footer>
+  </div>
+
+
+    <script src="https://{{cdn_prism}}/components/prism-core.min.js"></script>
+    <script src="https://{{cdn_prism}}/plugins/autoloader/prism-autoloader.min.js"></script>
+    <script src="https://{{cdn_bootstrap}}/dist/js/bootstrap.bundle.min.js" integrity="sha384-OERcA2EqjJCMA+/3y+gxIOqMEjwtxJY7qPCqsdltbNJuaOe923+mo//f6V8Qbsw3" crossorigin="anonymous"></script>
+
+  </body>
+</html>
