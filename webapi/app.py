@@ -25,6 +25,7 @@ import os
 import sys
 import json
 import glob
+import numpy as np
 from flask import Flask, request, url_for, redirect, jsonify
 from flask import render_template
 from flask_swagger import swagger
@@ -112,7 +113,7 @@ def simulation_path(this_args):
     return os.path.sep.join(["data", str(this_args.wmo), str(this_args.cyc)])
 
 
-def simulation_file_url(this_args, filename):
+def simulation_file_url(this_args, filename, safe=False):
     """Return the URL toward a simulation file
     Simulation path is determined using args
     """
@@ -127,6 +128,14 @@ def simulation_file_url(this_args, filename):
         url = url.replace("results/%i/%i//" % (this_args.wmo, this_args.cyc), "")
     # url = url.replace("//", "/")
     # print(url)
+    if safe:
+        local_file = os.path.sep.join([this_args.output, str(this_args.wmo), str(this_args.cyc), filename])
+        local_file = os.path.abspath(local_file)
+        if os.path.lexists(local_file):
+            return url
+        else:
+            print("%s not found" % local_file)
+            return None
     return url
 
 
@@ -135,11 +144,11 @@ def complete_data_for(this_args, this_js):
     Simulation parameters are determined using args
     """
     # Add url to figures in the json result:
-    figlist = {'predictions': simulation_file_url(this_args, "vfrecov_predictions_%s_%i.png" % (this_args.velocity, this_args.nfloats)),
-               'metrics': simulation_file_url(this_args, "vfrecov_metrics01_%s_%i.png" % (this_args.velocity, this_args.nfloats)),
+    figlist = {'predictions': simulation_file_url(this_args, "vfrecov_predictions_%s_%i.png" % (this_args.velocity, this_args.nfloats), safe=True),
+               'metrics': simulation_file_url(this_args, "vfrecov_metrics01_%s_%i.png" % (this_args.velocity, this_args.nfloats), safe=True),
                'velocity': simulation_file_url(this_args, "vfrecov_velocity_%s.png" % (this_args.velocity)),
-               'positions': simulation_file_url(this_args, "vfrecov_positions_%s_%i.png" % (this_args.velocity, this_args.nfloats)),
-               'predictions_recap': simulation_file_url(this_args, "vfrecov_predictions_recap_%s_%i.png" % (this_args.velocity, this_args.nfloats))}
+               'positions': simulation_file_url(this_args, "vfrecov_positions_%s_%i.png" % (this_args.velocity, this_args.nfloats), safe=True),
+               'predictions_recap': simulation_file_url(this_args, "vfrecov_predictions_recap_%s_%i.png" % (this_args.velocity, this_args.nfloats), safe=True)}
     this_js['meta']['figures'] = figlist
     return this_js
 
@@ -276,6 +285,96 @@ def get_html_of_simulations_accordion(this_src, this_urlroot):
     return "\n".join(lines)
 
 
+class Bootstrap_Carousel:
+
+    def __init__(self, figure_list=[], name='carouselExample', args=None):
+        self.flist = figure_list
+        self.name = name
+        self.args = args
+
+    def __repr__(self):
+        summary = []
+        summary.append("<bootstrap.carouselWithCaption>")
+        summary.append("Figures: %i" % len(self.flist))
+        summary.append("Name: %s" % self.name)
+        return "\n".join(summary)
+
+    def __html_carousel_btn(self, islide=0, active=False, target='carouselExample'):
+        attrs = {'type': "button",
+                 'data-bs-target': "#%s" % target,
+                 'data-bs-slide-to': "%i" % islide,
+                 'aria-label': "Slide %i" % int(islide + 1),
+                 'class': "active" if active else "",
+                 }
+        return "<button %s></button>" % " ".join(
+            ["%s=\"%s\"" % (key, attrs[key]) for key in attrs.keys() if attrs[key] != ""])
+
+    def __get_list_of_carousel_btn_html(self, this_flist, carouselName='carouselExample'):
+        html = []
+        for islide in np.arange(0, len(this_flist)):
+            html.append(self.__html_carousel_btn(islide, active=islide == 0, target=carouselName))
+        html = "\n".join(html)
+        return html
+
+    def __html_carousel_item(self, src='...', label='Slide label',
+                             description='Some representative placeholder content for the second slide.', active=False):
+        html = []
+        if active:
+            html.append("<div class=\"carousel-item active\" data-bs-interval=\"10\">")
+        else:
+            html.append("<div class=\"carousel-item\" data-bs-interval=\"10\">")
+        html.append("    <img src=\"{src}\" class=\"d-block w-100\" alt=\"\">")
+        html.append("    <div class=\"carousel-caption d-none d-md-block\">")
+        html.append("        <h5>{label}</h5>")
+        html.append("        <p>{description}</p>")
+        html.append("    </div>")
+        html.append("</div>")
+        html = "\n".join(html).format(src=src, label=label, description=description)
+        return html
+
+    def __get_list_of_carousel_items_html(self, this_flist):
+        html = []
+        for islide, src in enumerate(this_flist):
+            wmo = src.replace("static/data/", "").split("/")[1]
+            cyc = src.replace("static/data/", "").split("/")[2]
+            # label = "%s" % src
+            label = "float:%s, cyc: %s" % (wmo, cyc)
+            # description = 'No description'
+            description = "/".join([request.url_root, 'results', wmo, cyc]).replace("//results", "/results")
+            description = "%s?velocity=%s&nfloats=%s" % (description, self.args.velocity, self.args.nfloats)
+            description = "<a href=\"%s\" target=\"_blank\">Click for more details</a>" % description
+            html.append(
+                self.__html_carousel_item(src=src, label=label, description=description, active=islide == 0))
+        html = "\n".join(html)
+        return html
+
+    @property
+    def html(self):
+        html = []
+        html.append("<div id=\"%s\" class=\"carousel carousel-dark slide\" data-bs-ride=\"false\">" % self.name)
+
+        html.append("  <div class=\"carousel-indicators\">")
+        html.append(self.__get_list_of_carousel_btn_html(self.flist, carouselName=self.name))
+        html.append("  </div>")
+
+        html.append("  <div class=\"carousel-inner\">")
+        html.append(self.__get_list_of_carousel_items_html(self.flist))
+        html.append("  </div>")
+
+        html.append(
+            "  <button class=\"carousel-control-prev\" type=\"button\" data-bs-target=\"#%s\" data-bs-slide=\"prev\">" % self.name)
+        html.append("    <span class=\"carousel-control-prev-icon\" aria-hidden=\"true\"></span>")
+        html.append("    <span class=\"visually-hidden\">Previous</span>")
+        html.append("  </button>")
+        html.append(
+            "  <button class=\"carousel-control-next\" type=\"button\" data-bs-target=\"#%s\" data-bs-slide=\"next\">" % self.name)
+        html.append("    <span class=\"carousel-control-next-icon\" aria-hidden=\"true\"></span>")
+        html.append("    <span class=\"visually-hidden\">Next</span>")
+        html.append("  </button>")
+        html.append("</div>")
+        return "\n".join(html)
+
+
 def parse_args(wmo, cyc):
     """Return request parameters as an Args instance"""
     WMO = int(escape(wmo))
@@ -294,10 +393,43 @@ def index():
 
     template_data = {'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
                      'cdn_prism': 'cdn.jsdelivr.net/npm/prismjs@1.29.0',
-                     'runs_html': get_html_of_simulations_accordion(args.output, request.base_url)}
+                     'runs_html': get_html_of_simulations_accordion(args.output, request.base_url),
+                     'app_url': request.url_root}
     # print(template_data['runs_html'])
 
     html = render_template('index.html', **template_data)
+    return html
+
+
+@app.route('/recap')
+def recap():
+    # Parse request parameters:
+    # (none in this case, we just need the `args` object)
+    args = parse_args(0, 0)
+    nfloats = args.nfloats
+    velocity = args.velocity
+    print(nfloats, velocity)
+
+    # Get list of figures
+    src = os.path.abspath(os.path.sep.join([".", "static"]))
+    figure = "vfrecov_predictions_recap_%s_%s.png" % (velocity, nfloats)
+    flist = sorted(glob.glob(os.path.sep.join([src, "data", "*", "*", figure])))
+    slist = []
+    for filename in flist:
+        f = filename.replace(src, "")
+        url = url_for('static', filename=f)
+        url = os.path.normpath(url)
+        if url is not None:
+            slist.append(url)
+    carousel_html = Bootstrap_Carousel(slist, 'toto', args).html if len(slist) > 0 else None
+    template_data = {'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
+                     'cdn_prism': 'cdn.jsdelivr.net/npm/prismjs@1.29.0',
+                     'carousel_html': carousel_html,
+                     'nfloats': nfloats,
+                     'velocity': velocity,
+                     'app_url': request.url_root}
+
+    html = render_template('list.html', **template_data)
     return html
 
 
@@ -359,11 +491,13 @@ def results(wmo, cyc):
     # print(jsdata)
 
     if jsdata is not None:
+        template_data['data_js'] = url_for('predict', **args.amap)
+
         template_data['prediction_src'] = jsdata['meta']['figures']['predictions']
         template_data['prediction_recap_src'] = jsdata['meta']['figures']['predictions_recap']
         template_data['velocity_src'] = jsdata['meta']['figures']['velocity']
         template_data['metric_src'] = jsdata['meta']['figures']['metrics']
-        template_data['data_js'] = url_for('predict', **args.amap)
+
         template_data['prediction_lon'] = "%0.4f" % jsdata['prediction_location']['longitude']['value']
         template_data['prediction_lon_unit'] = "%s" % jsdata['prediction_location']['longitude']['unit']
         template_data['prediction_lat'] = "%0.4f" % jsdata['prediction_location']['latitude']['value']
@@ -374,11 +508,9 @@ def results(wmo, cyc):
         template_data['error_dist'] = "%0.1f" % jsdata['prediction_location_error']['distance']['value']
         template_data['error_dist_unit'] = "%s" % jsdata['prediction_location_error']['distance']['unit']
 
-        # template_data['ea_float'] = jsdata['profile_to_predict']['url_float']
-        # template_data['ea_profile'] = jsdata['profile_to_predict']['url_profile']
-
     template_data['ea_float'] = argopy.dashboard(argopy.utilities.check_wmo(args.wmo), url_only=True)
-    template_data['ea_profile'] = argopy.dashboard(argopy.utilities.check_wmo(args.wmo), argopy.utilities.check_cyc(args.cyc), url_only=True)
+    template_data['ea_profile'] = argopy.dashboard(argopy.utilities.check_wmo(args.wmo),
+                                                   argopy.utilities.check_cyc(args.cyc), url_only=True)
 
     html = render_template('results.html', **template_data)
     return html

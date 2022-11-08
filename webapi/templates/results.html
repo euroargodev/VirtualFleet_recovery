@@ -43,8 +43,8 @@
 <!--                    <li><hr class="dropdown-divider"></li>-->
                   </ul>
               </li>
-              <li class="nav-item"><a href="https://floatrecovery.euro-argo.eu/" class="nav-link"><i class="bi bi-recycle"></i></a></li>
-              <li class="nav-item"><a href="https://github.com/euroargodev/VirtualFleet_recovery" class="nav-link"><i class="bi bi-github"></i></a></li>
+              <li class="nav-item"><a href="https://floatrecovery.euro-argo.eu/" class="nav-link" target="_blank"><i class="bi bi-recycle"></i></a></li>
+              <li class="nav-item"><a href="https://github.com/euroargodev/VirtualFleet_recovery" class="nav-link" target="_blank"><i class="bi bi-github"></i></a></li>
 
             </ul>
     </header>
@@ -115,24 +115,46 @@
         <div class="col-md-10">
           <p>
             <small class="text-muted fw-light">Figures:</small>
-            <a class="btn btn-outline-primary" data-bs-toggle="collapse" href="#multiCollapsePrediction" role="button" aria-expanded="false" aria-controls="multiCollapsePrediction">Probabilistic prediction details</a>
-            {% if metric_src is not none %}
-            <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#multiCollapseTrajectory" aria-expanded="false" aria-controls="multiCollapseTrajectory">Trajectory analysis details</button>
+            {% if prediction_recap_src is not none %}
+            <a class="btn btn-outline-primary" data-bs-toggle="collapse" href="#multiCollapseRecap" role="button" aria-expanded="false" aria-controls="multiCollapseRecap">Prediction</a>
             {% endif %}
-<!--<button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target=".multi-collapse" aria-expanded="false" aria-controls="multiCollapsePrediction multiCollapseTrajectory">Show all figures</button>-->
+            {% if prediction_src is not none %}
+            <a class="btn btn-outline-primary" data-bs-toggle="collapse" href="#multiCollapsePrediction" role="button" aria-expanded="false" aria-controls="multiCollapsePrediction">Probabilistic prediction details</a>
+            {% endif %}
+            {% if metric_src is not none %}
+            <a class="btn btn-outline-primary" data-bs-toggle="collapse" href="#multiCollapseTrajectory" role="button" aria-expanded="false" aria-controls="multiCollapseTrajectory">Trajectory analysis details</a>
+            {% endif %}
+            <a class="btn btn-outline-primary" data-bs-toggle="collapse" href=".multi-collapse" role="button"  aria-expanded="false" aria-controls="multiCollapseRecap multiCollapsePrediction multiCollapseTrajectory">Show all</a>
           </p>
+          {% if prediction_recap_src is not none %}
+          <div class="row">
+            <div class="col">
+              <div class="collapse multi-collapse" id="multiCollapseRecap">
+                <div class="card card-body">
+                  <figure class="figure">
+                    <img src="{{prediction_recap_src}}" class="figure-img img-fluid rounded" alt="prediction_src">
+                    <figcaption class="figure-caption">Probabilistic prediction</figcaption>
+                  </figure>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endif %}
+          {% if prediction_src is not none %}
           <div class="row">
             <div class="col">
               <div class="collapse multi-collapse" id="multiCollapsePrediction">
                 <div class="card card-body">
                   <figure class="figure">
                     <img src="{{prediction_src}}" class="figure-img img-fluid rounded" alt="prediction_src">
-                    <figcaption class="figure-caption">Probabilistic prediction details</figcaption>
+                    <figcaption class="figure-caption">Details of the probabilistic prediction</figcaption>
                   </figure>
                 </div>
               </div>
             </div>
           </div>
+          {% endif %}
+          {% if metric_src is not none %}
           <div class="row">
             <div class="col">
               <div class="collapse multi-collapse" id="multiCollapseTrajectory">
@@ -145,6 +167,7 @@
               </div>
             </div>
           </div>
+          {% endif %}
         </div>
       </div>
       {% endif %}

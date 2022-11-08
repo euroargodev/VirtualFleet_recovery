@@ -30,8 +30,8 @@
         <ul class="nav nav-pills nav-fill">
           <li class="nav-item"><a href="/" class="nav-link active" aria-current="page"><i class="bi bi-house"></i> Home</a></li>
           <li class="nav-item"><a href="{{url}}" class="nav-link disabled"><i class="bi bi-speedometer2"></i> Prediction results</a></li>
-          <li class="nav-item"><a href="https://floatrecovery.euro-argo.eu/" class="nav-link"><i class="bi bi-recycle"></i></a></li>
-          <li class="nav-item"><a href="https://github.com/euroargodev/VirtualFleet_recovery" class="nav-link"><i class="bi bi-github"></i></a></li>
+          <li class="nav-item"><a href="https://floatrecovery.euro-argo.eu/" class="nav-link" target="_blank"><i class="bi bi-recycle"></i></a></li>
+          <li class="nav-item"><a href="https://github.com/euroargodev/VirtualFleet_recovery" class="nav-link" target="_blank"><i class="bi bi-github"></i></a></li>
         </ul>
       </header>
 
@@ -40,11 +40,21 @@
         <div class="col-md-10">
           <h2>Get started</h2>
             <p class="fs-6">
-              To make a prediction for the position of cycle number CYC from float WMO, send a GET request to the following url:<br>
-              <pre><code class="language-http" data-prismjs-copy="Copy snippet!">http://134.246.146.178:5000/predict/WMO/CYC</code></pre>
-              Once the prediction is ready (in about 1min30), this will return a json file with the prediction results.
+              To make a prediction for the position of cycle number <code class="language-http">CYC</code> from float <code class="language-http">WMO</code>, send a GET request to the following url:<br>
+              <pre><code class="language-http" data-prismjs-copy="Copy snippet!">{{app_url}}predict/WMO/CYC</code></pre>
+              Once the prediction is ready (in about 1min30), this will return a json file with the prediction results.<br><br>
+          You can customize the prediction by choosing the velocity field ARMOR3D (default) or GLORYS12 and the number of virtual floats to simulate (2000 by default) with the URL parameters <code class="language-http">velocity</code> and <code class="language-http">nfloats</code>:<br>
+              <pre><code class="language-http" data-prismjs-copy="Copy snippet!">{{app_url}}predict/WMO/CYC?velocity=GLORYS&nfloats=1000</code></pre>
+
             </p>
 <!--      <hr class="col-3 col-md-2 mb-5">-->
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-10">
+          <h2>List of figures</h2>
+          <p class="fs-6">Recap for all <a href="{{app_url}}recap?velocity=ARMOR3D">ARMOR3D</a> and <a href="{{app_url}}recap?velocity=GLORYS">GLORYS</a> simulations</p>
         </div>
       </div>
 
