@@ -837,7 +837,7 @@ def figure_predictions_recap(weights, bin_X, bin_Y, bin_res, Hrel, recovery,
         mpatches.Circle(xy=[xpred, ypred],
                         radius=recovery['prediction_metrics']['surface_drift']['value'] * km2deg,
                         color='green',
-                        alpha=0.6,
+                        alpha=0.4,
                         transform=ccrs.PlateCarree(),
                         zorder=9))
 
@@ -1322,8 +1322,8 @@ def predictor(args):
     if not args.json:
         puts("\nYou can check this float dashboard while we prepare the prediction:")
         puts("\t%s" % argoplot.dashboard(WMO, url_only=True), color=COLORS.green)
-    host = "/home/ref-argo/gdac" if not os.uname()[0] == 'Darwin' else "https://data-argo.ifremer.fr"
-    # host = "/home/ref-argo/gdac" if not os.uname()[0] == 'Darwin' else "~/data/ARGO"
+    # host = "/home/ref-argo/gdac" if not os.uname()[0] == 'Darwin' else "https://data-argo.ifremer.fr"
+    host = "/home/ref-argo/gdac" if not os.uname()[0] == 'Darwin' else "~/data/ARGO"
     THIS_PROFILE = store(host=host).search_wmo_cyc(WMO, CYC).to_dataframe()
     THIS_DATE = pd.to_datetime(THIS_PROFILE['date'].values[0])
     CENTER = [THIS_PROFILE['longitude'].values[0], THIS_PROFILE['latitude'].values[0]]

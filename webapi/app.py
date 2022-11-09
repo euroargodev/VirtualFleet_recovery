@@ -22,6 +22,7 @@ Get a webpage with figures or link to make predictions:
 
 """
 import os
+import pandas as pd
 import sys
 import json
 import glob
@@ -35,6 +36,9 @@ from markupsafe import escape
 sys.path.insert(0, "../cli")
 from recovery_prediction import predictor
 import argopy
+
+from string import Formatter
+
 
 app = Flask(__name__)
 
@@ -100,10 +104,59 @@ class Args:
         summary.append("CYC: %i" % self.cyc)
         summary.append("nfloats: %i" % self.nfloats)
         summary.append("velocity: %s" % self.velocity)
+        # summary.append("Simulation dashboard: %s" % "" )
         summary.append("<hr>")
         summary.append("<b>VirtualFleet Recovery</b>")
         summary.append("(c) Argo-France/Ifremer/LOPS, 2022")
         return "<br>".join(summary)
+
+
+def strfdelta(tdelta, fmt='{D:02}d {H:02}h {M:02}m {S:02}s', inputtype='timedelta'):
+    """Convert a datetime.timedelta object or a regular number to a custom-
+    formatted string, just like the stftime() method does for datetime.datetime
+    objects.
+
+    The fmt argument allows custom formatting to be specified.  Fields can
+    include seconds, minutes, hours, days, and weeks.  Each field is optional.
+
+    Some examples:
+        '{D:02}d {H:02}h {M:02}m {S:02}s' --> '05d 08h 04m 02s' (default)
+        '{W}w {D}d {H}:{M:02}:{S:02}'     --> '4w 5d 8:04:02'
+        '{D:2}d {H:2}:{M:02}:{S:02}'      --> ' 5d  8:04:02'
+        '{H}h {S}s'                       --> '72h 800s'
+
+    The inputtype argument allows tdelta to be a regular number instead of the
+    default, which is a datetime.timedelta object.  Valid inputtype strings:
+        's', 'seconds',
+        'm', 'minutes',
+        'h', 'hours',
+        'd', 'days',
+        'w', 'weeks'
+    """
+
+    # Convert tdelta to integer seconds.
+    if inputtype == 'timedelta':
+        remainder = int(tdelta.total_seconds())
+    elif inputtype in ['s', 'seconds']:
+        remainder = int(tdelta)
+    elif inputtype in ['m', 'minutes']:
+        remainder = int(tdelta)*60
+    elif inputtype in ['h', 'hours']:
+        remainder = int(tdelta)*3600
+    elif inputtype in ['d', 'days']:
+        remainder = int(tdelta)*86400
+    elif inputtype in ['w', 'weeks']:
+        remainder = int(tdelta)*604800
+
+    f = Formatter()
+    desired_fields = [field_tuple[1] for field_tuple in f.parse(fmt)]
+    possible_fields = ('W', 'D', 'H', 'M', 'S')
+    constants = {'W': 604800, 'D': 86400, 'H': 3600, 'M': 60, 'S': 1}
+    values = {}
+    for field in possible_fields:
+        if field in desired_fields and field in constants:
+            values[field], remainder = divmod(remainder, constants[field])
+    return f.format(fmt, **values)
 
 
 def simulation_path(this_args):
@@ -126,6 +179,8 @@ def simulation_file_url(this_args, filename, safe=False):
     elif 'results/' in url:
         # print("results/%i/%i//" % (this_args.wmo, this_args.cyc))
         url = url.replace("results/%i/%i//" % (this_args.wmo, this_args.cyc), "")
+    elif 'test/' in url:
+        url = url.replace("test/%i/%i//" % (this_args.wmo, this_args.cyc), "")
     # url = url.replace("//", "/")
     # print(url)
     if safe:
@@ -285,9 +340,45 @@ def get_html_of_simulations_accordion(this_src, this_urlroot):
     return "\n".join(lines)
 
 
+class HtmlHelper:
+    def __init__(self, indent=0):
+        """HTML string formatting helper
+
+        >>> HtmlHelper().cblock("p", content="Hello !", attrs={"class": "toto", "aria-hidden": "false"})
+        '<p class="toto" aria-hidden="false">Hello !</p>'
+
+        >>> HtmlHelper().block("img", attrs={"src": "fig.png"})
+        '<img src="fig.png">'
+
+        """
+        self.indent = indent
+
+    def __indent(self, txt):
+        shift = " " * self.indent
+        return "%s%s" % (shift, txt)
+
+    def cblock(self, name, attrs={}, content='') -> str:
+        if len(attrs) > 0:
+            html = "<%s %s>%s</%s>" % (
+            name, " ".join(["%s=\"%s\"" % (key, attrs[key]) for key in attrs.keys() if attrs[key] != ""]), content,
+            name)
+        else:
+            html = "<%s>%s</%s>" % (name, content, name)
+        return self.__indent(html)
+
+    def block(self, name, attrs={}) -> str:
+        if len(attrs) > 0:
+            html = "<%s %s>" % (
+            name, " ".join(["%s=\"%s\"" % (key, attrs[key]) for key in attrs.keys() if attrs[key] != ""]))
+        else:
+            html = "<%s>" % name
+        return self.__indent(html)
+
+
 class Bootstrap_Carousel:
 
     def __init__(self, figure_list=[], name='carouselExample', args=None):
+        """Create a Bootstrap Carousel for a given list of figure files"""
         self.flist = figure_list
         self.name = name
         self.args = args
@@ -306,8 +397,7 @@ class Bootstrap_Carousel:
                  'aria-label': "Slide %i" % int(islide + 1),
                  'class': "active" if active else "",
                  }
-        return "<button %s></button>" % " ".join(
-            ["%s=\"%s\"" % (key, attrs[key]) for key in attrs.keys() if attrs[key] != ""])
+        return HtmlHelper().cblock('button', attrs=attrs)
 
     def __get_list_of_carousel_btn_html(self, this_flist, carouselName='carouselExample'):
         html = []
@@ -319,16 +409,16 @@ class Bootstrap_Carousel:
     def __html_carousel_item(self, src='...', label='Slide label',
                              description='Some representative placeholder content for the second slide.', active=False):
         html = []
-        if active:
-            html.append("<div class=\"carousel-item active\" data-bs-interval=\"10\">")
-        else:
-            html.append("<div class=\"carousel-item\" data-bs-interval=\"10\">")
-        html.append("    <img src=\"{src}\" class=\"d-block w-100\" alt=\"\">")
-        html.append("    <div class=\"carousel-caption d-none d-md-block\">")
-        html.append("        <h5>{label}</h5>")
-        html.append("        <p>{description}</p>")
-        html.append("    </div>")
-        html.append("</div>")
+        BH = lambda n: HtmlHelper(indent=n)
+        html.append(BH(n=0).block("div",
+                                  attrs={"class": "carousel-item %s" % ("active" if active else ""),
+                                         "data-bs-interval": 10}))
+        html.append(BH(n=2).block("img", attrs={'src': "{src}", 'class': 'd-block w-100', 'alt':''}))
+        html.append(BH(n=2).block("div", attrs={'class': 'carousel-caption d-none d-md-block'}))
+        html.append(BH(n=4).cblock("h5", content='{label}'))
+        html.append(BH(n=4).cblock("p", content='{description}'))
+        html.append(BH(n=2).block("/div"))
+        html.append(BH(n=0).block("/div"))
         html = "\n".join(html).format(src=src, label=label, description=description)
         return html
 
@@ -337,12 +427,11 @@ class Bootstrap_Carousel:
         for islide, src in enumerate(this_flist):
             wmo = src.replace("static/data/", "").split("/")[1]
             cyc = src.replace("static/data/", "").split("/")[2]
-            # label = "%s" % src
             label = "float:%s, cyc: %s" % (wmo, cyc)
-            # description = 'No description'
-            description = "/".join([request.url_root, 'results', wmo, cyc]).replace("//results", "/results")
-            description = "%s?velocity=%s&nfloats=%s" % (description, self.args.velocity, self.args.nfloats)
-            description = "<a href=\"%s\" target=\"_blank\">Click for more details</a>" % description
+            results_lnk = "/".join([request.url_root, 'results', wmo, cyc]).replace("//results", "/results")
+            results_lnk = "%s?velocity=%s&nfloats=%s" % (results_lnk, self.args.velocity, self.args.nfloats)
+            description = HtmlHelper().cblock("a", attrs={"href": results_lnk, "target": "_blank"},
+                                              content="Click here for more details")
             html.append(
                 self.__html_carousel_item(src=src, label=label, description=description, active=islide == 0))
         html = "\n".join(html)
@@ -351,28 +440,113 @@ class Bootstrap_Carousel:
     @property
     def html(self):
         html = []
-        html.append("<div id=\"%s\" class=\"carousel carousel-dark slide\" data-bs-ride=\"false\">" % self.name)
+        BH = lambda n: HtmlHelper(indent=n)
 
-        html.append("  <div class=\"carousel-indicators\">")
+        html.append(BH(n=0).block("div", attrs={"id": self.name,
+                                                "class": "carousel carousel-dark slide",
+                                                "data-bs-ride": "false"}))
+
+        html.append(BH(n=2).block("div", attrs={"class": "carousel-indicators"}))
         html.append(self.__get_list_of_carousel_btn_html(self.flist, carouselName=self.name))
-        html.append("  </div>")
+        html.append(BH(n=2).block("/div"))
 
-        html.append("  <div class=\"carousel-inner\">")
+        html.append(BH(n=2).block("div", attrs={"class": "carousel-inner"}))
         html.append(self.__get_list_of_carousel_items_html(self.flist))
-        html.append("  </div>")
+        html.append(BH(n=2).block("/div"))
 
-        html.append(
-            "  <button class=\"carousel-control-prev\" type=\"button\" data-bs-target=\"#%s\" data-bs-slide=\"prev\">" % self.name)
-        html.append("    <span class=\"carousel-control-prev-icon\" aria-hidden=\"true\"></span>")
-        html.append("    <span class=\"visually-hidden\">Previous</span>")
-        html.append("  </button>")
-        html.append(
-            "  <button class=\"carousel-control-next\" type=\"button\" data-bs-target=\"#%s\" data-bs-slide=\"next\">" % self.name)
-        html.append("    <span class=\"carousel-control-next-icon\" aria-hidden=\"true\"></span>")
-        html.append("    <span class=\"visually-hidden\">Next</span>")
-        html.append("  </button>")
-        html.append("</div>")
+        html.append(BH(n=2).block("button", attrs={"type": "button",
+                                                    "class": "carousel-control-prev",
+                                                    "data-bs-target": "#%s" % self.name,
+                                                    "data-bs-slide": "prev"}))
+        html.append(BH(n=4).cblock("span", attrs={"class": "carousel-control-prev-icon",
+                                                  "aria-hidden": "true"}))
+        html.append(BH(n=4).cblock("span", attrs={"class": "visually-hidden"}, content="Previous"))
+        html.append(BH(n=2).block("/button"))
+
+        html.append(BH(n=2).block("button", attrs={"type": "button",
+                                                    "class": "carousel-control-next",
+                                                    "data-bs-target": "#%s" % self.name,
+                                                    "data-bs-slide": "next"}))
+        html.append(BH(n=4).cblock("span", attrs={"class": "carousel-control-next-icon",
+                                                  "aria-hidden": "true"}))
+        html.append(BH(n=4).cblock("span", attrs={"class": "visually-hidden"}, content="Next"))
+        html.append(BH(n=2).block("/button"))
+
+        html.append(BH(n=0).block("/div"))
         return "\n".join(html)
+
+
+class Bootstrap_Accordion:
+    def __init__(self, data=[], name='AccordionExample', args=None):
+        self.data = data
+        self.name = name
+        self.args = args
+
+    def __html_accordion_btn(self, txt="", collapsed=False, target=""):
+        attrs = {'type': "button",
+                 'data-bs-target': "#%s" % target,
+                 'data-bs-toggle': "collapse",
+                 'aria-expanded': "true",
+                 'aria-controls': "%s" % target,
+                 'class': "accordion-button %s" % ("collapsed" if collapsed else ""),
+                 }
+        return HtmlHelper().cblock("button", attrs=attrs, content=txt)
+        # return "<button %s>%s</button>" % (" ".join(
+        #     ["%s=\"%s\"" % (key, attrs[key]) for key in attrs.keys() if attrs[key] != ""]), txt)
+
+    def __html_accordion_item(self, title="", body="", itemID="", collapsed=False):
+        html = []
+        BH = lambda n: HtmlHelper(indent=n)
+        html.append(BH(0).block("div", attrs={"class": "accordion-item"}))
+        html.append(BH(2).block("h2", attrs={"class": "accordion-header", "id": "%s-heading" % itemID}))
+        html.append("    %s" % self.__html_accordion_btn(txt=title, collapsed=collapsed, target=itemID))
+        html.append(BH(2).block("/h2"))
+        html.append(BH(2).block("div", attrs={"id": "%s" % itemID,
+                                              "class": "accordion-collapse collapse %s" % ("show" if not collapsed else ""),
+                                              "aria-labelledby": "%s-heading" % itemID}))
+        html.append(BH(4).block("div", attrs={"class": "accordion-body"}))
+        html.append("      %s" % body)
+        html.append(BH(4).block("/div"))
+        html.append(BH(2).block("/div"))
+        html.append(BH(0).block("/div"))
+        return "\n".join(html)
+
+    @property
+    def html(self):
+        html = []
+        html.append(HtmlHelper().block("div", attrs={"class": "accordion w-100", "id": self.name}))
+        for ii, item in enumerate(self.data):
+            item_html = self.__html_accordion_item(title=item['title'],
+                                                   body=item['body'],
+                                                   itemID="%s-item%i" % (self.name, ii),
+                                                   collapsed=ii != 0)
+            html.append(item_html)
+        html.append(HtmlHelper().block("/div"))
+        return "\n".join(html)
+
+
+class Bootstrap_Figure:
+    def __init__(self, src=None, alt="", caption=""):
+        """Return a Boostrap Figure html"""
+        self.src = src
+        self.alt = alt
+        self.caption = caption
+
+    @property
+    def html(self):
+        html = []
+        # html.append("<figure class=\"figure\">")
+        # html.append("  <img src=\"{src}\" class=\"figure-img img-fluid rounded\" alt=\"{alt}\">")
+        # html.append("  <figcaption class=\"figure-caption\">{caption}</figcaption>")
+        # html.append("</figure>")
+        html.append(HtmlHelper(indent=0).block("figure", attrs={"class": "figure"}))
+        html.append(HtmlHelper(indent=2).block("img", attrs={"class": "figure-img img-fluid rounded",
+                                                             "src": "{src}",
+                                                             "alt": "{alt}"}))
+        html.append(HtmlHelper(indent=2).cblock("figcaption", attrs={"class": "figure-caption"}, content="{caption}"))
+        html.append(HtmlHelper(indent=0).block("/figure"))
+        html = "\n".join(html).format(src=self.src, alt=self.alt, caption=self.caption)
+        return html
 
 
 def parse_args(wmo, cyc):
@@ -385,35 +559,47 @@ def parse_args(wmo, cyc):
     return args
 
 
-@app.route('/')
-def index():
+@app.route('/', defaults={'wmo': None, 'cyc': None}, methods=['GET', 'POST'])
+@app.route('/<int:wmo>/<int:cyc>', methods=['GET', 'POST'])
+def index(wmo, cyc):
     # Parse request parameters:
-    # (none in this case, we just need the `args` object)
-    args = parse_args(0, 0)
+    wmo = wmo if wmo is not None else 0
+    cyc = cyc if cyc is not None else 0
+    args = parse_args(wmo, cyc)
 
-    template_data = {'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
-                     'cdn_prism': 'cdn.jsdelivr.net/npm/prismjs@1.29.0',
-                     'runs_html': get_html_of_simulations_accordion(args.output, request.base_url),
-                     'app_url': request.url_root}
-    # print(template_data['runs_html'])
+    if wmo == 0:
+        template_data = {'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
+                         'cdn_prism': 'cdn.jsdelivr.net/npm/prismjs@1.29.0',
+                         'runs_html': get_html_of_simulations_accordion(args.output, request.base_url),
+                         'app_url': request.url_root}
+        # print(template_data['runs_html'])
 
-    html = render_template('index.html', **template_data)
-    return html
+        html = render_template('index.html', **template_data)
+        return html
+
+    else:
+        return redirect(url_for('results', wmo=args.wmo, cyc=args.cyc, nfloats=args.nfloats, velocity=args.velocity))
 
 
-@app.route('/recap')
-def recap():
+
+@app.route('/recap', defaults={'wmo': None}, methods=['GET', 'POST'])
+@app.route('/recap/<int:wmo>', methods=['GET', 'POST'])
+def recap(wmo):
     # Parse request parameters:
-    # (none in this case, we just need the `args` object)
-    args = parse_args(0, 0)
+    wmo = wmo if wmo is not None else 0
+    args = parse_args(wmo, 0)
     nfloats = args.nfloats
     velocity = args.velocity
     print(nfloats, velocity)
 
     # Get list of figures
     src = os.path.abspath(os.path.sep.join([".", "static"]))
-    figure = "vfrecov_predictions_recap_%s_%s.png" % (velocity, nfloats)
-    flist = sorted(glob.glob(os.path.sep.join([src, "data", "*", "*", figure])))
+    # figure = "vfrecov_predictions_recap_%s_%s.png" % (velocity, nfloats)
+    figure = "vfrecov_metrics01_%s_%s.png" % (velocity, nfloats)
+    if wmo != 0:
+        flist = sorted(glob.glob(os.path.sep.join([src, "data", str(wmo), "*", figure])))
+    else:
+        flist = sorted(glob.glob(os.path.sep.join([src, "data", "*", "*", figure])))
     slist = []
     for filename in flist:
         f = filename.replace(src, "")
@@ -421,7 +607,8 @@ def recap():
         url = os.path.normpath(url)
         if url is not None:
             slist.append(url)
-    carousel_html = Bootstrap_Carousel(slist, 'toto', args).html if len(slist) > 0 else None
+
+    carousel_html = Bootstrap_Carousel(slist, 'recapCarousel', args).html if len(slist) > 0 else None
     template_data = {'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
                      'cdn_prism': 'cdn.jsdelivr.net/npm/prismjs@1.29.0',
                      'carousel_html': carousel_html,
@@ -433,14 +620,74 @@ def recap():
     return html
 
 
-@app.route('/test/<int:wmo>/<int:cyc>', methods=['GET', 'POST'])
-def test(wmo, cyc):
-    WMO = int(escape(wmo))
-    CYC = int(escape(cyc))
-    args = Args(WMO, CYC)
-    args.nfloats = request.args.get('nfloats', args.__getattribute__('nfloats'), int)
-    args.velocity = request.args.get('velocity', args.__getattribute__('velocity'), str)
-    return args.html()
+@app.route('/results/<int:wmo>/<int:cyc>', methods=['GET'])
+def results(wmo, cyc):
+    # Parse request parameters:
+    args = parse_args(wmo, cyc)
+
+    # Init some variables used in template
+    template_data = {
+        'css': url_for("static", filename="css"),
+        'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
+        'cdn_prism': 'cdn.jsdelivr.net/npm/prismjs@1.29.0',
+        'WMO': args.wmo,
+        'CYC': args.cyc,
+        'VELOCITY': args.velocity,
+        'NFLOATS': args.nfloats,
+        'url': request.base_url,
+        'url_predict': url_for("predict", wmo=args.wmo, cyc=args.cyc, nfloats=args.nfloats, velocity=args.velocity),
+        'prediction_src': None,
+        'metric_src': None,
+        'velocity_src': None,
+        'prediction_recap_src': None,
+        'data_js': None,
+        'prediction_lon': None,
+        'prediction_lat': None,
+        'error_bearing': None,
+        'error_dist': None,
+    }
+
+    # Load data for this set-up:
+    jsdata = load_data_for(args)
+    # print(jsdata)
+
+    if jsdata is not None:
+        template_data['data_js'] = url_for('predict', **args.amap)
+
+        data = [
+        {'title': 'Prediction',
+         'body': Bootstrap_Figure(src=jsdata['meta']['figures']['predictions_recap']).html},
+        {'title': 'Probabilistic prediction details',
+         'body': Bootstrap_Figure(src=jsdata['meta']['figures']['predictions']).html},
+        {'title': 'Trajectory analysis details',
+         'body': Bootstrap_Figure(src=jsdata['meta']['figures']['metrics']).html},
+        {'title': 'Velocity field domain',
+         'body': Bootstrap_Figure(src=jsdata['meta']['figures']['velocity']).html},
+            ]
+        template_data['figures'] = Bootstrap_Accordion(data=data, name='Figures').html
+
+        template_data['prediction_lon'] = "%0.3f" % jsdata['prediction_location']['longitude']['value']
+        template_data['prediction_lon_unit'] = "%s" % jsdata['prediction_location']['longitude']['unit']#.replace("degree", "deg")
+        template_data['prediction_lat'] = "%0.3f" % jsdata['prediction_location']['latitude']['value']
+        template_data['prediction_lat_unit'] = "%s" % jsdata['prediction_location']['latitude']['unit']#.replace("degree", "deg")
+
+        template_data['error_bearing'] = "%0.1f" % jsdata['prediction_location_error']['bearing']['value']
+        template_data['error_bearing_unit'] = "%s" % jsdata['prediction_location_error']['bearing']['unit']
+        template_data['error_dist'] = "%0.1f" % jsdata['prediction_location_error']['distance']['value']
+        template_data['error_dist_unit'] = "%s" % jsdata['prediction_location_error']['distance']['unit']
+        template_data['error_time'] = strfdelta(pd.Timedelta(float(jsdata['prediction_location_error']['time']['value']), unit='h'))
+        # template_data['error_time_unit'] = "%s" % jsdata['prediction_location_error']['time']['unit']
+
+        template_data['computation_walltime'] = strfdelta(pd.Timedelta(jsdata['meta']['Computation']['Wall-time']))
+        template_data['computation_platform'] = "%s (%s)" % (jsdata['meta']['Computation']['system']['platform'],
+                                                             jsdata['meta']['Computation']['system']['architecture'])
+
+    template_data['ea_float'] = argopy.dashboard(argopy.utilities.check_wmo(args.wmo), url_only=True)
+    template_data['ea_profile'] = argopy.dashboard(argopy.utilities.check_wmo(args.wmo),
+                                                   argopy.utilities.check_cyc(args.cyc), url_only=True)
+
+    html = render_template('results2.html', **template_data)
+    return html
 
 
 @app.route('/predict/<int:wmo>/<int:cyc>', methods=['GET', 'POST'])
@@ -453,6 +700,7 @@ def predict(wmo, cyc):
 
     # Load data for this set-up:
     jsdata = load_data_for(args)
+
     # If we didn't already use it, make a prediction:
     if jsdata is None:
         predictor(args)  # This can take a while...
@@ -461,8 +709,8 @@ def predict(wmo, cyc):
     return jsonify(jsdata)
 
 
-@app.route('/results/<int:wmo>/<int:cyc>', methods=['GET'])
-def results(wmo, cyc):
+# @app.route('/results/<int:wmo>/<int:cyc>', methods=['GET'])
+def results_deprec(wmo, cyc):
     # Parse request parameters:
     args = parse_args(wmo, cyc)
 
@@ -498,10 +746,10 @@ def results(wmo, cyc):
         template_data['velocity_src'] = jsdata['meta']['figures']['velocity']
         template_data['metric_src'] = jsdata['meta']['figures']['metrics']
 
-        template_data['prediction_lon'] = "%0.4f" % jsdata['prediction_location']['longitude']['value']
-        template_data['prediction_lon_unit'] = "%s" % jsdata['prediction_location']['longitude']['unit']
-        template_data['prediction_lat'] = "%0.4f" % jsdata['prediction_location']['latitude']['value']
-        template_data['prediction_lat_unit'] = "%s" % jsdata['prediction_location']['latitude']['unit']
+        template_data['prediction_lon'] = "%0.3f" % jsdata['prediction_location']['longitude']['value']
+        template_data['prediction_lon_unit'] = "%s" % jsdata['prediction_location']['longitude']['unit'].replace("degree", "deg")
+        template_data['prediction_lat'] = "%0.3f" % jsdata['prediction_location']['latitude']['value']
+        template_data['prediction_lat_unit'] = "%s" % jsdata['prediction_location']['latitude']['unit'].replace("degree", "deg")
 
         template_data['error_bearing'] = "%0.1f" % jsdata['prediction_location_error']['bearing']['value']
         template_data['error_bearing_unit'] = "%s" % jsdata['prediction_location_error']['bearing']['unit']
@@ -512,7 +760,7 @@ def results(wmo, cyc):
     template_data['ea_profile'] = argopy.dashboard(argopy.utilities.check_wmo(args.wmo),
                                                    argopy.utilities.check_cyc(args.cyc), url_only=True)
 
-    html = render_template('results.html', **template_data)
+    html = render_template('results1.html', **template_data)
     return html
 
 

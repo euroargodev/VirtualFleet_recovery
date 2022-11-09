@@ -9,8 +9,19 @@
 
     <link href="https://{{cdn_bootstrap}}/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-Zenh87qX5JnK2Jl0vWa8Ck2rdkQ2Bzep5IDxbcnCeuOxjzrPF/et3URy9Bv1WTRi" crossorigin="anonymous">
     <link href="https://{{cdn_prism}}/themes/prism.min.css" rel="stylesheet" />
-<!--    <link href="https://{{cdn_prism}}/themes/prism-solarizedlight.min.css" rel="stylesheet" />-->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.9.1/font/bootstrap-icons.css">
+
+    <style>
+      .carousel-item {
+        -webkit-transition: none !important;
+        -moz-transition: none !important;
+        -o-transition: none !important;
+        transition: none !important;}
+      .carousel-dark .carousel-indicators [data-bs-target] {background-color: #F00;}
+      .carousel-indicators [data-bs-target] {opacity: 0.25}
+      .carousel-indicators {margin-bottom: -20px}
+      .carousel-indicators .active {opacity: 1}
+    </style>
 
   </head>
   <body>
@@ -32,13 +43,19 @@
 
     <main>
       <div class="row">
-        <div class="col-md-10">
+        <div class="col mb-4">
         {% if carousel_html is not none %}
         {{ carousel_html|safe }}
         {% else %}
           <div class="alert alert-warning" role="alert">No figures available for nfloats={{nfloats}} and {{velocity}} velocity field.</div>
         {% endif %}
 
+        </div>
+      </div>
+      <div class="row">
+        <div class="col mb-4">
+        {% if carousel_html is not none %}
+        {% endif %}
         </div>
       </div>
     </main>
