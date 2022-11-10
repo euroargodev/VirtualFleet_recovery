@@ -36,7 +36,7 @@ from markupsafe import escape
 sys.path.insert(0, "../cli")
 from recovery_prediction import predictor
 import argopy
-
+from geojson import Feature, Point, FeatureCollection
 from string import Formatter
 
 
@@ -313,7 +313,7 @@ def get_html_of_simulations_accordion(this_src, this_urlroot):
     # f_app_url = "{root}results/{wmo}/{cyc}".format
     f_app_url = "{root}results/{wmo}/{cyc}?velocity={velocity}&nfloats={nfloats}".format
 
-    lines = ["<div class=\"accordion\" id=\"accordionSimulations\">"]
+    lines = ["<div class=\"accordion w-100\" id=\"accordionSimulations\">"]
     for iw, wmo in enumerate(WMOs):
         clines = []
         cyc_list = dict(sorted(WMOs[wmo].items()))
@@ -427,11 +427,16 @@ class Bootstrap_Carousel:
         for islide, src in enumerate(this_flist):
             wmo = src.replace("static/data/", "").split("/")[1]
             cyc = src.replace("static/data/", "").split("/")[2]
-            label = "float:%s, cyc: %s" % (wmo, cyc)
+            label = "Float %s - Cycle %s" % (wmo, cyc)
             results_lnk = "/".join([request.url_root, 'results', wmo, cyc]).replace("//results", "/results")
             results_lnk = "%s?velocity=%s&nfloats=%s" % (results_lnk, self.args.velocity, self.args.nfloats)
-            description = HtmlHelper().cblock("a", attrs={"href": results_lnk, "target": "_blank"},
-                                              content="Click here for more details")
+            description = HtmlHelper().cblock("a", attrs={"href": results_lnk, "target": ""},
+                                              content="Check this cycle details")
+            subsample_lnk = "/".join([request.url_root, 'recap', wmo]).replace("//recap", "/recap")
+            subsample_lnk = "%s?velocity=%s&nfloats=%s" % (subsample_lnk, self.args.velocity, self.args.nfloats)
+            description = "%s / %s" % (HtmlHelper().cblock("a", attrs={"href": subsample_lnk, "target": ""},
+                                          content="Swipe only this float"), description)
+
             html.append(
                 self.__html_carousel_item(src=src, label=label, description=description, active=islide == 0))
         html = "\n".join(html)
@@ -571,15 +576,15 @@ def index(wmo, cyc):
         template_data = {'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
                          'cdn_prism': 'cdn.jsdelivr.net/npm/prismjs@1.29.0',
                          'runs_html': get_html_of_simulations_accordion(args.output, request.base_url),
-                         'app_url': request.url_root}
+                         'app_url': request.url_root,
+                         'css': url_for("static", filename="css")}
         # print(template_data['runs_html'])
 
-        html = render_template('index.html', **template_data)
+        html = render_template('index2.html', **template_data)
         return html
 
     else:
         return redirect(url_for('results', wmo=args.wmo, cyc=args.cyc, nfloats=args.nfloats, velocity=args.velocity))
-
 
 
 @app.route('/recap', defaults={'wmo': None}, methods=['GET', 'POST'])
@@ -590,16 +595,24 @@ def recap(wmo):
     args = parse_args(wmo, 0)
     nfloats = args.nfloats
     velocity = args.velocity
-    print(nfloats, velocity)
+    figure = request.args.get('figure', 'metrics', str)
 
     # Get list of figures
     src = os.path.abspath(os.path.sep.join([".", "static"]))
-    # figure = "vfrecov_predictions_recap_%s_%s.png" % (velocity, nfloats)
-    figure = "vfrecov_metrics01_%s_%s.png" % (velocity, nfloats)
+    if figure == 'metrics' or figure == 'metric':
+        figure_pattern = "vfrecov_metrics01_%s_%s.png" % (velocity, nfloats)
+    elif figure == 'predictions' or figure == 'prediction':
+        figure_pattern = "vfrecov_predictions_recap_%s_%s.png" % (velocity, nfloats)
+    elif figure == 'details' or figure == 'detail':
+        figure_pattern = "vfrecov_predictions_%s_%s.png" % (velocity, nfloats)
+    elif figure == 'flow':
+        figure_pattern = "vfrecov_velocity_%s.png" % velocity
+    # print(nfloats, velocity, figure, figure_pattern)
+
     if wmo != 0:
-        flist = sorted(glob.glob(os.path.sep.join([src, "data", str(wmo), "*", figure])))
+        flist = sorted(glob.glob(os.path.sep.join([src, "data", str(wmo), "*", figure_pattern])))
     else:
-        flist = sorted(glob.glob(os.path.sep.join([src, "data", "*", "*", figure])))
+        flist = sorted(glob.glob(os.path.sep.join([src, "data", "*", "*", figure_pattern])))
     slist = []
     for filename in flist:
         f = filename.replace(src, "")
@@ -609,14 +622,24 @@ def recap(wmo):
             slist.append(url)
 
     carousel_html = Bootstrap_Carousel(slist, 'recapCarousel', args).html if len(slist) > 0 else None
-    template_data = {'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
+    template_data = {'css': url_for("static", filename="css"),
+                     'js': url_for("static", filename="js"),
+                     'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
                      'cdn_prism': 'cdn.jsdelivr.net/npm/prismjs@1.29.0',
                      'carousel_html': carousel_html,
-                     'nfloats': nfloats,
-                     'velocity': velocity,
-                     'app_url': request.url_root}
+                     'WMO': args.wmo,
+                     'CYC': args.cyc,
+                     'VELOCITY': args.velocity,
+                     'NFLOATS': args.nfloats,
+                     'file_number': len(slist),
+                     'app_url': request.url_root,
+                     'url_recap': url_for("recap", wmo=args.wmo, nfloats=args.nfloats, velocity=args.velocity),
+                     'url_map': url_for("map", wmo=args.wmo, nfloats=args.nfloats, velocity=args.velocity),
+                     'WMO': args.wmo if args.wmo > 0 else None,
+                     'ea_float': argopy.dashboard(argopy.utilities.check_wmo(args.wmo), url_only=True) if args.wmo > 0 else None,
+                     }
 
-    html = render_template('list.html', **template_data)
+    html = render_template('list2.html', **template_data)
     return html
 
 
@@ -636,6 +659,8 @@ def results(wmo, cyc):
         'NFLOATS': args.nfloats,
         'url': request.base_url,
         'url_predict': url_for("predict", wmo=args.wmo, cyc=args.cyc, nfloats=args.nfloats, velocity=args.velocity),
+        'url_recap': url_for("recap", wmo=args.wmo, nfloats=args.nfloats, velocity=args.velocity),
+        'url_map': url_for("map", wmo=args.wmo, nfloats=args.nfloats, velocity=args.velocity),
         'prediction_src': None,
         'metric_src': None,
         'velocity_src': None,
@@ -643,6 +668,8 @@ def results(wmo, cyc):
         'data_js': None,
         'prediction_lon': None,
         'prediction_lat': None,
+        'prediction_score': None,
+        'error_transit': None,
         'error_bearing': None,
         'error_dist': None,
     }
@@ -670,6 +697,11 @@ def results(wmo, cyc):
         template_data['prediction_lon_unit'] = "%s" % jsdata['prediction_location']['longitude']['unit']#.replace("degree", "deg")
         template_data['prediction_lat'] = "%0.3f" % jsdata['prediction_location']['latitude']['value']
         template_data['prediction_lat_unit'] = "%s" % jsdata['prediction_location']['latitude']['unit']#.replace("degree", "deg")
+        if 'score' in jsdata['prediction_metrics']['pairwise_distances']:
+            template_data['prediction_score'] = "%0.0f%%" % (100*float(jsdata['prediction_metrics']['pairwise_distances']['score']['value']))
+            # template_data['prediction_score'] = "%0.0f%%" % (100*float(jsdata['prediction_metrics']['pairwise_distances']['overlapping']['value']))
+        else:
+            template_data['prediction_score'] = "?"
 
         template_data['error_bearing'] = "%0.1f" % jsdata['prediction_location_error']['bearing']['value']
         template_data['error_bearing_unit'] = "%s" % jsdata['prediction_location_error']['bearing']['unit']
@@ -677,6 +709,7 @@ def results(wmo, cyc):
         template_data['error_dist_unit'] = "%s" % jsdata['prediction_location_error']['distance']['unit']
         template_data['error_time'] = strfdelta(pd.Timedelta(float(jsdata['prediction_location_error']['time']['value']), unit='h'))
         # template_data['error_time_unit'] = "%s" % jsdata['prediction_location_error']['time']['unit']
+        template_data['error_transit'] = strfdelta(pd.Timedelta(float(jsdata['prediction_metrics']['transit']['value']), unit='h'))
 
         template_data['computation_walltime'] = strfdelta(pd.Timedelta(jsdata['meta']['Computation']['Wall-time']))
         template_data['computation_platform'] = "%s (%s)" % (jsdata['meta']['Computation']['system']['platform'],
@@ -764,12 +797,73 @@ def results_deprec(wmo, cyc):
     return html
 
 
-@app.route('/data/<int:wmo>/<int:cyc>', methods=['GET'])
-def data(wmo, cyc):
+@app.route('/data_old/<int:wmo>/<int:cyc>', methods=['GET'])
+def data_old(wmo, cyc):
     # Parse request parameters:
     args = parse_args(wmo, cyc)
     return redirect(url_for('predict', wmo=args.wmo, cyc=args.cyc, nfloats=args.nfloats, velocity=args.velocity))
 
+
+@app.route('/data', defaults={'wmo': None}, methods=['GET', 'POST'])
+@app.route('/data/<int:wmo>', methods=['GET', 'POST'])
+def data(wmo):
+    # Parse request parameters:
+    wmo = wmo if wmo is not None else 0
+    args = parse_args(wmo, 0)
+
+    src = os.path.abspath(os.path.sep.join([".", "static"]))
+    filepattern = "prediction_%s_%i.json" % (args.velocity, args.nfloats)
+    if wmo != 0:
+        flist = sorted(glob.glob(os.path.sep.join([src, "data", str(wmo), "*", filepattern])))
+    else:
+        flist = sorted(glob.glob(os.path.sep.join([src, "data", "*", "*", filepattern])))
+    slist = []
+    for filename in flist:
+        f = filename.replace(src, "")
+        url = url_for('static', filename=f)
+        url = os.path.normpath(url)
+        if url is not None:
+            slist.append(url)
+
+    feature_list = []
+    for filename in flist:
+        this_wmo = filename.split(os.path.sep)[-3]
+        this_cyc = filename.split(os.path.sep)[-2]
+        jsdata = load_data_for(Args(this_wmo, this_cyc, nfloats=args.nfloats, velocity=args.velocity))
+        f = Feature(geometry=Point(
+            (jsdata['prediction_location']['longitude']['value'], jsdata['prediction_location']['latitude']['value'])),
+                    properties=jsdata)
+        feature_list.append(f)
+
+    return jsonify(FeatureCollection(feature_list))
+
+
+@app.route('/map', defaults={'wmo': None}, methods=['GET', 'POST'])
+@app.route('/map/<int:wmo>', methods=['GET', 'POST'])
+def map(wmo):
+    # Parse request parameters:
+    wmo = wmo if wmo is not None else 0
+    args = parse_args(wmo, 0)
+
+    template_data = {'css': url_for("static", filename="css"),
+                     'js': url_for("static", filename="js"),
+                     'dist': url_for("static", filename="dist"),
+                     'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
+                     'cdn_prism': 'cdn.jsdelivr.net/npm/prismjs@1.29.0',
+                     'app_url': request.url_root,
+                     'url_recap': url_for("recap", wmo=args.wmo, nfloats=args.nfloats, velocity=args.velocity),
+                     'url_map': url_for("map", wmo=args.wmo, nfloats=args.nfloats, velocity=args.velocity),
+                     'WMO': args.wmo if args.wmo != 0 else None,
+                     'CYC': args.cyc if args.wmo != 0 else None,
+                     'VELOCITY': args.velocity,
+                     'NFLOATS': args.nfloats,
+                     'jsdata': url_for('data', wmo=args.wmo if args.wmo != 0 else None,
+                                       nfloats=args.nfloats, velocity=args.velocity)
+                     }
+    # print(jsonify(template_data))
+
+    html = render_template('map.html', **template_data)
+    return html
 
 # @app.route("/spec")
 # def spec():

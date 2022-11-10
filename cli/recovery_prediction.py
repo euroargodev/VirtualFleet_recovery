@@ -1108,7 +1108,7 @@ def predict_position(workdir, wmo, cyc, cfg, vel, vel_name, df_sim, df_plan, thi
     return recovery
 
 
-def analyse_pairwise_distances(this_args, data):
+def analyse_pairwise_distances_old(this_args, data):
     workdir = os.path.sep.join([this_args.output, str(this_args.wmo), str(this_args.cyc)])
 
     # Trajectory file:
@@ -1225,6 +1225,186 @@ def analyse_pairwise_distances(this_args, data):
             (this_args.wmo, this_args.cyc - 1, this_args.cyc)
     line1 = "Prediction made with %s and %i virtual floats" % (this_args.velocity, this_args.nfloats)
     fig.suptitle("%s\n%s" % (line0, line1), fontsize=15)
+    if this_args.save_figure:
+        figfile = 'vfrecov_metrics01_%s_%i' % (this_args.velocity, this_args.nfloats)
+        figpath = os.path.sep.join([this_args.output, str(this_args.wmo), str(this_args.cyc)])
+        save_figurefile(fig, figfile, figpath)
+
+    # Save new data to json file:
+    # jsfile = os.path.join(workdir, 'prediction_%s_%i.json' % (this_args.velocity, this_args.nfloats))
+    # with open(jsfile, 'w', encoding='utf-8') as f:
+    #     json.dump(data, f, ensure_ascii=False, indent=4, default=str, sort_keys=True)
+
+    if this_args.json:
+        matplotlib.use(backend)
+    return data
+
+
+def analyse_pairwise_distances(this_args, data):
+    from scipy.signal import find_peaks
+
+    def get_hist_and_peaks(this_d):
+        x = d.flatten()
+        x = x[~np.isnan(x)]
+        x = x[:, np.newaxis]
+        hist, bin_edges = np.histogram(x, bins=100, density=1)
+        # dh = np.diff(bin_edges[0:2])
+        peaks, _ = find_peaks(hist / np.max(hist), height=.4, distance=20)
+        return {'pdf': hist, 'bins': bin_edges[0:-1], 'Npeaks': len(peaks)}
+
+    # Trajectory file:
+    workdir = os.path.sep.join([this_args.output, str(this_args.wmo), str(this_args.cyc)])
+    ncfile = os.path.sep.join([workdir,
+                               'trajectories_%s_%i.nc' % (this_args.velocity, this_args.nfloats)])
+
+    if not os.path.exists(ncfile):
+        print('Cannot analyse pairwise distances because the trajectory file cannot be found at: %s' % ncfile)
+        return None
+
+    # Open trajectory file:
+    ds = xr.open_dataset(ncfile)
+
+    # Compute trajectories relative to the single/only real float initial position:
+    lon = ds['lon'].values
+    lat = ds['lat'].values
+    lon0 = data['previous_profile']['location']['longitude']['value']
+    lat0 = data['previous_profile']['location']['latitude']['value']
+    ds['lonc'] = xr.DataArray(lon - np.broadcast_to(lon[:, 0][:, np.newaxis], lon.shape) + lon0, dims=['traj', 'obs'])
+    ds['latc'] = xr.DataArray(lat - np.broadcast_to(lat[:, 0][:, np.newaxis], lat.shape) + lat0, dims=['traj', 'obs'])
+
+    # Compute trajectory lengths:
+    ds['length'] = np.sqrt(ds.diff(dim='obs')['lon'] ** 2 + ds.diff(dim='obs')['lat'] ** 2).sum(dim='obs')
+    ds['lengthc'] = np.sqrt(ds.diff(dim='obs')['lonc'] ** 2 + ds.diff(dim='obs')['latc'] ** 2).sum(dim='obs')
+
+    # Compute initial points pairwise distances, PDF and nb of peaks:
+    X = ds.isel(obs=0)
+    X = X.isel(traj=~np.isnan(X['lon']))
+    X0 = np.array((X['lon'].values, X['lat'].values)).T
+    d0 = pairwise_distances(X0, n_jobs=-1)
+    d0 = np.triu(d0)
+    d0[d0 == 0] = np.nan
+
+    x0 = d0.flatten()
+    x0 = x0[~np.isnan(x0)]
+    x0 = x0[:, np.newaxis]
+
+    hist0, bin_edges0 = np.histogram(x0, bins=100, density=1)
+    dh0 = np.diff(bin_edges0[0:2])
+    peaks0, _ = find_peaks(hist0 / np.max(hist0), height=.4, distance=20)
+
+    # Compute final points pairwise distances, PDF and nb of peaks:
+    X = ds.isel(obs=-1)
+    X = X.isel(traj=~np.isnan(X['lon']))
+    dsf = X
+    X = np.array((X['lon'].values, X['lat'].values)).T
+    d = pairwise_distances(X, n_jobs=-1)
+    d = np.triu(d)
+    d[d == 0] = np.nan
+
+    x = d.flatten()
+    x = x[~np.isnan(x)]
+    x = x[:, np.newaxis]
+
+    hist, bin_edges = np.histogram(x, bins=100, density=1)
+    dh = np.diff(bin_edges[0:2])
+    peaks, _ = find_peaks(hist / np.max(hist), height=.4, distance=20)
+
+    # Compute final points pairwise distances (relative traj), PDF and nb of peaks:
+    X1 = ds.isel(obs=-1)
+    X1 = X1.isel(traj=~np.isnan(X1['lonc']))
+    dsfc = X1
+    X1 = np.array((X1['lonc'].values, X1['latc'].values)).T
+    d1 = pairwise_distances(X1, n_jobs=-1)
+    d1 = np.triu(d1)
+    d1[d1 == 0] = np.nan
+
+    x1 = d1.flatten()
+    x1 = x1[~np.isnan(x1)]
+    x1 = x1[:, np.newaxis]
+
+    hist1, bin_edges1 = np.histogram(x1, bins=100, density=1)
+    dh1 = np.diff(bin_edges1[0:2])
+    peaks1, _ = find_peaks(hist1 / np.max(hist1), height=.4, distance=20)
+
+    # Compute the overlapping between the initial and relative state PDFs:
+    bin_unif = np.arange(0, np.max([bin_edges0, bin_edges1]), np.min([dh0, dh1]))
+    dh_unif = np.diff(bin_unif[0:2])
+    hist0_unif = np.interp(bin_unif, bin_edges0[0:-1], hist0)
+    hist_unif = np.interp(bin_unif, bin_edges[0:-1], hist)
+    hist1_unif = np.interp(bin_unif, bin_edges1[0:-1], hist1)
+
+    # Area under hist1 AND hist0:
+    # overlapping = np.sum(hist1_unif[hist0_unif >= hist1_unif]*dh_unif)
+    overlapping = np.sum(hist_unif[hist0_unif >= hist_unif] * dh_unif)
+
+    # Ratio of the max PDF ranges:
+    # staggering = np.max(bin_edges1)/np.max(bin_edges0)
+    staggering = np.max(bin_edges) / np.max(bin_edges0)
+
+    # Save metrics:
+    prediction_metrics = data['prediction_metrics']
+    # prediction_metrics = {}
+
+    prediction_metrics['trajectory_lengths'] = {'median': np.nanmedian(ds['length'].values),
+                                                'std': np.nanstd(ds['length'].values)}
+
+    prediction_metrics['pairwise_distances'] = {
+        'initial_state': {'median': np.nanmedian(d0), 'std': np.nanstd(d0), 'nPDFpeaks': len(peaks0)},
+        'final_state': {'median': np.nanmedian(d), 'std': np.nanstd(d), 'nPDFpeaks': len(peaks)},
+        'relative_state': {'median': np.nanmedian(d1), 'std': np.nanstd(d1), 'nPDFpeaks': len(peaks1)},
+        'overlapping': {'value': overlapping,
+                        'comment': 'Overlapping area between PDF(initial_state) and PDF(final_state)'},
+        'staggering': {'value': staggering, 'comment': 'Ratio of PDF(initial_state) vs PDF(final_state) ranges'},
+        'score': {'value': overlapping / len(peaks), 'comment': 'overlapping/nPDFpeaks(final_state)'}}
+
+    ratio = prediction_metrics['pairwise_distances']['final_state']['std'] / \
+            prediction_metrics['pairwise_distances']['initial_state']['std']
+    prediction_metrics['pairwise_distances']['std_ratio'] = ratio
+
+    data['prediction_metrics'] = prediction_metrics
+
+    # Figure:
+    backend = matplotlib.get_backend()
+    if this_args.json:
+        matplotlib.use('Agg')
+
+    fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(18, 10), dpi=90)
+    ax, ix = ax.flatten(), -1
+    cmap = plt.cm.coolwarm
+
+    ix += 1
+    dd = dsf['length'].values
+    ax[ix].plot(X0[:, 0], X0[:, 1], '.', markersize=3, color='grey', alpha=0.5, markeredgecolor=None, zorder=0)
+    ax[ix].scatter(X[:, 0], X[:, 1], c=dd, zorder=10, s=3, cmap=cmap)
+    ax[ix].grid()
+    this_traj = int(dsf.isel(traj=np.argmax(dd))['trajectory'].values[np.newaxis][0])
+    ax[ix].plot(ds.where(ds['trajectory'] == this_traj, drop=True).isel(traj=0)['lon'],
+                ds.where(ds['trajectory'] == this_traj, drop=True).isel(traj=0)['lat'], 'r',
+                zorder=13, label='Longest traj.')
+    this_traj = int(dsf.isel(traj=np.argmin(dd))['trajectory'].values[np.newaxis][0])
+    ax[ix].plot(ds.where(ds['trajectory'] == this_traj, drop=True).isel(traj=0)['lon'],
+                ds.where(ds['trajectory'] == this_traj, drop=True).isel(traj=0)['lat'], 'b',
+                zorder=13, label='Shortest traj.')
+    ax[ix].legend()
+    ax[ix].set_title('Trajectory lengths')
+
+    ix += 1
+    ax[ix].plot(bin_edges0[0:-1], hist0, label='Initial (%i peak)' % len(peaks0), color='gray')
+    ax[ix].plot(bin_edges[0:-1], hist, label='Final (%i peak)' % len(peaks), color='lightblue')
+    ax[ix].plot(bin_edges[peaks], hist[peaks], "x", label='Peaks')
+    ax[ix].legend()
+    ax[ix].grid()
+    ax[ix].set_xlabel('Pairwise distance [degree]')
+    line1 = "Staggering: %0.4f" % staggering
+    line2 = "Overlapping: %0.4f" % overlapping
+    line3 = "Score: %0.4f" % (overlapping / len(peaks))
+    ax[ix].set_title("Pairwise distances PDF: [%s / %s / %s]" % (line1, line2, line3))
+
+    line0 = "VirtualFleet recovery prediction for WMO %i: starting from cycle %i, predicting cycle %i" % \
+            (this_args.wmo, this_args.cyc - 1, this_args.cyc)
+    line1 = "Prediction made with %s and %i virtual floats" % (this_args.velocity, this_args.nfloats)
+    fig.suptitle("%s\n%s" % (line0, line1), fontsize=15)
+    plt.tight_layout()
     if this_args.save_figure:
         figfile = 'vfrecov_metrics01_%s_%i' % (this_args.velocity, this_args.nfloats)
         figpath = os.path.sep.join([this_args.output, str(this_args.wmo), str(this_args.cyc)])

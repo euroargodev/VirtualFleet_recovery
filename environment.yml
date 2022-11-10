@@ -53,3 +53,4 @@ dependencies:
     - line-profiler
     - Flask
     - flask-swagger
+    - geojson
