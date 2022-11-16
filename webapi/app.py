@@ -4,7 +4,8 @@
 # export FLASK_DEBUG=True
 # export FLASK_APP=app.py
 # flask run
-# flask run --host=134.246.146.178
+# flask run --host=134.246.146.178 # Laptop
+# flask run --host=134.246.146.54 # Pacnet
 #
 # Created by gmaze on 19/10/2022
 #
@@ -21,6 +22,7 @@ Get a webpage with figures or link to make predictions:
     http://134.246.146.178:5000/results/<WMO>/<CYC>
 
 """
+
 import os
 import pandas as pd
 import sys
@@ -32,10 +34,11 @@ from flask import render_template
 from flask_swagger import swagger
 
 from markupsafe import escape
+import argopy
 
 sys.path.insert(0, "../cli")
 from recovery_prediction import predictor
-import argopy
+
 from geojson import Feature, Point, FeatureCollection
 from string import Formatter
 
@@ -357,7 +360,7 @@ class HtmlHelper:
         shift = " " * self.indent
         return "%s%s" % (shift, txt)
 
-    def cblock(self, name, attrs={}, content='') -> str:
+    def cblock(self, name, attrs={}, content=''):
         if len(attrs) > 0:
             html = "<%s %s>%s</%s>" % (
             name, " ".join(["%s=\"%s\"" % (key, attrs[key]) for key in attrs.keys() if attrs[key] != ""]), content,
@@ -366,7 +369,7 @@ class HtmlHelper:
             html = "<%s>%s</%s>" % (name, content, name)
         return self.__indent(html)
 
-    def block(self, name, attrs={}) -> str:
+    def block(self, name, attrs={}):
         if len(attrs) > 0:
             html = "<%s %s>" % (
             name, " ".join(["%s=\"%s\"" % (key, attrs[key]) for key in attrs.keys() if attrs[key] != ""]))
