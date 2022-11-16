@@ -27,8 +27,6 @@ dependencies:
   - ipywidgets
   - graphviz
   - nodejs
-  - scikit-image
-  - scikit-learn
   - watermark
   - shapely
   - cartopy>=0.19.0

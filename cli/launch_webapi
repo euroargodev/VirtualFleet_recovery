@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+APIDIR="$SCRIPT_DIR/../webapi"
+APIDIR=$(python -c "import os,sys; print(os.path.realpath(sys.argv[1]))" $APIDIR)
+#echo $APIDIR
+
+POSITIONAL_ARGS=()
+WHERETO="local"
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -l|--local)
+      WHERETO="local"
+      shift # past argument
+      shift # past value
+      ;;
+    -p|--pacnet)
+      WHERETO="pacnet"
+      shift # past argument
+      shift # past value
+      ;;
+    -*|--*)
+      echo "Unknown option $1"
+      exit 1
+      ;;
+  esac
+done
+#echo $WHERETO
+
+IP=$(ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1')
+#echo $IP
+case $WHERETO in
+  "pacnet")
+    IP="134.246.146.54"
+    ;;
+
+esac
+
+#echo $IP
+echo "Launching VirtualFleet-Recovery webapi with Flask on $WHERETO at $IP ..."
+
+export FLASK_DEBUG=True
+export FLASK_APP=app.py
+cd $APIDIR
+flask run --host=$IP
+
+exit 0
