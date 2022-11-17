@@ -1255,7 +1255,7 @@ def analyse_pairwise_distances(this_args, data):
     # Trajectory file:
     workdir = os.path.sep.join([this_args.output, str(this_args.wmo), str(this_args.cyc)])
     ncfile = os.path.sep.join([workdir,
-                               'trajectories_%s_%i.nc' % (this_args.velocity, this_args.nfloats)])
+                               'trajectories_%s_%i.zarr' % (this_args.velocity, this_args.nfloats)])
 
     if not os.path.exists(ncfile):
         print('Cannot analyse pairwise distances because the trajectory file cannot be found at: %s' % ncfile)
@@ -1435,7 +1435,7 @@ def setup_args():
     parser.add_argument("cyc", help="Cycle number to predict", type=int)
     parser.add_argument("--nfloats", help="Number of virtual floats used to make the prediction, default: 2000",
                         type=int, default=2000)
-    parser.add_argument("--output", help="Output folder, default: ./vfrecov/<WMO>/<CYC>", default=None)
+    parser.add_argument("--output", help="Output folder, default: webAPI internal folder", default=None)
     parser.add_argument("--velocity", help="Velocity field to use. Possible values are: 'ARMOR3D' (default), 'GLORYS'",
                         default='ARMOR3D')
     parser.add_argument("--save_figure", help="Should we save figure on file or not ? Default: True", default=True)
@@ -1479,7 +1479,7 @@ def predictor(args):
 
     # Set-up the working directory:
     if not args.output:
-        WORKDIR = os.path.sep.join(["..", "webapi", "static", str(WMO), str(CYC[1])])
+        WORKDIR = os.path.sep.join(["..", "webapi", "static", "data", str(WMO), str(CYC[1])])
     else:
         WORKDIR = os.path.sep.join([args.output, str(WMO), str(CYC[1])])
     WORKDIR = os.path.abspath(WORKDIR)
@@ -1570,7 +1570,7 @@ def predictor(args):
                     step=timedelta(minutes=5),
                     record=timedelta(minutes=30),
                     output_folder=WORKDIR if args.save_sim else None,
-                    output_file='trajectories_%s_%i.nc' % (VEL_NAME, args.nfloats),
+                    output_file='trajectories_%s_%i.zarr' % (VEL_NAME, args.nfloats),
                     verbose_progress=not args.json,
                     )
 
