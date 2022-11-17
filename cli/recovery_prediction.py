@@ -44,6 +44,7 @@ logging.getLogger("matplotlib").setLevel(logging.ERROR)
 logging.getLogger("parso").setLevel(logging.ERROR)
 DEBUGFORMATTER = '%(asctime)s [%(levelname)s] [%(name)s] %(filename)s:%(lineno)d: %(message)s'
 
+
 PREF = "\033["
 RESET = f"{PREF}0m"
 class COLORS:
@@ -55,6 +56,7 @@ class COLORS:
     magenta = "35m"
     cyan = "36m"
     white = "37m"
+
 
 def puts(text, color=None, bold=False, file=sys.stdout):
     """Alternative to print, uses no color by default but accepts any color from the COLORS class.
@@ -1485,6 +1487,7 @@ def predictor(args):
     WORKDIR = os.path.abspath(WORKDIR)
     if not os.path.exists(WORKDIR):
         os.makedirs(WORKDIR)
+    args.output = WORKDIR
 
     if not args.json:
         puts("\nData will be saved in:")
@@ -1492,7 +1495,7 @@ def predictor(args):
 
     # Set-up logger
     logging.basicConfig(
-        # level=logging.WARNING,
+        level=logging.WARNING,
         format=DEBUGFORMATTER,
         datefmt='%m/%d/%Y %I:%M:%S %p',
         handlers=[logging.FileHandler(os.path.join(WORKDIR, "vfpred.log"), mode='w')]
