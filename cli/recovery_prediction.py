@@ -44,6 +44,7 @@ logging.getLogger("matplotlib").setLevel(logging.ERROR)
 logging.getLogger("parso").setLevel(logging.ERROR)
 DEBUGFORMATTER = '%(asctime)s [%(levelname)s] [%(name)s] %(filename)s:%(lineno)d: %(message)s'
 
+log = logging.getLogger("virtualfleet.recovery")
 
 PREF = "\033["
 RESET = f"{PREF}0m"
@@ -1255,12 +1256,15 @@ def analyse_pairwise_distances(this_args, data):
         return {'pdf': hist, 'bins': bin_edges[0:-1], 'Npeaks': len(peaks)}
 
     # Trajectory file:
-    workdir = os.path.sep.join([this_args.output, str(this_args.wmo), str(this_args.cyc)])
+    # workdir = os.path.sep.join([this_args.output, str(this_args.wmo), str(this_args.cyc)])
+    workdir = this_args.output
     ncfile = os.path.sep.join([workdir,
                                'trajectories_%s_%i.zarr' % (this_args.velocity, this_args.nfloats)])
 
     if not os.path.exists(ncfile):
-        print('Cannot analyse pairwise distances because the trajectory file cannot be found at: %s' % ncfile)
+        msg = 'Cannot analyse pairwise distances because the trajectory file cannot be found at: %s' % ncfile
+        log.warning(msg)
+        print(msg)
         return None
 
     # Open trajectory file:
