@@ -76,7 +76,19 @@
       }
 
       #map {
-        height: 800px;
+        height: 700px;
+      }
+
+      .legend {
+    line-height: 18px;
+    color: #555;
+      }
+      .legend i {
+          width: 18px;
+          height: 18px;
+          float: left;
+          margin-right: 8px;
+          opacity: 0.7;
       }
 
     </style>
@@ -87,7 +99,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.1/dist/jquery.min.js" crossorigin=""/></script>
     <script>
-      jsdata = "{{jsdata}}";
+      jsdata = "{{ jsdata|safe }}";
     </script>
   </head>
   <body>

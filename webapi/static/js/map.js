@@ -200,6 +200,12 @@ function getpopupcontent(data){
     return html
 }
 
+function circle_props(feature){
+    dist = 1000*feature.properties.prediction_location_error.distance.value;
+    transit = Math.round(100 * feature.properties.prediction_metrics.transit.value)/100;
+    return {radius: dist/2, color: '#'+getcolorfor(transit), properties: feature.properties}
+}
+
 // Add default markers where we have predictions:
 var floatmarkers = L.layerGroup();
 var floatcircles = L.layerGroup();
@@ -226,25 +232,37 @@ $.getJSON(jsdata, function(data) {
 //         LON.push(this_feature.geometry.coordinates[1])
 //         LAT.push(this_feature.geometry.coordinates[0])
 
-        radius = 1000*this_feature.properties.prediction_location_error.distance.value;
-        transit = Math.round(100 * this_feature.properties.prediction_metrics.transit.value)/100;
-        circle = L.circle([this_feature.geometry.coordinates[1], this_feature.geometry.coordinates[0]], {radius: radius, color: '#'+getcolorfor(transit), properties: this_feature.properties});
+        circle = L.circle([this_feature.geometry.coordinates[1], this_feature.geometry.coordinates[0]], circle_props(this_feature));
         circle.bindPopup(function (layer) {
             var props = layer.options.properties;
-//             var value = Math.round(props.prediction_metrics.transit.value * 100) / 100
             var html = getpopupcontent(props);
             return html
-//             return "Transit:" + props.prediction_metrics.transit.value;
         }, {minWidth : 560});
         circle.addTo(floatcircles);
     }
 }).done(function() {
 //     LONmean = LON.reduce((a, b) => a+b, 0)/LON.length;
 //     LATmean = LAT.reduce((a, b) => a+b, 0)/LAT.length;
-//     map.setView([LATmean, LONmean], 2);
+//     map.setView([0, 180], 2);
     var bounds = new L.LatLngBounds(coords);
     map.fitBounds(bounds);
     $("#Npoints").text(Npoints + ' predictions');
 })
 // floatmarkers.addTo(map);
 floatcircles.addTo(map);
+// L.circle([48.41, -4.47], {radius: 10*1000}).addTo(map); # Brest circle for reference
+
+var legend = L.control({position: 'bottomright'});
+legend.onAdd = function (map) {
+    var div = L.DomUtil.create('div', 'info legend'),
+        grades = [0, 1, 2, 3, 4],
+        labels = [];
+    // loop through our density intervals and generate a label with a colored square for each interval
+    for (var i = 0; i < grades.length; i++) {
+        div.innerHTML +=
+            '<i style="background: #' + getcolorfor(grades[i]) + '"></i> ' +
+            grades[i] + (grades[i + 1] ? '&ndash;' + grades[i + 1] + ' hours <br>' : '+');
+    }
+    return div;
+};
+legend.addTo(map);

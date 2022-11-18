@@ -194,7 +194,7 @@ def simulation_file_url(this_args, filename, safe=False):
         if os.path.lexists(local_file):
             return url
         else:
-            print("%s not found" % local_file)
+            # print("%s not found" % local_file)
             return None
     return url
 
@@ -593,7 +593,7 @@ def index(wmo, cyc):
         return html
 
     else:
-        return redirect(url_for('results', wmo=args.wmo, cyc=args.cyc, nfloats=args.nfloats, velocity=args.velocity))
+        return redirect(url_for('.results', wmo=args.wmo, cyc=args.cyc, nfloats=args.nfloats, velocity=args.velocity))
 
 
 @app.route('/recap', defaults={'wmo': None}, methods=['GET', 'POST'])
@@ -642,8 +642,8 @@ def recap(wmo):
                      'NFLOATS': args.nfloats,
                      'file_number': len(slist),
                      'app_url': request.url_root,
-                     'url_recap': url_for("recap", wmo=args.wmo, nfloats=args.nfloats, velocity=args.velocity),
-                     'url_map': url_for("map", wmo=args.wmo, nfloats=args.nfloats, velocity=args.velocity),
+                     'url_recap': url_for(".recap", wmo=args.wmo, nfloats=args.nfloats, velocity=args.velocity),
+                     'url_map': url_for(".map", wmo=args.wmo, nfloats=args.nfloats, velocity=args.velocity),
                      'WMO': args.wmo if args.wmo > 0 else None,
                      'ea_float': argopy.dashboard(argopy.utilities.check_wmo(args.wmo), url_only=True) if args.wmo > 0 else None,
                      }
@@ -667,9 +667,9 @@ def results(wmo, cyc):
         'VELOCITY': args.velocity,
         'NFLOATS': args.nfloats,
         'url': request.base_url,
-        'url_predict': url_for("predict", wmo=args.wmo, cyc=args.cyc, nfloats=args.nfloats, velocity=args.velocity),
-        'url_recap': url_for("recap", wmo=args.wmo, nfloats=args.nfloats, velocity=args.velocity),
-        'url_map': url_for("map", wmo=args.wmo, nfloats=args.nfloats, velocity=args.velocity),
+        'url_predict': url_for(".predict", wmo=args.wmo, cyc=args.cyc, nfloats=args.nfloats, velocity=args.velocity),
+        'url_recap': url_for(".recap", wmo=args.wmo, nfloats=args.nfloats, velocity=args.velocity),
+        'url_map': url_for(".map", wmo=args.wmo, nfloats=args.nfloats, velocity=args.velocity),
         'prediction_src': None,
         'metric_src': None,
         'velocity_src': None,
@@ -688,7 +688,7 @@ def results(wmo, cyc):
     # print(jsdata)
 
     if jsdata is not None:
-        template_data['data_js'] = url_for('predict', **args.amap)
+        template_data['data_js'] = url_for('.predict', **args.amap)
 
         data = [
         {'title': 'Prediction',
@@ -764,7 +764,7 @@ def results_deprec(wmo, cyc):
         'WMO': args.wmo,
         'CYC': args.cyc,
         'url': request.base_url,
-        'url_predict': url_for("predict", wmo=args.wmo, cyc=args.cyc, nfloats=args.nfloats, velocity=args.velocity),
+        'url_predict': url_for(".predict", wmo=args.wmo, cyc=args.cyc, nfloats=args.nfloats, velocity=args.velocity),
         'prediction_src': None,
         'metric_src': None,
         'velocity_src': None,
@@ -781,7 +781,7 @@ def results_deprec(wmo, cyc):
     # print(jsdata)
 
     if jsdata is not None:
-        template_data['data_js'] = url_for('predict', **args.amap)
+        template_data['data_js'] = url_for('.predict', **args.amap)
 
         template_data['prediction_src'] = jsdata['meta']['figures']['predictions']
         template_data['prediction_recap_src'] = jsdata['meta']['figures']['predictions_recap']
@@ -810,7 +810,7 @@ def results_deprec(wmo, cyc):
 def data_old(wmo, cyc):
     # Parse request parameters:
     args = parse_args(wmo, cyc)
-    return redirect(url_for('predict', wmo=args.wmo, cyc=args.cyc, nfloats=args.nfloats, velocity=args.velocity))
+    return redirect(url_for('.predict', wmo=args.wmo, cyc=args.cyc, nfloats=args.nfloats, velocity=args.velocity))
 
 
 @app.route('/data', defaults={'wmo': None}, methods=['GET', 'POST'])
@@ -819,9 +819,11 @@ def data(wmo):
     # Parse request parameters:
     wmo = wmo if wmo is not None else 0
     args = parse_args(wmo, 0)
+    # print('call to data/', args.amap)
 
     src = os.path.abspath(os.path.sep.join([".", "static"]))
     filepattern = "prediction_%s_%i.json" % (args.velocity, args.nfloats)
+    # print(filepattern)
     if wmo != 0:
         flist = sorted(glob.glob(os.path.sep.join([src, "data", str(wmo), "*", filepattern])))
     else:
@@ -831,14 +833,18 @@ def data(wmo):
         f = filename.replace(src, "")
         url = url_for('static', filename=f)
         url = os.path.normpath(url)
+        # print(filename, f, url)
         if url is not None:
             slist.append(url)
+    # print(filepattern, len(slist))
 
     feature_list = []
-    for filename in flist:
+    for filename in slist:
         this_wmo = filename.split(os.path.sep)[-3]
         this_cyc = filename.split(os.path.sep)[-2]
-        jsdata = load_data_for(Args(this_wmo, this_cyc, nfloats=args.nfloats, velocity=args.velocity))
+        this_args = Args(this_wmo, this_cyc, nfloats=args.nfloats, velocity=args.velocity)
+        # print(args.amap, this_args.amap)
+        jsdata = load_data_for(this_args)
         f = Feature(geometry=Point(
             (jsdata['prediction_location']['longitude']['value'], jsdata['prediction_location']['latitude']['value'])),
                     properties=jsdata)
@@ -853,6 +859,8 @@ def map(wmo):
     # Parse request parameters:
     wmo = wmo if wmo is not None else 0
     args = parse_args(wmo, 0)
+    # print('call to /map', args.amap)
+    # print(url_for('data', wmo=args.wmo if args.wmo != 0 else None, nfloats=args.nfloats, velocity=args.velocity))
 
     template_data = {'css': url_for("static", filename="css"),
                      'js': url_for("static", filename="js"),
@@ -860,13 +868,13 @@ def map(wmo):
                      'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
                      'cdn_prism': 'cdn.jsdelivr.net/npm/prismjs@1.29.0',
                      'app_url': request.url_root,
-                     'url_recap': url_for("recap", wmo=args.wmo, nfloats=args.nfloats, velocity=args.velocity),
-                     'url_map': url_for("map", wmo=args.wmo, nfloats=args.nfloats, velocity=args.velocity),
+                     'url_recap': url_for(".recap", wmo=args.wmo, nfloats=args.nfloats, velocity=args.velocity),
+                     'url_map': url_for(".map", wmo=args.wmo, nfloats=args.nfloats, velocity=args.velocity),
                      'WMO': args.wmo if args.wmo != 0 else None,
                      'CYC': args.cyc if args.wmo != 0 else None,
                      'VELOCITY': args.velocity,
                      'NFLOATS': args.nfloats,
-                     'jsdata': url_for('data', wmo=args.wmo if args.wmo != 0 else None,
+                     'jsdata': url_for('.data', wmo=args.wmo if args.wmo != 0 else None,
                                        nfloats=args.nfloats, velocity=args.velocity)
                      }
     # print(jsonify(template_data))
