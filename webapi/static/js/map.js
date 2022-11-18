@@ -146,11 +146,16 @@ function getcolorfor(value){
     // var pal_for_errors = palette(['cb-Blues'], 5, 1);
     var n = 5
     var pal_for_errors = palette(['tol-sq'], n, 1);
-    ic = n-4
-    if (value < 4) {ic=n-3};
-    if (value < 3) {ic=n-2};
-    if (value < 2) {ic=n-1};
-    if (value < 1) {ic=n-0};
+//     ic = n-4
+//     if (value < 4) {ic=n-3};
+//     if (value < 3) {ic=n-2};
+//     if (value < 2) {ic=n-1};
+//     if (value < 1) {ic=n-0};
+    ic = n-1
+    if (value < 4) {ic=n-2};
+    if (value < 3) {ic=n-3};
+    if (value < 2) {ic=n-4};
+    if (value < 1) {ic=0};
     return pal_for_errors[ic]
 }
 
@@ -159,16 +164,39 @@ function getpopupcontent(data){
     var Distance = Math.round(100*data['prediction_location_error']['distance']['value'])/100;
     var Time = Math.round(100*data['prediction_location_error']['time']['value'])/100;
     var Transit = Math.round(100*data['prediction_metrics']['transit']['value'])/100;
+
     html = '<div class="card">'
-    html += '<div class="card-header">Error</div>'
+
+    html += '<div class="card-header">'
+    html += '   <ul class="nav nav-tabs card-header-tabs">'
+    html += '       <li class="nav-item">'
+    html += '           <a class="nav-link active" aria-current="true" href="#">Error</a>'
+    html += '       </li>'
+    html += '       <li class="nav-item">'
+    html += '           <a class="nav-link" href="'+data['meta']['api']['cycle_page']+'">Check prediction details</a>'
+    html += '       </li>'
+    html += '       <li class="nav-item">'
+    html += '           <a class="nav-link" href="'+data['meta']['api']['float_page']+'">Swipe this float cycles predictions</a>'
+    html += '       </li>'
+    html += '   </ul>'
+    html += '</div>'
+
+//     html += '<img src="'+data['meta']['figures']['predictions_recap']+'" class="card-img-top" alt="">'
+    html += '<img src="'+data['meta']['figures']['predictions']+'" class="card-img-top" alt="">'
+
     html += '<div class="card-body">'
-    html += '<p class="card-text">Bearing: <span class="text-muted fw-light">'+Bearing+' '+data['prediction_location_error']['bearing']['unit']+'</span>'
-    html += '<br>Distance: <span class="text-muted fw-light">'+Distance+' '+data['prediction_location_error']['distance']['unit']+'</span>'
-    html += '<br>Time: <span class="text-muted fw-light">'+Time+' '+data['prediction_location_error']['time']['unit']+'</span>'
-    html += '<br>Transit: <span class="text-muted fw-light">'+Transit+' '+data['prediction_metrics']['transit']['unit']+'</span></p>'
+    html += '   <p class="card-text">Bearing: <span class="text-muted fw-light">'+Bearing+' '+data['prediction_location_error']['bearing']['unit']+'</span>'
+    html += '   <br>Distance: <span class="text-muted fw-light">'+Distance+' '+data['prediction_location_error']['distance']['unit']+'</span>'
+    html += '   <br>Time: <span class="text-muted fw-light">'+Time+' '+data['prediction_location_error']['time']['unit']+'</span>'
+    html += '   <br>Transit: <span class="text-muted fw-light">'+Transit+' '+data['prediction_metrics']['transit']['unit']+'</span></p>'
     html += '</div>'
+
+    html += '<div class="card-footer">'
+    html += '   <small class="text-muted">Computed in '+ data['meta']['Computation']['Wall-time']+' on '+data['meta']['Computation']['system']['hostname']+'</small>'
     html += '</div>'
+
     html += '</div>'
+
     return html
 }
 
@@ -178,9 +206,11 @@ var floatcircles = L.layerGroup();
 var LON = new Array();
 var LAT = new Array();
 var coords = new Array();
+var Npoints = 0
 $.getJSON(jsdata, function(data) {
     for (feature in data['features']) {
 //         console.log(data['features'][feature])
+        Npoints += 1
         var this_feature = data['features'][feature]
         marker = L.geoJSON(this_feature, {
 //             style: function (feature) {
@@ -205,9 +235,8 @@ $.getJSON(jsdata, function(data) {
             var html = getpopupcontent(props);
             return html
 //             return "Transit:" + props.prediction_metrics.transit.value;
-        });
+        }, {minWidth : 560});
         circle.addTo(floatcircles);
-
     }
 }).done(function() {
 //     LONmean = LON.reduce((a, b) => a+b, 0)/LON.length;
@@ -215,6 +244,7 @@ $.getJSON(jsdata, function(data) {
 //     map.setView([LATmean, LONmean], 2);
     var bounds = new L.LatLngBounds(coords);
     map.fitBounds(bounds);
+    $("#Npoints").text(Npoints + ' predictions');
 })
 // floatmarkers.addTo(map);
 floatcircles.addTo(map);

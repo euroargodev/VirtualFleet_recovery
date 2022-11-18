@@ -1112,7 +1112,7 @@ def predict_position(workdir, wmo, cyc, cfg, vel, vel_name, df_sim, df_plan, thi
 
 
 def analyse_pairwise_distances_old(this_args, data):
-    workdir = os.path.sep.join([this_args.output, str(this_args.wmo), str(this_args.cyc)])
+    workdir = this_args.output
 
     # Trajectory file:
     ncfile = os.path.sep.join([workdir,
@@ -1230,8 +1230,7 @@ def analyse_pairwise_distances_old(this_args, data):
     fig.suptitle("%s\n%s" % (line0, line1), fontsize=15)
     if this_args.save_figure:
         figfile = 'vfrecov_metrics01_%s_%i' % (this_args.velocity, this_args.nfloats)
-        figpath = os.path.sep.join([this_args.output, str(this_args.wmo), str(this_args.cyc)])
-        save_figurefile(fig, figfile, figpath)
+        save_figurefile(fig, figfile, workdir)
 
     # Save new data to json file:
     # jsfile = os.path.join(workdir, 'prediction_%s_%i.json' % (this_args.velocity, this_args.nfloats))
@@ -1413,8 +1412,7 @@ def analyse_pairwise_distances(this_args, data):
     plt.tight_layout()
     if this_args.save_figure:
         figfile = 'vfrecov_metrics01_%s_%i' % (this_args.velocity, this_args.nfloats)
-        figpath = os.path.sep.join([this_args.output, str(this_args.wmo), str(this_args.cyc)])
-        save_figurefile(fig, figfile, figpath)
+        save_figurefile(fig, figfile, workdir)
 
     # Save new data to json file:
     # jsfile = os.path.join(workdir, 'prediction_%s_%i.json' % (this_args.velocity, this_args.nfloats))

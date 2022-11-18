@@ -184,6 +184,8 @@ def simulation_file_url(this_args, filename, safe=False):
         url = url.replace("results/%i/%i//" % (this_args.wmo, this_args.cyc), "")
     elif 'test/' in url:
         url = url.replace("test/%i/%i//" % (this_args.wmo, this_args.cyc), "")
+    elif 'data/' in url:
+        url = url.replace("data//static/data/", "static/data/")
     # url = url.replace("//", "/")
     # print(url)
     if safe:
@@ -208,6 +210,10 @@ def complete_data_for(this_args, this_js):
                'positions': simulation_file_url(this_args, "vfrecov_positions_%s_%i.png" % (this_args.velocity, this_args.nfloats), safe=True),
                'predictions_recap': simulation_file_url(this_args, "vfrecov_predictions_recap_%s_%i.png" % (this_args.velocity, this_args.nfloats), safe=True)}
     this_js['meta']['figures'] = figlist
+    this_js['meta']['api'] = {'cycle_page': "".join([request.host_url[0:-1], url_for("index", wmo=this_args.wmo, cyc=this_args.cyc, nfloats=this_args.nfloats, velocity=this_args.velocity)]),
+                              'float_page': "".join([request.host_url[0:-1], url_for("recap", wmo=this_args.wmo, nfloats=this_args.nfloats, velocity=this_args.velocity)]),
+                              'float_map': "".join([request.host_url[0:-1], url_for("map", wmo=this_args.wmo, nfloats=this_args.nfloats, velocity=this_args.velocity)])}
+
     return this_js
 
 

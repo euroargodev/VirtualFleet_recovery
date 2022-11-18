@@ -97,7 +97,7 @@
     {% if WMO is not none %}
     <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3 fs-6" href="#">Float {{WMO}}</a>
     {% else %}
-    <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3 fs-6" href="#">?</a>
+    <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3 fs-6" href="#" id="Npoints">Loading ...</a>
     {% endif %}
     <button class="navbar-toggler position-absolute d-md-none collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#sidebarMenu" aria-controls="sidebarMenu" aria-expanded="false" aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"></span>
@@ -130,7 +130,7 @@
 
           <ul class="nav flex-column">
             <li class="nav-item">
-              <a class="nav-link disabled" href="{{data_js}}">
+              <a class="nav-link" href="{{jsdata}}">
                 <span data-feather="download" class="align-text-bottom"></span>
                 Download
               </a>
@@ -148,7 +148,11 @@
               </a>
             </li>
             <li class="nav-item">
+              {% if WMO is not none %}
               <a class="nav-link" href="{{url_recap}}">
+              {% else %}
+              <a class="nav-link disabled" href="{{url_recap}}">
+              {% endif %}
                 <span data-feather="list" class="align-text-bottom"></span>
                 Swipe all cycles
               </a>
@@ -224,9 +228,13 @@
 
       <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
 
-        <div class="justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-        <p>Color: Transit time from prediction to truth position (at 12kt)
-        <br>Size: Distance error</p>
+        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+            <h1 class="h2">Prediction errors</h1>
+        </div>
+
+        <div class="justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
+          <p>Marker color:<span class="text-muted fw-light"> Transit time (at 12kt) from predicted to truth positions, brown is larger than 4 hours, white is shorter than 1 hour.</span>
+        <br>Marker size:<span class="text-muted fw-light"> Distance error</span></p>
              <div id="map"></div>
         </div>
       </main>
