@@ -39,7 +39,7 @@ import argopy
 sys.path.insert(0, "../cli")
 from recovery_prediction import predictor
 
-from geojson import Feature, Point, FeatureCollection
+from geojson import Feature, Point, FeatureCollection, LineString
 from string import Formatter
 
 
@@ -186,6 +186,9 @@ def simulation_file_url(this_args, filename, safe=False):
         url = url.replace("test/%i/%i//" % (this_args.wmo, this_args.cyc), "")
     elif 'data/' in url:
         url = url.replace("data//static/data/", "static/data/")
+        # /data/6901925//static/data/6901925 > /static/data/6901925
+        url = url.replace("/data/%s//static/data/" % this_args.wmo, "/static/data/")
+        # url = url.replace("//static/data/", "")
     # url = url.replace("//", "/")
     # print(url)
     if safe:
@@ -573,6 +576,15 @@ def parse_args(wmo, cyc):
     return args
 
 
+def get_traj(wmo):
+    if wmo is not None:
+        df_float = argopy.utilities.get_coriolis_profile_id(wmo)
+        lat, lon = df_float['LATITUDE'].values, df_float['LONGITUDE'].values
+        return LineString([(x, y) for x, y in zip(lon, lat)])
+    else:
+        return None
+
+
 @app.route('/', defaults={'wmo': None, 'cyc': None}, methods=['GET', 'POST'])
 @app.route('/<int:wmo>/<int:cyc>', methods=['GET', 'POST'])
 def index(wmo, cyc):
@@ -657,6 +669,10 @@ def results(wmo, cyc):
     # Parse request parameters:
     args = parse_args(wmo, cyc)
 
+    df_float = argopy.utilities.get_coriolis_profile_id(wmo)
+    # if cyc not in df_float['CYCLE_NUMBER']:
+
+
     # Init some variables used in template
     template_data = {
         'css': url_for("static", filename="css"),
@@ -681,7 +697,15 @@ def results(wmo, cyc):
         'error_transit': None,
         'error_bearing': None,
         'error_dist': None,
+        'url_previous': url_for(".results", wmo=args.wmo, cyc=args.cyc-1, nfloats=args.nfloats, velocity=args.velocity),
+        'url_next': url_for(".results", wmo=args.wmo, cyc=args.cyc + 1, nfloats=args.nfloats, velocity=args.velocity),
     }
+
+    if args.cyc == 0:
+        template_data['url_previous'] = None
+
+    if args.cyc == df_float['CYCLE_NUMBER'].max():
+        template_data['url_next'] = None
 
     # Load data for this set-up:
     jsdata = load_data_for(args)
@@ -724,11 +748,12 @@ def results(wmo, cyc):
         template_data['computation_platform'] = "%s (%s)" % (jsdata['meta']['Computation']['system']['platform'],
                                                              jsdata['meta']['Computation']['system']['architecture'])
 
-    template_data['ea_float'] = argopy.dashboard(argopy.utilities.check_wmo(args.wmo), url_only=True)
-    template_data['ea_profile'] = argopy.dashboard(argopy.utilities.check_wmo(args.wmo),
-                                                   argopy.utilities.check_cyc(args.cyc), url_only=True)
+        template_data['ea_profile'] = argopy.dashboard(argopy.utilities.check_wmo(args.wmo),
+                                                       argopy.utilities.check_cyc(args.cyc), url_only=True)
 
-    html = render_template('results2.html', **template_data)
+    template_data['ea_float'] = argopy.dashboard(argopy.utilities.check_wmo(args.wmo), url_only=True)
+
+    html = render_template('results3.html', **template_data)
     return html
 
 
@@ -850,6 +875,9 @@ def data(wmo):
                     properties=jsdata)
         feature_list.append(f)
 
+    # if len(feature_list) > 1000:
+    #     feature_list = feature_list[0:1000]
+
     return jsonify(FeatureCollection(feature_list))
 
 
@@ -875,7 +903,8 @@ def map(wmo):
                      'VELOCITY': args.velocity,
                      'NFLOATS': args.nfloats,
                      'jsdata': url_for('.data', wmo=args.wmo if args.wmo != 0 else None,
-                                       nfloats=args.nfloats, velocity=args.velocity)
+                                       nfloats=args.nfloats, velocity=args.velocity),
+                     'trajdata': get_traj(args.wmo if args.wmo != 0 else None)
                      }
     # print(jsonify(template_data))
 

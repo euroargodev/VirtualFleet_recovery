@@ -164,6 +164,10 @@ function getpopupcontent(data){
     var Distance = Math.round(100*data['prediction_location_error']['distance']['value'])/100;
     var Time = Math.round(100*data['prediction_location_error']['time']['value'])/100;
     var Transit = Math.round(100*data['prediction_metrics']['transit']['value'])/100;
+    var WMO = data['previous_profile']['wmo'];
+    var nfloats = data['meta']['Nfloats'];
+    var velocity = data['meta']['Velocity field'];
+    var wmo_mapurl = app_url+'map/'+WMO+"?nfloats="+nfloats+"&velocity="+velocity;
 
     html = '<div class="card">'
 
@@ -173,10 +177,13 @@ function getpopupcontent(data){
     html += '           <a class="nav-link active" aria-current="true" href="#">Error</a>'
     html += '       </li>'
     html += '       <li class="nav-item">'
-    html += '           <a class="nav-link" href="'+data['meta']['api']['cycle_page']+'">Check prediction details</a>'
+    html += '           <a class="nav-link" href="'+wmo_mapurl+'">Show only this float</a>'
     html += '       </li>'
     html += '       <li class="nav-item">'
-    html += '           <a class="nav-link" href="'+data['meta']['api']['float_page']+'">Swipe this float cycles predictions</a>'
+    html += '           <a class="nav-link" href="'+data['meta']['api']['cycle_page']+'">Cycle page</a>'
+    html += '       </li>'
+    html += '       <li class="nav-item">'
+    html += '           <a class="nav-link" href="'+data['meta']['api']['float_page']+'">Swipe this</a>'
     html += '       </li>'
     html += '   </ul>'
     html += '</div>'
@@ -203,11 +210,11 @@ function getpopupcontent(data){
 function circle_props(feature){
     dist = 1000*feature.properties.prediction_location_error.distance.value;
     transit = Math.round(100 * feature.properties.prediction_metrics.transit.value)/100;
-    return {radius: dist/2, color: '#'+getcolorfor(transit), properties: feature.properties}
+    return {radius: dist, color: '#'+getcolorfor(transit), properties: feature.properties}
 }
 
 // Add default markers where we have predictions:
-var floatmarkers = L.layerGroup();
+// var floatmarkers = L.layerGroup();
 var floatcircles = L.layerGroup();
 var LON = new Array();
 var LAT = new Array();
@@ -218,19 +225,20 @@ $.getJSON(jsdata, function(data) {
 //         console.log(data['features'][feature])
         Npoints += 1
         var this_feature = data['features'][feature]
-        marker = L.geoJSON(this_feature, {
-//             style: function (feature) {
-//                 return {color: feature.properties.color};
-//             },
-        }).bindPopup(function (layer) {
-//             console.log(layer.feature.properties.prediction_metrics.transit.value);
-            return "Transit:" + layer.feature.properties.prediction_metrics.transit.value;
-        })
+//         marker = L.geoJSON(this_feature, {
+// //             style: function (feature) {
+// //                 return {color: feature.properties.color};
+// //             },
+//         }).bindPopup(function (layer) {
+//             return "Transit:" + layer.feature.properties.prediction_metrics.transit.value;
+//         })
+//         marker = L.circle([this_feature.geometry.coordinates[1], this_feature.geometry.coordinates[0]], {radius:1, color: "#000"});
 //         marker.on('click', L.bind(SubMarkerClick, null, this_feature));
-        marker.addTo(floatmarkers);
+//         marker.addTo(floatmarkers);
+//         console.log(this_feature.geometry.coordinates[0])
+        LON.push(this_feature.geometry.coordinates[0])
+        LAT.push(this_feature.geometry.coordinates[1])
         coords.push([this_feature.geometry.coordinates[1], this_feature.geometry.coordinates[0]])
-//         LON.push(this_feature.geometry.coordinates[1])
-//         LAT.push(this_feature.geometry.coordinates[0])
 
         circle = L.circle([this_feature.geometry.coordinates[1], this_feature.geometry.coordinates[0]], circle_props(this_feature));
         circle.bindPopup(function (layer) {
@@ -241,11 +249,14 @@ $.getJSON(jsdata, function(data) {
         circle.addTo(floatcircles);
     }
 }).done(function() {
-//     LONmean = LON.reduce((a, b) => a+b, 0)/LON.length;
-//     LATmean = LAT.reduce((a, b) => a+b, 0)/LAT.length;
-//     map.setView([0, 180], 2);
     var bounds = new L.LatLngBounds(coords);
-    map.fitBounds(bounds);
+    if ( (bounds.getEast()-bounds.getWest() < 0.5) || (bounds.getNorth()-bounds.getSouth() < 0.5) ) {
+        var LONmean = LON.reduce((a, b) => a+b, 0)/LON.length;
+        var LATmean = LAT.reduce((a, b) => a+b, 0)/LAT.length;
+        map.setView([LATmean, LONmean], 5);
+    } else {
+        map.fitBounds(bounds);
+    };
     $("#Npoints").text(Npoints + ' predictions');
 })
 // floatmarkers.addTo(map);
@@ -266,3 +277,7 @@ legend.onAdd = function (map) {
     return div;
 };
 legend.addTo(map);
+
+if (trajdata != ''){
+    L.geoJSON(trajdata).addTo(map);
+}

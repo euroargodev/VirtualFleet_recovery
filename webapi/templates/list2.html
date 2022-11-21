@@ -5,7 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="">
     <meta name="author" content="Guillaume Maze and LOPS contributors">
-    <title>VF Recovery</title>
+    {% if WMO is not none %}
+    <title>VF Recovery | Swipe | {{WMO}}</title>
+    {% else %}
+    <title>VF Recovery | Swipe</title>
+    {% endif %}
 
     <link href="https://{{cdn_bootstrap}}/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-Zenh87qX5JnK2Jl0vWa8Ck2rdkQ2Bzep5IDxbcnCeuOxjzrPF/et3URy9Bv1WTRi" crossorigin="anonymous">
     <link href="https://{{cdn_prism}}/themes/prism.min.css" rel="stylesheet" />

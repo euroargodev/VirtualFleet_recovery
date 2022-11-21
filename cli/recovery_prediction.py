@@ -1246,7 +1246,7 @@ def analyse_pairwise_distances(this_args, data):
     from scipy.signal import find_peaks
 
     def get_hist_and_peaks(this_d):
-        x = d.flatten()
+        x = this_d.flatten()
         x = x[~np.isnan(x)]
         x = x[:, np.newaxis]
         hist, bin_edges = np.histogram(x, bins=100, density=1)
@@ -1361,6 +1361,9 @@ def analyse_pairwise_distances(this_args, data):
                         'comment': 'Overlapping area between PDF(initial_state) and PDF(final_state)'},
         'staggering': {'value': staggering, 'comment': 'Ratio of PDF(initial_state) vs PDF(final_state) ranges'},
         'score': {'value': overlapping / len(peaks), 'comment': 'overlapping/nPDFpeaks(final_state)'}}
+
+    if np.isinf(overlapping / len(peaks)):
+        raise ValueError("Can't compute the prediction score, infinity !")
 
     ratio = prediction_metrics['pairwise_distances']['final_state']['std'] / \
             prediction_metrics['pairwise_distances']['initial_state']['std']
