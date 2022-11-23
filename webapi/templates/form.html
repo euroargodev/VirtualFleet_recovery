@@ -96,7 +96,13 @@
 
   <header class="navbar navbar-dark sticky-top bg-dark flex-md-nowrap p-0 shadow">
     {% if WMO is not none %}
+
+    {% if CYC is not none %}
+    <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3 fs-6" href="#">Float {{WMO}} - Cycle {{CYC}}</a>
+    {% else %}
     <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3 fs-6" href="#">Float {{WMO}}</a>
+    {% endif %}
+
     {% else %}
     <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3 fs-6" href="#" id="Npoints">Prediction</a>
     {% endif %}
@@ -239,13 +245,21 @@
             <label class="form-label">Velocity field:</label>
 
             <div class="form-check">
-              <input class="form-check-input" type="radio" name="ARMOR3D" id="flexRadioDefault1" checked>
+              {% if VELOCITY == "ARMOR3D" %}
+              <input class="form-check-input" type="radio" name="VELOCITY" value="ARMOR3D" id="flexRadioDefault1" checked>
+              {% else %}
+              <input class="form-check-input" type="radio" name="VELOCITY" value="ARMOR3D" id="flexRadioDefault1">
+              {% endif %}
               <label class="form-check-label" for="flexRadioDefault1">
                 ARMOR3D
               </label>
             </div>
             <div class="form-check">
-              <input class="form-check-input" type="radio" name="GLORYS" id="flexRadioDefault2">
+              {% if VELOCITY == "GLORYS" %}
+              <input class="form-check-input" type="radio" name="VELOCITY" value="GLORYS" id="flexRadioDefault2" checked>
+              {% else %}
+              <input class="form-check-input" type="radio" name="VELOCITY" value="GLORYS" id="flexRadioDefault2">
+              {% endif %}
               <label class="form-check-label" for="flexRadioDefault2">
                 GLORYS (Forecast)
               </label>
@@ -266,7 +280,11 @@
               <input type="text" class="form-control" placeholder="WMO" aria-label="WMO" name="WMO" required>
               {% endif %}
               <span class="input-group-text">Cycle</span>
+              {% if CYC is not none %}
+              <input type="text" class="form-control" placeholder="CYC" aria-label="CYC" name="CYC" value="{{CYC}}" required>
+              {% else %}
               <input type="text" class="form-control" placeholder="CYC" aria-label="CYC" name="CYC" required>
+              {% endif %}
             </div>
           </div>
 
@@ -275,11 +293,11 @@
 
             <div class="input-group mb-3">
               <span class="input-group-text">Parking Depth</span>
-              <input type="text" class="form-control" placeholder="1000 db" aria-label="parking_depth" name="parking_depth">
+              <input type="text" class="form-control" placeholder="{{CFG_PARKING_DEPTH}} db" aria-label="parking_depth" name="cfg_parking_depth">
             </div>
             <div class="input-group mb-3">
-              <span class="input-group-text">Cycle frequency</span>
-              <input type="text" class="form-control" placeholder="240 hours" aria-label="cycle_frequency" name="cycle_frequency">
+              <span class="input-group-text">Cycle duration</span>
+              <input type="text" class="form-control" placeholder="{{CFG_CYCLE_DURATION}} hours" aria-label="cycle_duration" name="cfg_cycle_duration">
             </div>
 
           </div>

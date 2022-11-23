@@ -287,6 +287,18 @@
   <!--              <a href="#" class="btn btn-primary"></a>-->
               </div>
             </div>
+            {% if vfloatcfg is not none %}
+            <div class="card">
+              <div class="card-header">
+                VFloats configuration
+              </div>
+              <div class="card-body">
+                <p class="card-text">Parking Depth: <span class="text-muted fw-light">{{vfloatcfg.data.parking_depth.value}} [{{vfloatcfg.data.parking_depth.meta.unit}}]</span>
+                <br>Cycle period: <span class="text-muted fw-light">{{vfloatcfg.data.cycle_duration.value}} [{{vfloatcfg.data.cycle_duration.meta.unit}}]</span>
+                <br>Profile depth: <span class="text-muted fw-light">{{vfloatcfg.data.profile_depth.value}} [{{vfloatcfg.data.profile_depth.meta.unit}}]</span></p>
+              </div>
+            </div>
+            {% endif %}
             <div class="card">
               <div class="card-header">
                 Simulation
