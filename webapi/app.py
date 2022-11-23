@@ -699,6 +699,7 @@ def results(wmo, cyc):
         'error_dist': None,
         'url_previous': url_for(".results", wmo=args.wmo, cyc=args.cyc-1, nfloats=args.nfloats, velocity=args.velocity),
         'url_next': url_for(".results", wmo=args.wmo, cyc=args.cyc + 1, nfloats=args.nfloats, velocity=args.velocity),
+        'ea_profile': None,
     }
 
     if args.cyc == 0:
@@ -736,20 +737,20 @@ def results(wmo, cyc):
         else:
             template_data['prediction_score'] = "?"
 
-        template_data['error_bearing'] = "%0.1f" % jsdata['prediction_location_error']['bearing']['value']
-        template_data['error_bearing_unit'] = "%s" % jsdata['prediction_location_error']['bearing']['unit']
-        template_data['error_dist'] = "%0.1f" % jsdata['prediction_location_error']['distance']['value']
-        template_data['error_dist_unit'] = "%s" % jsdata['prediction_location_error']['distance']['unit']
-        template_data['error_time'] = strfdelta(pd.Timedelta(float(jsdata['prediction_location_error']['time']['value']), unit='h'))
-        # template_data['error_time_unit'] = "%s" % jsdata['prediction_location_error']['time']['unit']
-        template_data['error_transit'] = strfdelta(pd.Timedelta(float(jsdata['prediction_metrics']['transit']['value']), unit='h'))
+        if jsdata['prediction_location_error']['bearing']['value'] is not None:
+            template_data['error_bearing'] = "%0.1f" % jsdata['prediction_location_error']['bearing']['value']
+            template_data['error_bearing_unit'] = "%s" % jsdata['prediction_location_error']['bearing']['unit']
+            template_data['error_dist'] = "%0.1f" % jsdata['prediction_location_error']['distance']['value']
+            template_data['error_dist_unit'] = "%s" % jsdata['prediction_location_error']['distance']['unit']
+            template_data['error_time'] = strfdelta(pd.Timedelta(float(jsdata['prediction_location_error']['time']['value']), unit='h'))
+            # template_data['error_time_unit'] = "%s" % jsdata['prediction_location_error']['time']['unit']
+            template_data['error_transit'] = strfdelta(pd.Timedelta(float(jsdata['prediction_metrics']['transit']['value']), unit='h'))
+
+            template_data['ea_profile'] = jsdata['profile_to_predict']['url_profile']
 
         template_data['computation_walltime'] = strfdelta(pd.Timedelta(jsdata['meta']['Computation']['Wall-time']))
         template_data['computation_platform'] = "%s (%s)" % (jsdata['meta']['Computation']['system']['platform'],
                                                              jsdata['meta']['Computation']['system']['architecture'])
-
-        template_data['ea_profile'] = argopy.dashboard(argopy.utilities.check_wmo(args.wmo),
-                                                       argopy.utilities.check_cyc(args.cyc), url_only=True)
 
     template_data['ea_float'] = argopy.dashboard(argopy.utilities.check_wmo(args.wmo), url_only=True)
 

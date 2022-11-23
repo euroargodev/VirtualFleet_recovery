@@ -200,7 +200,11 @@
               </a>
             </li>
             <li class="nav-item">
+              {% if ea_profile is not none %}
               <a class="nav-link" href="{{ea_profile}}">
+              {% else %}
+              <a class="nav-link disabled" href="#">
+              {% endif %}
                 <span data-feather="anchor" class="align-text-bottom"></span>
                 Profile page
               </a>
@@ -253,7 +257,7 @@
             <div class="card text-bg-light">
 <!--              <div class="card-header">Prediction position</div>-->
               <div class="card-body">
-                <h5 class="card-title">Prediction position</h5>
+                <h5 class="card-title">Predicted position</h5>
                 <p class="card-text">Longitude: <span class="fw-light">{{prediction_lon}} {{prediction_lon_unit}}</span>
                 <br>Latitude: <span class="fw-light">{{prediction_lat}} {{prediction_lat_unit}}</span></p>
   <!--              <a href="#" class="btn btn-primary"></a>-->
