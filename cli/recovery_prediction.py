@@ -14,9 +14,11 @@
 # Capital variables are considered global and usable anywhere
 #
 # Created by gmaze on 06/10/2022
+import shutil
 
 import sys, os, glob
 import logging
+import shutil
 
 import numpy as np
 import pandas as pd
@@ -70,9 +72,12 @@ def puts(text, color=None, bold=False, file=sys.stdout):
     file
     """
     if color is None:
-        print(f'{PREF}{1 if bold else 0}m' + text + RESET, file=file)
+        txt = f'{PREF}{1 if bold else 0}m' + text + RESET
+        print(txt, file=file)
     else:
-        print(f'{PREF}{1 if bold else 0};{color}' + text + RESET, file=file)
+        txt = f'{PREF}{1 if bold else 0};{color}' + text + RESET
+        print(txt, file=file)
+        log.debug(txt)
 
 
 def haversine(lon1, lat1, lon2, lat2):
@@ -429,7 +434,7 @@ def get_velocity_field(a_box, a_date, n_days=1, output='.', dataset='ARMOR3D'):
     output
     dataset
     """
-    velocity_file = os.path.join(output, 'velocity_%s.nc' % dataset)
+    velocity_file = os.path.join(output, 'velocity_%s_%idays.nc' % (dataset, n_days))
     if not os.path.exists(velocity_file):
         # Load
         if dataset == 'ARMOR3D':
@@ -519,12 +524,13 @@ def map_add_profiles(this_ax, this_profile):
     this_ax
     """
     this_ax.plot(this_profile['longitude'][0], this_profile['latitude'][0], 'k.', markersize=10, markeredgecolor='w')
-    this_ax.plot(this_profile['longitude'][1], this_profile['latitude'][1], 'r.', markersize=10, markeredgecolor='w')
-    this_ax.arrow(this_profile['longitude'][0],
-             this_profile['latitude'][0],
-             this_profile['longitude'][1] - this_profile['longitude'][0],
-             this_profile['latitude'][1] - this_profile['latitude'][0],
-             length_includes_head=True, fc='k', ec='k', head_width=0.025, zorder=10)
+    if this_profile.shape[0] > 1:
+        this_ax.plot(this_profile['longitude'][1], this_profile['latitude'][1], 'r.', markersize=10, markeredgecolor='w')
+        this_ax.arrow(this_profile['longitude'][0],
+                 this_profile['latitude'][0],
+                 this_profile['longitude'][1] - this_profile['longitude'][0],
+                 this_profile['latitude'][1] - this_profile['latitude'][0],
+                 length_includes_head=True, fc='k', ec='k', head_width=0.025, zorder=10)
 
     return this_ax
 
@@ -589,15 +595,16 @@ def figure_velocity(box,
                                                 u=vel.var['U'], v=vel.var['V'], ax=ax, color='grey', alpha=0.5,
                                           add_guide=False)
 
+    txt = "starting from cycle %i, predicting cycle %i" % (cyc[0], cyc[1])
     ax.set_title(
-        "VirtualFleet recovery system for WMO %i: starting from cycle %i, predicting cycle %i\n"
-        "%s velocity snapshot\n"
+        "VirtualFleet recovery system for WMO %i: %s\n"
+        "%s velocity snapshot to illustrate the simulation domain\n"
         "Vectors: Velocity field at z=%0.2fm, t=%s" %
-        (wmo, cyc[0], cyc[1], vel_name, vel.field['depth'][0].values[np.newaxis][0],
+        (wmo, txt, vel_name, vel.field['depth'][0].values[np.newaxis][0],
         pd.to_datetime(vel.field['time'][0].values).strftime("%Y/%m/%d %H:%M")), fontsize=15)
+
     plt.tight_layout()
     if save_figure:
-        save_figurefile(fig, 'vfrecov_velocity', workdir)
         save_figurefile(fig, 'vfrecov_velocity_%s' % vel_name, workdir)
     return fig, ax
 
@@ -645,8 +652,7 @@ def figure_positions(vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name
     fig.suptitle("VirtualFleet recovery prediction for WMO %i: starting from cycle %i, predicting cycle %i" % (wmo, cyc[0], cyc[1]), fontsize=15)
     plt.tight_layout()
     if save_figure:
-        save_figurefile(fig, "vfrecov_positions", workdir)
-        save_figurefile(fig, "vfrecov_positions_%s_%i" % (vel_name, nfloats), workdir)
+        save_figurefile(fig, "vfrecov_positions_%s" % get_sim_suffix(), workdir)
     return fig, ax
 
 
@@ -734,15 +740,17 @@ def figure_predictions(weights, bin_X, bin_Y, bin_res, Hrel, recovery,
                      ypred-this_profile['latitude'][0],
                      length_includes_head=True, fc='k', ec='c', head_width=0.025, zorder=10)
         ax[ix].plot(xpred, ypred, 'k+', zorder=10)
+
         # distance_due_to_timelag
-        km2deg = 360 / (2 * np.pi * 6371)
-        ax[ix].add_patch(
-            mpatches.Circle(xy=[xpred, ypred],
-                            radius=recovery['prediction_metrics']['surface_drift']['value'] * km2deg,
-                            color='green',
-                            alpha=0.7,
-                            transform=ccrs.PlateCarree(),
-                            zorder=9))
+        if this_profile.shape[0] > 1:
+            km2deg = 360 / (2 * np.pi * 6371) # Approximation
+            ax[ix].add_patch(
+                mpatches.Circle(xy=[xpred, ypred],
+                                radius=recovery['prediction_metrics']['surface_drift']['value'] * km2deg,
+                                color='green',
+                                alpha=0.7,
+                                transform=ccrs.PlateCarree(),
+                                zorder=9))
 
         # Another
         # xave, yave = np.average(DF_SIM['longitude'].values, weights=weights), \
@@ -761,22 +769,25 @@ def figure_predictions(weights, bin_X, bin_Y, bin_res, Hrel, recovery,
 
     err = recovery['prediction_location_error']
     met = recovery['prediction_metrics']
-    # err_str = "Prediction vs Truth: [%0.2fkm, $%0.2f^o$]" % (err['distance'], err['bearing'])
-    err_str = "Prediction errors: [dist=%0.2f%s, bearing=$%0.2f^o$, time=%s]\n" \
-              "Distance error represents %s of transit at 12kt" % (err['distance']['value'],
-                                              err['distance']['unit'],
-                                              err['bearing']['value'],
-                                              strfdelta(pd.Timedelta(err['time']['value'], 'h'),
-                                                        "{hours}H{minutes:02d}"),
-                                              strfdelta(pd.Timedelta(met['transit']['value'], 'h'),
-                                                        "{hours}H{minutes:02d}"))
+    if this_profile.shape[0] > 1:
+        # err_str = "Prediction vs Truth: [%0.2fkm, $%0.2f^o$]" % (err['distance'], err['bearing'])
+        err_str = "Prediction errors: [dist=%0.2f%s, bearing=$%0.2f^o$, time=%s]\n" \
+                  "Distance error represents %s of transit at 12kt" % (err['distance']['value'],
+                                                  err['distance']['unit'],
+                                                  err['bearing']['value'],
+                                                  strfdelta(pd.Timedelta(err['time']['value'], 'h'),
+                                                            "{hours}H{minutes:02d}"),
+                                                  strfdelta(pd.Timedelta(met['transit']['value'], 'h'),
+                                                            "{hours}H{minutes:02d}"))
+    else:
+        err_str = ""
+
     fig.suptitle("VirtualFleet recovery prediction for WMO %i: \
     starting from cycle %i, predicting cycle %i\n%s\n%s" %
                  (wmo, cyc[0], cyc[1], err_str, "Prediction based on %s" % vel_name), fontsize=15)
     plt.tight_layout()
     if save_figure:
-        save_figurefile(fig, 'vfrecov_predictions', workdir)
-        save_figurefile(fig, 'vfrecov_predictions_%s_%i' % (vel_name, nfloats), workdir)
+        save_figurefile(fig, 'vfrecov_predictions_%s' % get_sim_suffix(), workdir)
     return fig, ax
 
 
@@ -834,15 +845,17 @@ def figure_predictions_recap(weights, bin_X, bin_Y, bin_res, Hrel, recovery,
                  ypred-this_profile['latitude'][0],
                  length_includes_head=True, fc='k', ec='r', head_width=0.025, zorder=10)
     ax[ix].plot(xpred, ypred, 'k+', zorder=10)
+
     # distance_due_to_timelag
-    km2deg = 360 / (2 * np.pi * 6371)
-    ax[ix].add_patch(
-        mpatches.Circle(xy=[xpred, ypred],
-                        radius=recovery['prediction_metrics']['surface_drift']['value'] * km2deg,
-                        color='green',
-                        alpha=0.4,
-                        transform=ccrs.PlateCarree(),
-                        zorder=9))
+    if this_profile.shape[0] > 1:
+        km2deg = 360 / (2 * np.pi * 6371) # Approximation
+        ax[ix].add_patch(
+            mpatches.Circle(xy=[xpred, ypred],
+                            radius=recovery['prediction_metrics']['surface_drift']['value'] * km2deg,
+                            color='green',
+                            alpha=0.4,
+                            transform=ccrs.PlateCarree(),
+                            zorder=9))
 
     plt.colorbar(sc, ax=ax[ix], shrink=0.5, label='Norm. gaussian distance to starting position')
 
@@ -851,22 +864,25 @@ def figure_predictions_recap(weights, bin_X, bin_Y, bin_res, Hrel, recovery,
 
     err = recovery['prediction_location_error']
     met = recovery['prediction_metrics']
-    # err_str = "Prediction vs Truth: [%0.2fkm, $%0.2f^o$]" % (err['distance'], err['bearing'])
-    err_str = "Prediction errors: [dist=%0.2f%s, bearing=$%0.2f^o$, time=%s], " \
-              "Distance error represents %s of transit at 12kt" % (err['distance']['value'],
-                                              err['distance']['unit'],
-                                              err['bearing']['value'],
-                                              strfdelta(pd.Timedelta(err['time']['value'], 'h'),
-                                                        "{hours}H{minutes:02d}"),
-                                              strfdelta(pd.Timedelta(met['transit']['value'], 'h'),
-                                                        "{hours}H{minutes:02d}"))
+    if this_profile.shape[0] > 1:
+        # err_str = "Prediction vs Truth: [%0.2fkm, $%0.2f^o$]" % (err['distance'], err['bearing'])
+        err_str = "Prediction errors: [dist=%0.2f%s, bearing=$%0.2f^o$, time=%s], " \
+                  "Distance error represents %s of transit at 12kt" % (err['distance']['value'],
+                                                  err['distance']['unit'],
+                                                  err['bearing']['value'],
+                                                  strfdelta(pd.Timedelta(err['time']['value'], 'h'),
+                                                            "{hours}H{minutes:02d}"),
+                                                  strfdelta(pd.Timedelta(met['transit']['value'], 'h'),
+                                                            "{hours}H{minutes:02d}"))
+    else:
+        err_str = ""
+
     fig.suptitle("VirtualFleet recovery prediction for WMO %i: \
 starting from cycle %i, predicting cycle %i\n%s\n%s\nFigure: %s" %
                  (wmo, cyc[0], cyc[1], err_str, "Prediction based on %s" % vel_name, title), fontsize=12)
     plt.tight_layout()
     if save_figure:
-        save_figurefile(fig, 'vfrecov_predictions_recap', workdir)
-        save_figurefile(fig, 'vfrecov_predictions_recap_%s_%i' % (vel_name, nfloats), workdir)
+        save_figurefile(fig, 'vfrecov_predictions_recap_%s' % get_sim_suffix(), workdir)
     return fig, ax
 
 
@@ -1053,31 +1069,37 @@ def predict_position(workdir, wmo, cyc, cfg, vel, vel_name, df_sim, df_plan, thi
     Hrel[Hrel == 0] = np.NaN
 
     # Compute error metrics of the predicted position:
-    dd = haversine(this_profile['longitude'][1], this_profile['latitude'][1], xpred, ypred)
-    dt = pd.Timedelta(recovery['prediction_location']['time']['value']-
-                      this_profile['date'].values[-1]).seconds/3600.
-    error = {'distance': {'value': dd,
+    error = {'distance': {'value': None,
                           'unit': 'km'},
-             'bearing': {'value': bearing(this_profile['longitude'][0],
-                                this_profile['latitude'][0],
-                                this_profile['longitude'][1],
-                                this_profile['latitude'][1]) - bearing(this_profile['longitude'][0],
-                                                                       this_profile['latitude'][0],
-                                                                       xpred,
-                                                                       ypred),
+             'bearing': {'value': None,
                          'unit': 'degree'},
-             'time': {'value': dt,
+             'time': {'value': None,
                       'unit': 'hour'}
              }
+    if this_profile.shape[0] > 1:
+        dd = haversine(this_profile['longitude'][1], this_profile['latitude'][1], xpred, ypred)
+        dt = pd.Timedelta(recovery['prediction_location']['time']['value']-
+                          this_profile['date'].values[-1]).seconds/3600.
+        error['distance']['value'] = dd
+        error['bearing']['value'] = bearing(this_profile['longitude'][0],
+                                    this_profile['latitude'][0],
+                                    this_profile['longitude'][1],
+                                    this_profile['latitude'][1]) - bearing(this_profile['longitude'][0],
+                                                                           this_profile['latitude'][0],
+                                                                           xpred,
+                                                                           ypred)
+        error['time']['value'] = dt
 
     # Compute more metrics to understand the prediction:
     metrics = {}
     # Compute a transit time to cover the distance error:
     # (assume a 12 kts boat speed with 1 kt = 1.852 km/h)
-    metrics['transit'] = {'value': pd.Timedelta(error['distance']['value'] / (12 * 1.852), 'h').seconds/3600.,
+    metrics['transit'] = {'value': None,
                           'unit': 'hour',
                           'comment': 'Boat transit time to cover the distance error '
                                      '(assume a 12 kts boat speed with 1 kt = 1.852 km/h)'}
+    if error['distance']['value'] is not None:
+        metrics['transit']['value'] = pd.Timedelta(error['distance']['value'] / (12 * 1.852), 'h').seconds/3600.
 
     # Compute the possible drift due to the time lag between the predicted profile timing and the expected one:
     dsc = vel.field.interp(
@@ -1087,14 +1109,16 @@ def predict_position(workdir, wmo, cyc, cfg, vel, vel_name, df_sim, df_plan, thi
          vel.dim['depth']: vel.field[{vel.dim['depth']: 0}][vel.dim['depth']].values[np.newaxis][0]}
     )
     velc = np.sqrt(dsc[vel.var['U']] ** 2 + dsc[vel.var['V']] ** 2).values[np.newaxis][0]
-    metrics['surface_drift'] = {'value': (error['time']['value']*3600 * velc / 1e3),
+    metrics['surface_drift'] = {'value': None,
                                 'unit': 'km',
                                 'surface_currents_speed': velc,
                                 'surface_currents_speed_unit': 'm/s',
                                 'comment': 'Drift by surface currents due to the float ascent time error '
                                            '(difference between simulated profile time and the observed one).'}
+    if error['time']['value'] is not None:
+        metrics['surface_drift']['value'] = (error['time']['value']*3600 * velc / 1e3)
 
-    #
+    # Add to the mean result dict:
     recovery['prediction_location_error'] = error
     recovery['prediction_metrics'] = metrics
 
@@ -1229,7 +1253,7 @@ def analyse_pairwise_distances_old(this_args, data):
     line1 = "Prediction made with %s and %i virtual floats" % (this_args.velocity, this_args.nfloats)
     fig.suptitle("%s\n%s" % (line0, line1), fontsize=15)
     if this_args.save_figure:
-        figfile = 'vfrecov_metrics01_%s_%i' % (this_args.velocity, this_args.nfloats)
+        figfile = 'vfrecov_metrics01_%s' % get_sim_suffix()
         save_figurefile(fig, figfile, workdir)
 
     # Save new data to json file:
@@ -1255,16 +1279,16 @@ def analyse_pairwise_distances(this_args, data):
         return {'pdf': hist, 'bins': bin_edges[0:-1], 'Npeaks': len(peaks)}
 
     # Trajectory file:
-    # workdir = os.path.sep.join([this_args.output, str(this_args.wmo), str(this_args.cyc)])
     workdir = this_args.output
     ncfile = os.path.sep.join([workdir,
-                               'trajectories_%s_%i.zarr' % (this_args.velocity, this_args.nfloats)])
-
+                               'trajectories_%s.zarr' % get_sim_suffix()])
     if not os.path.exists(ncfile):
-        msg = 'Cannot analyse pairwise distances because the trajectory file cannot be found at: %s' % ncfile
-        log.warning(msg)
-        print(msg)
-        return None
+        ncfile = os.path.sep.join([workdir,
+                                   'trajectories_%s.nc' % get_sim_suffix()])
+        if not os.path.exists(ncfile):
+            puts('Cannot analyse pairwise distances because the trajectory file cannot be found at: %s' % ncfile,
+                 color=COLORS.red)
+            return None
 
     # Open trajectory file:
     ds = xr.open_dataset(ncfile)
@@ -1456,6 +1480,17 @@ def setup_args():
     return parser
 
 
+def get_sim_suffix():
+    """Compose a string suffix for output files"""
+    # VEL_NAME, ARGS, CFG are global
+    # suf = '%s_%i' % (ARGS.velocity, ARGS.nfloats)
+    suf = 'VEL%s_NF%i_CYCDUR%i_PDPTH%i' % (ARGS.velocity,
+                                                ARGS.nfloats,
+                                                int(CFG.mission['cycle_duration']),
+                                                int(CFG.mission['parking_depth']))
+    return suf
+
+
 def predictor(args):
     """Prediction manager"""
     execution_start = time.time()
@@ -1503,10 +1538,10 @@ def predictor(args):
 
     # Set-up logger
     logging.basicConfig(
-        level=logging.WARNING,
+        level=logging.INFO,
         format=DEBUGFORMATTER,
         datefmt='%m/%d/%Y %I:%M:%S %p',
-        handlers=[logging.FileHandler(os.path.join(WORKDIR, "vfpred.log"), mode='w')]
+        handlers=[logging.FileHandler(os.path.join(WORKDIR, "vfpred.log"), mode='a')]
     )
 
     # Load these profiles information:
@@ -1521,10 +1556,15 @@ def predictor(args):
     if not args.json:
         puts("\nProfiles to work with:")
         puts(THIS_PROFILE.to_string(max_colwidth=15), color=COLORS.green)
+        if THIS_PROFILE.shape[0] == 1:
+            puts('\nReal-case scenario: True position unknown !', color=COLORS.yellow)
+        else:
+            puts('\nEvaluation scenario: historical position known', color=COLORS.yellow)
 
     # Load real float configuration at the previous cycle:
     if not args.json:
         puts("\nLoading float configuration...")
+    global CFG
     try:
         CFG = FloatConfiguration([WMO, CYC[0]])
     except:
@@ -1538,8 +1578,10 @@ def predictor(args):
     if args.cfg_cycle_duration is not None:
         CFG.update('cycle_duration', float(args.cfg_cycle_duration))
 
+    # Save virtual float configuration on file:
+    CFG.to_json(os.path.join(WORKDIR, "floats_configuration_%s.json" % get_sim_suffix()))
+
     if not args.json:
-        # puts(CFG.__repr__(), color=COLORS.green)
         puts("\n".join(["\t%s" % line for line in CFG.__repr__().split("\n")]), color=COLORS.green)
 
     # Get the cycling frequency (in days):
@@ -1584,11 +1626,17 @@ def predictor(args):
     # VirtualFleet, execute the simulation:
     if not args.json:
         puts("\nVirtualFleet, execute the simulation...")
+
+    # Remove traj file if exists:
+    output_path = os.path.join(WORKDIR, 'trajectories_%s.zarr' % get_sim_suffix())
+    if args.save_sim and os.path.exists(output_path):
+        shutil.rmtree(output_path)
+
     VFleet.simulate(duration=timedelta(hours=CYCLING_FREQUENCY*24+1),
                     step=timedelta(minutes=5),
                     record=timedelta(minutes=30),
                     output_folder=WORKDIR if args.save_sim else None,
-                    output_file='trajectories_%s_%i.zarr' % (VEL_NAME, args.nfloats),
+                    output_file='trajectories_%s.zarr' % get_sim_suffix(),
                     verbose_progress=not args.json,
                     )
 
@@ -1615,13 +1663,18 @@ def predictor(args):
     results['profile_to_predict'] = {'wmo': WMO,
                           'cycle_number': CYC[-1],
                           'url_float': argoplot.dashboard(WMO, url_only=True),
-                          'url_profile': argoplot.dashboard(WMO, CYC[-1], url_only=True),
-                          'location': {'longitude': {'value': THIS_PROFILE['longitude'].values[-1],
+                          'url_profile': None,
+                          'location': {'longitude': {'value': None,
                                                      'unit': 'degree East'},
-                                       'latitude': {'value': THIS_PROFILE['latitude'].values[-1],
+                                       'latitude': {'value': None,
                                                     'unit': 'degree North'},
-                                       'time': {'value': THIS_PROFILE['date'].values[-1]}}
+                                       'time': {'value': None}}
                                      }
+    if THIS_PROFILE.shape[0] > 1:
+        results['profile_to_predict']['url_profile'] = argoplot.dashboard(WMO, CYC[-1], url_only=True)
+        results['profile_to_predict']['location']['longitude']['value'] = THIS_PROFILE['longitude'].values[-1]
+        results['profile_to_predict']['location']['latitude']['value'] = THIS_PROFILE['latitude'].values[-1]
+        results['profile_to_predict']['location']['time']['value'] = THIS_PROFILE['date'].values[-1]
 
     results['previous_profile'] = {'wmo': WMO,
                           'cycle_number': CYC[0],
@@ -1645,17 +1698,18 @@ def predictor(args):
     }
     results['meta'] = {'Velocity field': VEL_NAME,
                        'Nfloats': args.nfloats,
-                       'Computation': computation
+                       'Computation': computation,
+                       'VFloats_config': CFG.to_json(),
                        }
 
     if not args.json:
         puts("\nPredictions:")
     results_js = json.dumps(results, indent=4, sort_keys=True, default=str)
 
-    with open(os.path.join(WORKDIR, 'prediction.json'), 'w', encoding='utf-8') as f:
-        json.dump(results, f, ensure_ascii=False, indent=4, default=str, sort_keys=True)
+    # with open(os.path.join(WORKDIR, 'prediction.json'), 'w', encoding='utf-8') as f:
+    #     json.dump(results, f, ensure_ascii=False, indent=4, default=str, sort_keys=True)
 
-    with open(os.path.join(WORKDIR, 'prediction_%s_%i.json' % (VEL_NAME, args.nfloats)), 'w', encoding='utf-8') as f:
+    with open(os.path.join(WORKDIR, 'prediction_%s.json' % get_sim_suffix()), 'w', encoding='utf-8') as f:
         json.dump(results, f, ensure_ascii=False, indent=4, default=str, sort_keys=True)
 
     if not args.json:
@@ -1663,9 +1717,6 @@ def predictor(args):
 
         puts("\nCheck results at:")
         puts("\t%s" % WORKDIR, color=COLORS.green)
-        puts("\t%s" % os.path.join(WORKDIR, 'prediction.json'), color=COLORS.yellow)
-        if args.save_figure:
-            puts("\t%s" % os.path.join(WORKDIR, 'vfrecov_predictions.png'), color=COLORS.yellow)
 
     if args.save_figure:
         # Restore Matplotlib backend
@@ -1674,9 +1725,14 @@ def predictor(args):
     return results_js
 
 if __name__ == '__main__':
+    # Globals
+    global ARGS
+
     # Read mandatory arguments from the command line
-    args = setup_args().parse_args()
-    js = predictor(args)
-    if args.json:
+    ARGS = setup_args().parse_args()
+    js = predictor(ARGS)
+    if ARGS.json:
         sys.stdout.write(js)
+
+    # Exit gracefully
     sys.exit(0)
