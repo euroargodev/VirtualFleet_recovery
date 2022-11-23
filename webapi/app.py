@@ -911,6 +911,64 @@ def map(wmo):
     html = render_template('map.html', **template_data)
     return html
 
+@app.route('/test', defaults={'wmo': None}, methods=['GET', 'POST'])
+@app.route('/test/<int:wmo>', methods=['GET', 'POST'])
+def test(wmo):
+    # Parse request parameters:
+    wmo = wmo if wmo is not None else 0
+    args = parse_args(wmo, 0)
+
+    template_data = {'css': url_for("static", filename="css"),
+                     'js': url_for("static", filename="js"),
+                     'dist': url_for("static", filename="dist"),
+                     'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
+                     'cdn_prism': 'cdn.jsdelivr.net/npm/prismjs@1.29.0',
+                     'app_url': request.url_root,
+                     'WMO': args.wmo if args.wmo != 0 else None,
+                     'CYC': args.cyc if args.wmo != 0 else None,
+                     'VELOCITY': args.velocity,
+                     'NFLOATS': args.nfloats,
+                     'jsdata': url_for('.data', wmo=args.wmo if args.wmo != 0 else None,
+                                       nfloats=args.nfloats, velocity=args.velocity),
+                     }
+
+    if request.method == 'POST':
+        print(request.form)
+
+        # form fields validation here:
+        # ...
+
+        float_cfg = {}
+        if request.form['parking_depth'] == '':
+            float_cfg['parking_depth'] = 1000.
+        else:
+            float_cfg['parking_depth'] = int(request.form['parking_depth'])
+
+        if request.form['cycle_frequency'] == '':
+            float_cfg['cycle_frequency'] = 240.
+        else:
+            float_cfg['cycle_frequency'] = int(request.form['cycle_frequency'])
+
+        # Trigger prediction
+        WMO = int(request.form['WMO'])
+        CYC = int(request.form['CYC'])
+        nfloats = int(request.form['nfloats'])
+        if request.form['ARMOR3D'] == 'on':
+            velocity = 'ARMOR3D'
+        else:
+            velocity = 'GLORYS'
+        args = Args(WMO, CYC, json=True)
+        args.nfloats = int(nfloats)
+        args.velocity = velocity
+        print(args.amap)
+        print(float_cfg)
+        url_predict = url_for(".predict", wmo=args.wmo, cyc=args.cyc, nfloats=args.nfloats, velocity=args.velocity)
+        return redirect(url_predict)
+
+    # else:
+    html = render_template('form.html', **template_data)
+    return html
+
 # @app.route("/spec")
 # def spec():
 #     base_path = os.path.join(app.root_path, 'docs')
