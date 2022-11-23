@@ -495,6 +495,14 @@ def get_EBOX(df_sim, df_plan, this_profile, s=1):
     return ebox
 
 
+def get_cfg_str(a_cfg):
+    txt = "VFloat configuration: (Parking depth: %i [db], Cycle duration: %i [hours])" % (
+        a_cfg.mission['parking_depth'],
+        a_cfg.mission['cycle_duration']
+    )
+    return txt
+
+
 def save_figurefile(this_fig, a_name, folder='.'):
     """
 
@@ -609,7 +617,7 @@ def figure_velocity(box,
     return fig, ax
 
 
-def figure_positions(vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name,
+def figure_positions(this_args, vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name,
                      dd=1, save_figure=False, workdir='.'):
     ebox = get_HBOX(df_sim, dd=dd)
     nfloats = df_plan.shape[0]
@@ -649,14 +657,15 @@ def figure_positions(vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name
         ax[ix] = map_add_profiles(ax[ix], this_profile)
         ax[ix].set_title(title)
 
-    fig.suptitle("VirtualFleet recovery prediction for WMO %i: starting from cycle %i, predicting cycle %i" % (wmo, cyc[0], cyc[1]), fontsize=15)
+    fig.suptitle("VirtualFleet recovery prediction for WMO %i: starting from cycle %i, predicting cycle %i\n%s" %
+                 (wmo, cyc[0], cyc[1], get_cfg_str(cfg)), fontsize=15)
     plt.tight_layout()
     if save_figure:
-        save_figurefile(fig, "vfrecov_positions_%s" % get_sim_suffix(), workdir)
+        save_figurefile(fig, "vfrecov_positions_%s" % get_sim_suffix(this_args, cfg), workdir)
     return fig, ax
 
 
-def figure_predictions(weights, bin_X, bin_Y, bin_res, Hrel, recovery,
+def figure_predictions(this_args, weights, bin_X, bin_Y, bin_res, Hrel, recovery,
                        vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name,
                        s=0.2, alpha=False, save_figure=False, workdir='.'):
     ebox = get_EBOX(df_sim, df_plan, this_profile, s=s)
@@ -783,15 +792,15 @@ def figure_predictions(weights, bin_X, bin_Y, bin_res, Hrel, recovery,
         err_str = ""
 
     fig.suptitle("VirtualFleet recovery prediction for WMO %i: \
-    starting from cycle %i, predicting cycle %i\n%s\n%s" %
-                 (wmo, cyc[0], cyc[1], err_str, "Prediction based on %s" % vel_name), fontsize=15)
+    starting from cycle %i, predicting cycle %i\n%s\n%s\n%s" %
+                 (wmo, cyc[0], cyc[1], get_cfg_str(cfg), err_str, "Prediction based on %s" % vel_name), fontsize=15)
     plt.tight_layout()
     if save_figure:
-        save_figurefile(fig, 'vfrecov_predictions_%s' % get_sim_suffix(), workdir)
+        save_figurefile(fig, 'vfrecov_predictions_%s' % get_sim_suffix(this_args, cfg), workdir)
     return fig, ax
 
 
-def figure_predictions_recap(weights, bin_X, bin_Y, bin_res, Hrel, recovery,
+def figure_predictions_recap(this_args, weights, bin_X, bin_Y, bin_res, Hrel, recovery,
                        vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name,
                        s=0.2, alpha=False, save_figure=False, workdir='.'):
     ebox = get_EBOX(df_sim, df_plan, this_profile, s=s)
@@ -878,11 +887,11 @@ def figure_predictions_recap(weights, bin_X, bin_Y, bin_res, Hrel, recovery,
         err_str = ""
 
     fig.suptitle("VirtualFleet recovery prediction for WMO %i: \
-starting from cycle %i, predicting cycle %i\n%s\n%s\nFigure: %s" %
-                 (wmo, cyc[0], cyc[1], err_str, "Prediction based on %s" % vel_name, title), fontsize=12)
+starting from cycle %i, predicting cycle %i\n%s\n%s\n%s\nFigure: %s" %
+                 (wmo, cyc[0], cyc[1], get_cfg_str(cfg), err_str, "Prediction based on %s" % vel_name, title), fontsize=12)
     plt.tight_layout()
     if save_figure:
-        save_figurefile(fig, 'vfrecov_predictions_recap_%s' % get_sim_suffix(), workdir)
+        save_figurefile(fig, 'vfrecov_predictions_recap_%s' % get_sim_suffix(this_args, cfg), workdir)
     return fig, ax
 
 
@@ -1025,7 +1034,7 @@ def postprocess_index(this_df, this_profile):
     return this_df
 
 
-def predict_position(workdir, wmo, cyc, cfg, vel, vel_name, df_sim, df_plan, this_profile,
+def predict_position(this_args, workdir, wmo, cyc, cfg, vel, vel_name, df_sim, df_plan, this_profile,
                      save_figure=False, quiet=False):
     """ Compute the position of the next profile for recovery
 
@@ -1123,11 +1132,11 @@ def predict_position(workdir, wmo, cyc, cfg, vel, vel_name, df_sim, df_plan, thi
     recovery['prediction_metrics'] = metrics
 
     # Final figures:
-    fig, ax = figure_predictions(weights, bin_x, bin_y, bin_res, Hrel, recovery,
+    fig, ax = figure_predictions(this_args, weights, bin_x, bin_y, bin_res, Hrel, recovery,
                                  vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name,
                                  save_figure=save_figure, workdir=workdir)
 
-    fig, ax = figure_predictions_recap(weights, bin_x, bin_y, bin_res, Hrel, recovery,
+    fig, ax = figure_predictions_recap(this_args, weights, bin_x, bin_y, bin_res, Hrel, recovery,
                                  vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name,
                                  save_figure=save_figure, workdir=workdir)
 
@@ -1135,138 +1144,7 @@ def predict_position(workdir, wmo, cyc, cfg, vel, vel_name, df_sim, df_plan, thi
     return recovery
 
 
-def analyse_pairwise_distances_old(this_args, data):
-    workdir = this_args.output
-
-    # Trajectory file:
-    ncfile = os.path.sep.join([workdir,
-                               'trajectories_%s_%i.nc' % (this_args.velocity, this_args.nfloats)])
-
-    if not os.path.exists(ncfile):
-        print('Cannot analyse pairwise distances because the trajectory file cannot be found at: %s' % ncfile)
-        return None
-
-    # Open trajectory file:
-    ds = xr.open_dataset(ncfile)
-
-    # Compute trajectory lengths:
-    ds['length'] = np.sqrt(ds.diff(dim='obs')['lon'] ** 2 + ds.diff(dim='obs')['lat'] ** 2).sum(dim='obs')
-
-    # Compute initial state pairwise distances:
-    X = ds.isel(obs=0)
-    X = X.isel(traj=~np.isnan(X['lon']))
-    X0 = np.array((X['lon'].values, X['lat'].values)).T
-    d0 = pairwise_distances(X0, n_jobs=-1)
-    d0 = np.triu(d0)
-    d0[d0 == 0] = np.nan
-
-    # Compute final state pairwise distances:
-    X = ds.isel(obs=-1)
-    X = X.isel(traj=~np.isnan(X['lon']))
-    dsf = X
-    X = np.array((X['lon'].values, X['lat'].values)).T
-    d = pairwise_distances(X, n_jobs=-1)
-    d = np.triu(d)
-    d[d == 0] = np.nan
-
-    # Metrics:
-    prediction_metrics = data['prediction_metrics']
-
-    prediction_metrics['trajectory_lengths'] = {'median': np.nanmedian(ds['length'].values),
-                                                'std': np.nanstd(ds['length'].values)}
-
-    prediction_metrics['pairwise_distances'] = {'initial_state': {'median': np.nanmedian(d0), 'std': np.nanstd(d0)},
-                                                'final_state': {'median': np.nanmedian(d), 'std': np.nanstd(d)},
-                                                }
-    ratio = prediction_metrics['pairwise_distances']['final_state']['std'] / \
-            prediction_metrics['pairwise_distances']['initial_state']['std']
-    prediction_metrics['pairwise_distances']['std_ratio'] = ratio
-
-    data['prediction_metrics'] = prediction_metrics
-
-    # Figure:
-    backend = matplotlib.get_backend()
-    if this_args.json:
-        matplotlib.use('Agg')
-
-    fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(18, 10), dpi=90)
-    ax, ix = ax.flatten(), -1
-    # hbox = get_HBOX(ds.isel(obs=0), lon='lon', lat='lat')
-    cmap = plt.cm.coolwarm
-    # vmax = np.nanmax(d)
-
-    # ix+=1
-    # ax[ix].plot(X0[:,0], X0[:, 1], '.', markersize=3)
-    # ax[ix].set_aspect('equal', 'box')
-    # ax[ix].grid()
-    # # ax[ix].set_xlim(hbox[0], hbox[1])
-    # # ax[ix].set_ylim(hbox[2], hbox[3])
-    # ax[ix].set_title('Initial positions')
-
-    ix += 1
-    ax[ix].plot(X0[:, 0], X0[:, 1], '.', markersize=3, color='grey', alpha=0.1, markeredgecolor=None, zorder=0)
-    ax[ix].plot(X[:, 0], X[:, 1], '.', markersize=3, color='lightblue', markeredgecolor=None)
-    ax[ix].set_aspect('equal', 'box')
-    ax[ix].grid()
-    # ax[ix].set_xlim(hbox[0], hbox[1])
-    # ax[ix].set_ylim(hbox[2], hbox[3])
-    ax[ix].set_title('Initial (grey) vs Final (blue) positions')
-
-    ix += 1
-    dd = dsf['length'].values
-    str_lgth = "median / std = %0.2f / %0.2f" % (prediction_metrics['trajectory_lengths']['median'],
-                                                 prediction_metrics['trajectory_lengths']['std'])
-    ax[ix].scatter(X0[:, 0], X0[:, 1], c=ds['length'].values, zorder=10, s=3, cmap=cmap)
-    # ax.plot(X0[:,0], X0[:,1], '.', color='grey')
-    ax[ix].grid()
-    ax[ix].set_aspect('equal', 'box')
-    ax[ix].scatter(X[:, 0], X[:, 1], c=dd, zorder=12, s=3, cmap=cmap)
-    this_traj = int(dsf.isel(traj=np.argmax(dd))['trajectory'].values[np.newaxis][0])
-    ax[ix].plot(ds.where(ds['trajectory'] == this_traj, drop=True).isel(traj=0)['lon'],
-                ds.where(ds['trajectory'] == this_traj, drop=True).isel(traj=0)['lat'], 'r',
-                zorder=13, label='Longest traj.')
-    this_traj = int(dsf.isel(traj=np.argmin(dd))['trajectory'].values[np.newaxis][0])
-    ax[ix].plot(ds.where(ds['trajectory'] == this_traj, drop=True).isel(traj=0)['lon'],
-                ds.where(ds['trajectory'] == this_traj, drop=True).isel(traj=0)['lat'], 'b',
-                zorder=13, label='Shortest traj.')
-    ax[ix].legend()
-    ax[ix].set_title('Trajectory lengths')
-
-    ix += 1
-    # Since we used a random sampling, d0 hist should be a normal distribution
-    ax[ix].hist(d0.flatten(), density=1, histtype='step', label='Initial', color='gray')
-    ax[ix].hist(d.flatten(), density=1, histtype='bar', label='Final', color='lightblue')
-    ax[ix].legend()
-    ax[ix].set_xlabel('Pairwise distance [degree]')
-    str_ratio = "Ratio of std: %0.4f" % prediction_metrics['pairwise_distances']['std_ratio']
-    ax[ix].set_title("Pairwise distances PDF\n%s" % str_ratio)
-
-    ix += 1
-    # Since we used a random sampling, d0 hist should be a normal distribution
-    ax[ix].hist(dd.flatten(), density=1, histtype='step', color='k')
-    # ax[ix].legend()
-    ax[ix].set_xlabel('Trajectory length [degree]')
-    ax[ix].set_title("Trajectory length PDF\n%s" % str_lgth)
-
-    line0 = "VirtualFleet recovery prediction for WMO %i: starting from cycle %i, predicting cycle %i" % \
-            (this_args.wmo, this_args.cyc - 1, this_args.cyc)
-    line1 = "Prediction made with %s and %i virtual floats" % (this_args.velocity, this_args.nfloats)
-    fig.suptitle("%s\n%s" % (line0, line1), fontsize=15)
-    if this_args.save_figure:
-        figfile = 'vfrecov_metrics01_%s' % get_sim_suffix()
-        save_figurefile(fig, figfile, workdir)
-
-    # Save new data to json file:
-    # jsfile = os.path.join(workdir, 'prediction_%s_%i.json' % (this_args.velocity, this_args.nfloats))
-    # with open(jsfile, 'w', encoding='utf-8') as f:
-    #     json.dump(data, f, ensure_ascii=False, indent=4, default=str, sort_keys=True)
-
-    if this_args.json:
-        matplotlib.use(backend)
-    return data
-
-
-def analyse_pairwise_distances(this_args, data):
+def analyse_pairwise_distances(this_args, this_cfg,  data):
     from scipy.signal import find_peaks
 
     def get_hist_and_peaks(this_d):
@@ -1281,10 +1159,10 @@ def analyse_pairwise_distances(this_args, data):
     # Trajectory file:
     workdir = this_args.output
     ncfile = os.path.sep.join([workdir,
-                               'trajectories_%s.zarr' % get_sim_suffix()])
+                               'trajectories_%s.zarr' % get_sim_suffix(this_args, this_cfg)])
     if not os.path.exists(ncfile):
         ncfile = os.path.sep.join([workdir,
-                                   'trajectories_%s.nc' % get_sim_suffix()])
+                                   'trajectories_%s.nc' % get_sim_suffix(this_args, this_cfg)])
         if not os.path.exists(ncfile):
             puts('Cannot analyse pairwise distances because the trajectory file cannot be found at: %s' % ncfile,
                  color=COLORS.red)
@@ -1432,13 +1310,13 @@ def analyse_pairwise_distances(this_args, data):
     line3 = "Score: %0.4f" % (overlapping / len(peaks))
     ax[ix].set_title("Pairwise distances PDF: [%s / %s / %s]" % (line1, line2, line3))
 
-    line0 = "VirtualFleet recovery prediction for WMO %i: starting from cycle %i, predicting cycle %i" % \
-            (this_args.wmo, this_args.cyc - 1, this_args.cyc)
+    line0 = "VirtualFleet recovery prediction for WMO %i: starting from cycle %i, predicting cycle %i\n%s" % \
+            (this_args.wmo, this_args.cyc - 1, this_args.cyc, get_cfg_str(this_cfg))
     line1 = "Prediction made with %s and %i virtual floats" % (this_args.velocity, this_args.nfloats)
     fig.suptitle("%s\n%s" % (line0, line1), fontsize=15)
     plt.tight_layout()
     if this_args.save_figure:
-        figfile = 'vfrecov_metrics01_%s_%i' % (this_args.velocity, this_args.nfloats)
+        figfile = 'vfrecov_metrics01_%s' % get_sim_suffix(this_args, this_cfg)
         save_figurefile(fig, figfile, workdir)
 
     # Save new data to json file:
@@ -1480,14 +1358,13 @@ def setup_args():
     return parser
 
 
-def get_sim_suffix():
+def get_sim_suffix(this_args, this_cfg):
     """Compose a string suffix for output files"""
-    # VEL_NAME, ARGS, CFG are global
-    # suf = '%s_%i' % (ARGS.velocity, ARGS.nfloats)
-    suf = 'VEL%s_NF%i_CYCDUR%i_PDPTH%i' % (ARGS.velocity,
-                                                ARGS.nfloats,
-                                                int(CFG.mission['cycle_duration']),
-                                                int(CFG.mission['parking_depth']))
+    # suf = '%s_%i' % (this_args.velocity, this_args.nfloats)
+    suf = 'VEL%s_NF%i_CYCDUR%i_PDPTH%i' % (this_args.velocity,
+                                                this_args.nfloats,
+                                                int(this_cfg.mission['cycle_duration']),
+                                                int(this_cfg.mission['parking_depth']))
     return suf
 
 
@@ -1564,7 +1441,6 @@ def predictor(args):
     # Load real float configuration at the previous cycle:
     if not args.json:
         puts("\nLoading float configuration...")
-    global CFG
     try:
         CFG = FloatConfiguration([WMO, CYC[0]])
     except:
@@ -1579,7 +1455,7 @@ def predictor(args):
         CFG.update('cycle_duration', float(args.cfg_cycle_duration))
 
     # Save virtual float configuration on file:
-    CFG.to_json(os.path.join(WORKDIR, "floats_configuration_%s.json" % get_sim_suffix()))
+    CFG.to_json(os.path.join(WORKDIR, "floats_configuration_%s.json" % get_sim_suffix(args, CFG)))
 
     if not args.json:
         puts("\n".join(["\t%s" % line for line in CFG.__repr__().split("\n")]), color=COLORS.green)
@@ -1628,7 +1504,7 @@ def predictor(args):
         puts("\nVirtualFleet, execute the simulation...")
 
     # Remove traj file if exists:
-    output_path = os.path.join(WORKDIR, 'trajectories_%s.zarr' % get_sim_suffix())
+    output_path = os.path.join(WORKDIR, 'trajectories_%s.zarr' % get_sim_suffix(args, CFG))
     if args.save_sim and os.path.exists(output_path):
         shutil.rmtree(output_path)
 
@@ -1636,7 +1512,7 @@ def predictor(args):
                     step=timedelta(minutes=5),
                     record=timedelta(minutes=30),
                     output_folder=WORKDIR if args.save_sim else None,
-                    output_file='trajectories_%s.zarr' % get_sim_suffix(),
+                    output_file='trajectories_%s.zarr' % get_sim_suffix(args, CFG),
                     verbose_progress=not args.json,
                     )
 
@@ -1654,11 +1530,11 @@ def predictor(args):
     DF_SIM = postprocess_index(DF_SIM, THIS_PROFILE)
     if not args.json:
         puts(DF_SIM.head().to_string(), color=COLORS.green)
-    fig, ax = figure_positions(VEL, DF_SIM, DF_PLAN, THIS_PROFILE, CFG, WMO, CYC, VEL_NAME,
+    fig, ax = figure_positions(args, VEL, DF_SIM, DF_PLAN, THIS_PROFILE, CFG, WMO, CYC, VEL_NAME,
                                dd=1, save_figure=args.save_figure, workdir=WORKDIR)
 
     # Recovery, make predictions based on simulated profile density:
-    results = predict_position(WORKDIR, WMO, CYC, CFG, VEL, VEL_NAME, DF_SIM, DF_PLAN, THIS_PROFILE,
+    results = predict_position(args, WORKDIR, WMO, CYC, CFG, VEL, VEL_NAME, DF_SIM, DF_PLAN, THIS_PROFILE,
                                save_figure=args.save_figure, quiet=~args.json)
     results['profile_to_predict'] = {'wmo': WMO,
                           'cycle_number': CYC[-1],
@@ -1686,7 +1562,7 @@ def predictor(args):
                                                     'unit': 'degree North'},
                                        'time': {'value': THIS_DATE}}
                                    }
-    results = analyse_pairwise_distances(args, results)
+    results = analyse_pairwise_distances(args, CFG, results)
 
     execution_end = time.time()
     process_end = time.process_time()
@@ -1709,7 +1585,7 @@ def predictor(args):
     # with open(os.path.join(WORKDIR, 'prediction.json'), 'w', encoding='utf-8') as f:
     #     json.dump(results, f, ensure_ascii=False, indent=4, default=str, sort_keys=True)
 
-    with open(os.path.join(WORKDIR, 'prediction_%s.json' % get_sim_suffix()), 'w', encoding='utf-8') as f:
+    with open(os.path.join(WORKDIR, 'prediction_%s.json' % get_sim_suffix(args, CFG)), 'w', encoding='utf-8') as f:
         json.dump(results, f, ensure_ascii=False, indent=4, default=str, sort_keys=True)
 
     if not args.json:
@@ -1725,9 +1601,6 @@ def predictor(args):
     return results_js
 
 if __name__ == '__main__':
-    # Globals
-    global ARGS
-
     # Read mandatory arguments from the command line
     ARGS = setup_args().parse_args()
     js = predictor(ARGS)
