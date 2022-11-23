@@ -1450,6 +1450,9 @@ def setup_args():
     parser.add_argument("--vf", help="Parent folder to the VirtualFleet repository clone", default=None)
     parser.add_argument("--json", help="Use to only return a json file and stay quiet", action='store_true')
 
+    parser.add_argument("--cfg_parking_depth", help="Virtual floats parking depth in [db], default: use previous cycle value", default=None)
+    parser.add_argument("--cfg_cycle_duration", help="Virtual floats cycle duration in [hours], default: use previous cycle value", default=None)
+
     return parser
 
 
@@ -1510,8 +1513,8 @@ def predictor(args):
     if not args.json:
         puts("\nYou can check this float dashboard while we prepare the prediction:")
         puts("\t%s" % argoplot.dashboard(WMO, url_only=True), color=COLORS.green)
-    # host = "/home/ref-argo/gdac" if not os.uname()[0] == 'Darwin' else "https://data-argo.ifremer.fr"
-    host = "/home/ref-argo/gdac" if not os.uname()[0] == 'Darwin' else "~/data/ARGO"
+    host = "/home/ref-argo/gdac" if not os.uname()[0] == 'Darwin' else "https://data-argo.ifremer.fr"
+    # host = "/home/ref-argo/gdac" if not os.uname()[0] == 'Darwin' else "~/data/ARGO"
     THIS_PROFILE = store(host=host).search_wmo_cyc(WMO, CYC).to_dataframe()
     THIS_DATE = pd.to_datetime(THIS_PROFILE['date'].values[0])
     CENTER = [THIS_PROFILE['longitude'].values[0], THIS_PROFILE['latitude'].values[0]]
@@ -1528,6 +1531,13 @@ def predictor(args):
         if not args.json:
             puts("Can't load this profile config, falling back on default values", color=COLORS.red)
         CFG = FloatConfiguration('default')
+
+    if args.cfg_parking_depth is not None:
+        CFG.update('parking_depth', float(args.cfg_parking_depth))
+
+    if args.cfg_cycle_duration is not None:
+        CFG.update('cycle_duration', float(args.cfg_cycle_duration))
+
     if not args.json:
         # puts(CFG.__repr__(), color=COLORS.green)
         puts("\n".join(["\t%s" % line for line in CFG.__repr__().split("\n")]), color=COLORS.green)
