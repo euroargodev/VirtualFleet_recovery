@@ -1,4 +1,4 @@
-|<img src="https://raw.githubusercontent.com/euroargodev/virtualfleet/master/docs/img/logo-virtual-fleet-recovery.png" alt="VirtualFleet-Recovery logo" width="400"><br>``Virtual Fleet - Recovery`` is a CLI and webAPI to make predictions of Argo float positions|
+|<img src="https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/master/docs/img/logo-virtual-fleet-recovery.png" alt="VirtualFleet-Recovery logo" width="400"><br>``Virtual Fleet - Recovery`` is a CLI and webAPI to make predictions of Argo float positions|
 |:---------:|
 
 The goal of this repository is to provide a library to make Argo floats trajectory predictions in order to facilitate recovery.  
