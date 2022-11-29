@@ -167,7 +167,6 @@ function getpopupcontent(data){
     var WMO = data['previous_profile']['wmo'];
     var nfloats = data['meta']['Nfloats'];
     var velocity = data['meta']['Velocity field'];
-    var wmo_mapurl = app_url+'map/'+WMO+"?nfloats="+nfloats+"&velocity="+velocity;
 
     html = '<div class="card">'
 
@@ -177,7 +176,7 @@ function getpopupcontent(data){
     html += '           <a class="nav-link active" aria-current="true" href="#">Error</a>'
     html += '       </li>'
     html += '       <li class="nav-item">'
-    html += '           <a class="nav-link" href="'+wmo_mapurl+'">Show only this float</a>'
+    html += '           <a class="nav-link" href="'+url_wmomap.replace('/map_error', '/map_error/'+WMO)+'">Show only this float</a>'
     html += '       </li>'
     html += '       <li class="nav-item">'
     html += '           <a class="nav-link" href="'+data['meta']['api']['cycle_page']+'">Cycle page</a>'
@@ -208,9 +207,15 @@ function getpopupcontent(data){
 }
 
 function circle_props(feature){
-    dist = 1000*feature.properties.prediction_location_error.distance.value;
-    transit = Math.round(100 * feature.properties.prediction_metrics.transit.value)/100;
-    return {radius: dist, color: '#'+getcolorfor(transit), properties: feature.properties}
+    var dist = 1000*feature['properties']['prediction_location_error']['distance']['value'];
+    var transit = Math.round(100 * feature['properties']['prediction_metrics']['transit']['value'])/100;
+//     console.log(transit);
+    if (transit == 0){
+        var color = '#000';
+    } else {
+        var color = '#'+getcolorfor(transit);
+    }
+    return {radius: dist, color: color, properties: feature.properties}
 }
 
 // Add default markers where we have predictions:
@@ -220,9 +225,13 @@ var LON = new Array();
 var LAT = new Array();
 var coords = new Array();
 var Npoints = 0
-$.getJSON(jsdata, function(data) {
+$.getJSON(url_data, function(data) {
     for (feature in data['features']) {
 //         console.log(data['features'][feature])
+//         console.log(data['features'][feature]['properties']['prediction_location_error']['bearing']['value'])
+//         console.log(data['features'][feature]['properties']['prediction_location_error']['distance']['value']);
+//         console.log(data['features'][feature]['properties']['prediction_metrics']['transit']['value']);
+
         Npoints += 1
         var this_feature = data['features'][feature]
 //         marker = L.geoJSON(this_feature, {
@@ -258,7 +267,11 @@ $.getJSON(jsdata, function(data) {
         map.fitBounds(bounds);
     };
     $("#Npoints").text(Npoints + ' predictions');
-})
+}).fail(function( jqxhr, textStatus, error ){
+    var err = textStatus + ", " + error;
+    console.log('error when loading data from '+url_data);
+    console.log( "Request Failed: " + err );
+});
 // floatmarkers.addTo(map);
 floatcircles.addTo(map);
 // L.circle([48.41, -4.47], {radius: 10*1000}).addTo(map); # Brest circle for reference

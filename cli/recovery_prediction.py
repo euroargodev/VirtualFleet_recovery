@@ -399,7 +399,7 @@ def get_armor3d_with_opendap(a_box, a_start_date, n_days=1):
     ds = xr.open_dataset(store)
 
     if a_start_date > ds['time'][-1]:
-        raise ValueError("This float cycle is too young for this velocity field.%s > %s" % (a_start_date, ds['time'][-1]))
+        raise ValueError("This float cycle is too young for this velocity field.\nFloat starting date %s is after the ARMOR3D last available date %s.\nTry with the GLORYS forecast." % (a_start_date, ds['time'][-1].values))
 
     nt = int(np.ceil(n_days / 7))
     itim = np.argwhere(ds['time'].values<a_start_date)[-1][0], \
@@ -771,7 +771,7 @@ def figure_predictions(this_args, weights, bin_X, bin_Y, bin_res, Hrel, recovery
         # #              length_includes_head=True, fc='k', ec='c', head_width=0.025, zorder=10)
         # ax[ix].plot([THIS_PROFILE['longitude'][0], xave], [THIS_PROFILE['latitude'][0], yave], 'g--', zorder=10)
 
-        plt.colorbar(sc, ax=ax[ix], shrink=0.5)
+        plt.colorbar(sc, ax=ax[ix],shrink =0.5)
 
         ax[ix] = map_add_profiles(ax[ix], this_profile)
         ax[ix].set_title(title)
@@ -1120,12 +1120,13 @@ def predict_position(this_args, workdir, wmo, cyc, cfg, vel, vel_name, df_sim, d
     velc = np.sqrt(dsc[vel.var['U']] ** 2 + dsc[vel.var['V']] ** 2).values[np.newaxis][0]
     metrics['surface_drift'] = {'value': None,
                                 'unit': 'km',
-                                'surface_currents_speed': velc,
+                                'surface_currents_speed': None,
                                 'surface_currents_speed_unit': 'm/s',
                                 'comment': 'Drift by surface currents due to the float ascent time error '
                                            '(difference between simulated profile time and the observed one).'}
     if error['time']['value'] is not None:
         metrics['surface_drift']['value'] = (error['time']['value']*3600 * velc / 1e3)
+        metrics['surface_drift']['surface_currents_speed'] = velc
 
     # Add to the mean result dict:
     recovery['prediction_location_error'] = error

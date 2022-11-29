@@ -10,6 +10,14 @@
 # Created by gmaze on 19/10/2022
 #
 """
+
+This is highly experimental and not ready for production !
+
+This is poorly documented !
+
+This is not optimised !
+
+
 Make a prediction for the position of the CYC cycle from float WMO
 (this will return a json file with the prediction results):
     http://134.246.146.178:5000/predict/<WMO>/<CYC>
@@ -108,9 +116,12 @@ class Args:
     @property
     def amap(self):
         # [m.__setitem__(i, Args(6903576, 12).__getattribute__(i)) for i in Args(6903576, 12)]
-        m = {'wmo': self.wmo, 'cyc': self.cyc,
-             'nfloats': self.nfloats, 'velocity': self.velocity,
-             'cfg_parking_depth': self.cfg_parking_depth, 'cfg_cycle_duration': self.cfg_cycle_duration}
+        m = {'wmo': self.wmo,
+             'cyc': self.cyc,
+             'nfloats': self.nfloats,
+             'velocity': self.velocity,
+             'cfg_parking_depth': self.cfg_parking_depth,
+             'cfg_cycle_duration': self.cfg_cycle_duration}
         return m
 
     def html(self):
@@ -196,8 +207,8 @@ def simulation_file_url(this_args, filename, safe=False):
     elif 'results/' in url:
         # print("results/%i/%i//" % (this_args.wmo, this_args.cyc))
         url = url.replace("results/%i/%i//" % (this_args.wmo, this_args.cyc), "")
-    elif 'test/' in url:
-        url = url.replace("test/%i/%i//" % (this_args.wmo, this_args.cyc), "")
+    elif 'trigger/' in url:
+        url = url.replace("trigger/%i/%i//" % (this_args.wmo, this_args.cyc), "")
     elif 'data/' in url:
         url = url.replace("data//static/data/", "static/data/")
         # /data/6901925//static/data/6901925 > /static/data/6901925
@@ -249,6 +260,8 @@ def complete_data_for(this_args, this_js, legacy=False):
                               'float_page': "".join([request.host_url[0:-1], url_for(".recap", wmo=this_args.wmo, nfloats=this_args.nfloats, velocity=this_args.velocity)]),
                               'float_map': "".join([request.host_url[0:-1], url_for(".map_error", wmo=this_args.wmo, nfloats=this_args.nfloats, velocity=this_args.velocity)])}
 
+    # request_opts_for_data(request, this_args)
+
     return this_js
 
 
@@ -266,7 +279,7 @@ def load_data_for(this_args, legacy=False):
         with open(ajs) as f:
             jsdata = json.load(f)
     else:
-        print('Not data found at: ', ajs)
+        print('No data found at: ', ajs)
         jsdata = None
 
     if jsdata is not None:
@@ -631,8 +644,9 @@ def index(wmo, cyc):
     if wmo == 0:
         template_data = {'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
                          'cdn_prism': 'cdn.jsdelivr.net/npm/prismjs@1.29.0',
-                         'runs_html': get_html_of_simulations_accordion(args.output, request.base_url),
+                         'runs_html': None, #get_html_of_simulations_accordion(args.output, request.base_url),
                          'app_url': request.url_root,
+                         'url_form': url_for(".trigger", **request_opts_for_data(request, args)),
                          'css': url_for("static", filename="css")}
         # print(template_data['runs_html'])
 
@@ -640,7 +654,7 @@ def index(wmo, cyc):
         return html
 
     else:
-        return redirect(url_for('.results', **args.amap))
+        return redirect(url_for('.results', **request_opts_for_data(request, args)))
 
 
 @app.route('/recap', defaults={'wmo': None}, methods=['GET', 'POST'])
@@ -703,25 +717,28 @@ def recap(wmo):
 def results(wmo, cyc):
     # Parse request parameters:
     args = parse_args(wmo, cyc)
-    print(args.amap)
+    # print(args.amap)
 
     df_float = argopy.utilities.get_coriolis_profile_id(wmo)
     # if cyc not in df_float['CYCLE_NUMBER']:
 
-
     # Init some variables used in template
     template_data = {
         'css': url_for("static", filename="css"),
+        'js': url_for("static", filename="js"),
         'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
         'cdn_prism': 'cdn.jsdelivr.net/npm/prismjs@1.29.0',
         'WMO': args.wmo,
         'CYC': args.cyc,
         'VELOCITY': args.velocity,
         'NFLOATS': args.nfloats,
+        'CFG_PARKING_DEPTH': args.cfg_parking_depth,
+        'CFG_CYCLE_DURATION': args.cfg_cycle_duration,
         'url': request.base_url,
         'url_predict': url_for(".predict", **args.amap),
         'url_recap': url_for(".recap", wmo=args.wmo, nfloats=args.nfloats, velocity=args.velocity),
         'url_map': url_for(".map_error", wmo=args.wmo, nfloats=args.nfloats, velocity=args.velocity),
+        'url_form': url_for(".trigger", **args.amap),
         'prediction_src': None,
         'metric_src': None,
         'velocity_src': None,
@@ -749,9 +766,10 @@ def results(wmo, cyc):
         template_data['url_next'] = None
 
     # Load data for this set-up:
-    legacy = not 'cfg_parking_depth' in request.args
-    print('legacy', legacy)
-    jsdata = load_data_for(args, legacy=legacy)
+    # legacy = not 'cfg_parking_depth' in request.args
+    # print('legacy', legacy)
+    # jsdata = load_data_for(args, legacy=legacy)
+    jsdata = load_data_for(args)
     # print(jsdata)
 
     if jsdata is not None:
@@ -810,7 +828,8 @@ def predict(wmo, cyc):
     """
     # Parse request parameters:
     args = parse_args(wmo, cyc)
-    # print(args.amap)
+    print(args.amap)
+    print(request.args)
 
     # Load data for this set-up:
     jsdata = load_data_for(args)
@@ -826,6 +845,36 @@ def predict(wmo, cyc):
         return jsonify(jsdata)
 
 
+def request_opts_for_data(req, this_args):
+    opts = {}
+
+    opts['wmo'] = this_args.wmo if this_args.wmo != 0 else None
+    opts['cyc'] = this_args.cyc if this_args.cyc != 0 else None
+
+    if 'velocity' in req.args:
+        opts['velocity'] = this_args.velocity
+    else:
+        opts['velocity'] = None
+
+    if 'nfloats' in req.args:
+        opts['nfloats'] = int(this_args.nfloats)
+    else:
+        opts['nfloats'] = None
+
+    if 'cfg_cycle_duration' in req.args:
+        opts['cfg_cycle_duration'] = int(this_args.cfg_cycle_duration)
+    else:
+        opts['cfg_cycle_duration'] = None
+
+    if 'cfg_parking_depth' in req.args:
+        opts['cfg_parking_depth'] = int(this_args.cfg_parking_depth)
+    else:
+        opts['cfg_parking_depth'] = None
+
+    # print(req, this_args, opts)
+    return opts
+
+
 @app.route('/data', defaults={'wmo': None}, methods=['GET', 'POST'])
 @app.route('/data/<int:wmo>', methods=['GET', 'POST'])
 def data(wmo):
@@ -835,8 +884,48 @@ def data(wmo):
     # print('call to data/', args.amap)
 
     src = os.path.abspath(os.path.sep.join([".", "static"]))
-    filepattern = "prediction_%s.json" % get_sim_suffix(args, legacy=True)
-    print(filepattern)
+
+    def get_a_search_pattern(req, this_args):
+        # Should be coherent with get_sim_suffix:
+        filepattern = "prediction"
+        # print('request.args', req.args)
+
+        if 'velocity' in req.args:
+            filepattern += "_VEL%s" % this_args.velocity
+        else:
+            filepattern += "_VEL*"
+
+        if 'nfloats' in req.args:
+            filepattern += "_NF%i" % int(this_args.nfloats)
+        else:
+            filepattern += "_NF*"
+
+        if 'cfg_cycle_duration' in req.args:
+            filepattern += "_CYCDUR%i" % int(this_args.cfg_cycle_duration)
+        else:
+            filepattern += "_CYCDUR*"
+
+        if 'cfg_parking_depth' in req.args:
+            filepattern += "_PDPTH%i" % int(this_args.cfg_parking_depth)
+        else:
+            filepattern += "_PDPTH*"
+
+        filepattern += ".json"
+        # print(filepattern)
+        return filepattern
+
+    def read_params_from_path(pathname, plist=['VEL', 'NF', 'CYCDUR', 'PDPTH']):
+        filename = os.path.splitext(os.path.split(pathname)[-1])[0]
+        startwith = lambda s, w: w == s[0:len(w)] if len(s) > len(w) else False
+        result = {}
+        for part in filename.split("_"):
+            for param in plist:
+                if startwith(part, param):
+                    result[param] = part.replace(param, '')
+        return result
+
+    filepattern = get_a_search_pattern(request, args)
+
     if wmo != 0:
         flist = sorted(glob.glob(os.path.sep.join([src, "data", str(wmo), "*", filepattern])))
     else:
@@ -846,18 +935,21 @@ def data(wmo):
         f = filename.replace(src, "")
         url = url_for('static', filename=f)
         url = os.path.normpath(url)
-        # print(filename, f, url)
         if url is not None:
             slist.append(url)
-    print(filepattern, len(slist))
+    # print(filepattern, len(slist))
 
     feature_list = []
     for filename in slist:
         this_wmo = filename.split(os.path.sep)[-3]
         this_cyc = filename.split(os.path.sep)[-2]
-        this_args = Args(this_wmo, this_cyc, **args.amap)
-        # print(args.amap, this_args.amap)
-        jsdata = load_data_for(this_args, legacy=True)
+        params = read_params_from_path(filename, plist=['VEL', 'NF', 'CYCDUR', 'PDPTH'])
+        opts = {'velocity': params['VEL'],
+                'nfloats': int(params['NF']),
+                'cfg_parking_depth': int(params['PDPTH']),
+                'cfg_cycle_duration': int(params['CYCDUR'])}
+        this_args = Args(this_wmo, this_cyc, **opts)
+        jsdata = load_data_for(this_args, legacy=False)
         f = Feature(geometry=Point(
             (jsdata['prediction_location']['longitude']['value'], jsdata['prediction_location']['latitude']['value'])),
                     properties=jsdata)
@@ -883,27 +975,28 @@ def map_error(wmo):
                      'dist': url_for("static", filename="dist"),
                      'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
                      'cdn_prism': 'cdn.jsdelivr.net/npm/prismjs@1.29.0',
-                     'app_url': request.url_root,
-                     'url_recap': url_for(".recap", **args.amap),
-                     'url_map': url_for(".map_error", **args.amap),
+                     'url_app': request.url_root,
+                     'url_recap': url_for(".recap", **request_opts_for_data(request, args)),
+                     'url_map': url_for(".map_error", **request_opts_for_data(request, args)),
+                     'url_wmomap': url_for(".map_error", **request_opts_for_data(request, args)),
+                     'url_form': url_for(".trigger", **request_opts_for_data(request, args)),
+                     'url_data': url_for('.data', **request_opts_for_data(request, args)),
                      'WMO': args.wmo if args.wmo != 0 else None,
                      'CYC': args.cyc if args.wmo != 0 else None,
                      'VELOCITY': args.velocity,
                      'NFLOATS': args.nfloats,
-                     'jsdata': url_for('.data', wmo=args.wmo if args.wmo != 0 else None,
-                                       nfloats=args.nfloats, velocity=args.velocity,
-                                       cfg_parking_depth=args.cfg_parking_depth, cfg_cycle_duration=args.cfg_cycle_duration),
-                     'trajdata': get_traj(args.wmo if args.wmo != 0 else None)
+                     'trajdata': get_traj(args.wmo if args.wmo != 0 else None),
                      }
     # print(jsonify(template_data))
 
     html = render_template('map_error.html', **template_data)
     return html
 
-@app.route('/test', defaults={'wmo': None, 'cyc': None}, methods=['GET', 'POST'])
-@app.route('/test/<int:wmo>', defaults={'cyc': None}, methods=['GET', 'POST'])
-@app.route('/test/<int:wmo>/<int:cyc>', methods=['GET', 'POST'])
-def test(wmo, cyc):
+
+@app.route('/trigger', defaults={'wmo': None, 'cyc': None}, methods=['GET', 'POST'])
+@app.route('/trigger/<int:wmo>', defaults={'cyc': None}, methods=['GET', 'POST'])
+@app.route('/trigger/<int:wmo>/<int:cyc>', methods=['GET', 'POST'])
+def trigger(wmo, cyc):
     # Parse request parameters:
     wmo = wmo if wmo is not None else 0
     cyc = cyc if cyc is not None else 0
@@ -921,16 +1014,10 @@ def test(wmo, cyc):
                      'NFLOATS': args.nfloats,
                      'CFG_PARKING_DEPTH': args.cfg_parking_depth,
                      'CFG_CYCLE_DURATION': args.cfg_cycle_duration,
-                     'jsdata': url_for('.data', wmo=args.wmo if args.wmo != 0 else None,
-                                       cyc=args.cyc if args.cyc != 0 else None,
-                                       nfloats=args.nfloats, velocity=args.velocity),
+                     'jsdata': url_for('.data', **request_opts_for_data(request, args)),
                      }
 
     if request.method == 'POST':
-        # print(request.form)
-
-        # Some form fields validation here:
-        # ...
 
         float_cfg = {}
         if request.form['cfg_parking_depth'] == '':
@@ -949,26 +1036,31 @@ def test(wmo, cyc):
         nfloats = int(request.form['nfloats'])
         velocity = request.form['VELOCITY']
 
-        args = Args(WMO, CYC, json=True)
-        args.nfloats = int(nfloats)
-        args.velocity = velocity
-        args.cfg_parking_depth = int(float_cfg['parking_depth'])
-        args.cfg_cycle_duration = int(float_cfg['cycle_duration'])
+        form_args = Args(WMO, CYC, json=True)
+        form_args.nfloats = int(nfloats)
+        form_args.velocity = velocity
+        form_args.cfg_parking_depth = int(float_cfg['parking_depth'])
+        form_args.cfg_cycle_duration = int(float_cfg['cycle_duration'])
 
-        # print(args.amap)
+        # print()
+        print(request)
+        print(args.amap)
+        print(form_args.amap)
+
         # print(float_cfg)
         # url_predict = url_for(".predict", wmo=args.wmo, cyc=args.cyc, nfloats=args.nfloats, velocity=args.velocity)
-        url_predict = url_for(".predict", **args.amap)
-        url_results = url_for('.results', **args.amap, redirect=True)
+        url_predict = url_for(".predict", **form_args.amap, redirect=True)
+        url_results = url_for('.results', **form_args.amap)
 
         # Check if results are already available, otherwise, trigger prediction:
-        if load_data_for(args) is not None:
+        if load_data_for(form_args) is not None:
+            print('Found results, redirect to results page')
             return redirect(url_results)
         else:
+            print('No results, trigger computation')
             return redirect(url_predict)
 
-    # else:
-    html = render_template('form.html', **template_data)
+    html = render_template('trigger.html', **template_data)
     return html
 
 # @app.route("/spec")

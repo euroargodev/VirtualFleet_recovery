@@ -1,0 +1,1 @@
+$('input[name=nfloats]').change(function() { $('#nfloats_value').text($('input[name=nfloats]').val()) });

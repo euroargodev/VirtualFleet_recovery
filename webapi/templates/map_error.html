@@ -103,13 +103,13 @@
 
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.1/dist/jquery.min.js" crossorigin=""/></script>
     <script>
-      jsdata = "{{ jsdata|safe }}";
+      url_data = "{{ url_data|safe }}";
       {% if trajdata is not none %}
       trajdata = {{ trajdata|safe }};
       {% else %}
       trajdata = "";
       {% endif %}
-      app_url = "{{app_url}}";
+      url_wmomap = "{{url_wmomap}}";
     </script>
   </head>
   <body>
@@ -144,6 +144,12 @@
                 Repository
               </a>
             </li>
+            <li class="nav-item">
+              <a class="nav-link" href="{{url_form}}">
+                <span data-feather="cpu" class="align-text-bottom"></span>
+                Prediction form
+              </a>
+            </li>
           </ul>
 
           <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted text-uppercase">
@@ -152,7 +158,7 @@
 
           <ul class="nav flex-column">
             <li class="nav-item">
-              <a class="nav-link" href="{{jsdata}}">
+              <a class="nav-link" href="{{url_data}}">
                 <span data-feather="download" class="align-text-bottom"></span>
                 Download
               </a>
@@ -240,9 +246,7 @@
 
           </ul>
 
-        <footer class="pt-5 my-5 text-muted ms-2">
-          Argo-France/Ifremer/LOPS &copy; 2022
-        </footer>
+        {% include "footer.html" %}
 
         </div>
 

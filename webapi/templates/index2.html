@@ -98,6 +98,12 @@
                 Repository
               </a>
             </li>
+            <li class="nav-item">
+              <a class="nav-link" href="{{url_form}}">
+                <span data-feather="cpu" class="align-text-bottom"></span>
+                Prediction form
+              </a>
+            </li>
           </ul>
 
           <ul class="nav flex-column">
@@ -143,9 +149,7 @@
 
           </ul>
 
-        <footer class="pt-5 my-5 text-muted ms-2">
-          Argo-France/Ifremer/LOPS &copy; 2022
-        </footer>
+        {% include "footer.html" %}
 
         </div>
 
@@ -198,7 +202,7 @@
             </tbody>
           </table>
           <p class="fs-6">
-          Example of API request to swipt figures:
+          Example of API request to swipe figures:
           <pre><code class="language-http" data-prismjs-copy="Copy snippet!">{{app_url}}recap?velocity=GLORYS&nfloats=2000&figure=recap</code></pre>
           This also works for a single float to swipe through all cycles:
           <pre><code class="language-http" data-prismjs-copy="Copy snippet!">{{app_url}}recap/2903680?figure=predictions</code></pre>
