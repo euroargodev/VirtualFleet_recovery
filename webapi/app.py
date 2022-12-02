@@ -7,15 +7,8 @@
 # flask run --host=134.246.146.178 # Laptop
 # flask run --host=134.246.146.54 # Pacnet
 #
-# Created by gmaze on 19/10/2022
 #
 """
-
-This is highly experimental and not ready for production !
-
-This is poorly documented !
-
-This is not optimised !
 
 
 Make a prediction for the position of the CYC cycle from float WMO
