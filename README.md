@@ -56,17 +56,17 @@ git clone --branch gulf-stream git@github.com:euroargodev/VirtualFleet.git
 The ``recovery_prediction`` script allows making predictions, i.e. at this point, to produce a few figures to get an idea of where the float will make surface contact.
 
 For a simple help, you can type:
-```bash
+```
 recovery_prediction -h
 ```
 
 To make prediction of where the 99th cycle of the 6902919 float will be, just type: 
-```bash
+```
 recovery_prediction 6902919 99
 ```
 
 A few options are available:
-```bash
+```
 usage: recovery_prediction.py [-h] [--nfloats NFLOATS] [--output OUTPUT] [--velocity VELOCITY] [--save_figure SAVE_FIGURE] [--save_sim SAVE_SIM] [--vf VF] [--json] [--cfg_parking_depth CFG_PARKING_DEPTH] [--cfg_cycle_duration CFG_CYCLE_DURATION] wmo cyc
 
 VirtualFleet recovery predictor
@@ -103,7 +103,7 @@ So, don't forget to:
 
 ### Example
 
-```bash
+```
 recovery_prediction 6902915 116
 ```
 Below is an example of this prediction for the 99th cycle of the 6902919 float.  
@@ -135,15 +135,15 @@ You should know the <IP> address of the server where the Flask app is running.
 
 Simply visit the prediction triggering form at:
 
-```bash
-    http://<IP>:5000/trigger
+```
+http://<IP>:5000/trigger
 ```
 
 **Method 2**
 
 Go the full webAPI way: to make a prediction for the position of the ``CYC`` cycle from float ``WMO``, send a POST, request to:
-```bash
-    http://<IP>:5000/predict/<WMO>/<CYC>
+```
+http://<IP>:5000/predict/<WMO>/<CYC>
 ```
 This will return a json file with the prediction results. Predictions are saved in cache, so that if you send a request for a prediction already computed, you will have the json results right away. 
 
@@ -154,19 +154,19 @@ Options available:
    - ``cfg_cycle_duration``: to set the cycle duration, in hours, of virtual floats. The default values is that of the previous cycle.
 
 Options can be used, or combined:
-```bash
-    http://<IP>:5000/predict/<WMO>/<CYC>?nfloats=1000
-    http://<IP>:5000/predict/<WMO>/<CYC>?velocity=ARMOR3D
-    http://<IP>:5000/predict/<WMO>/<CYC>?nfloats=1000&velocity=GLORYS
+```
+http://<IP>:5000/predict/<WMO>/<CYC>?nfloats=1000
+http://<IP>:5000/predict/<WMO>/<CYC>?velocity=ARMOR3D
+http://<IP>:5000/predict/<WMO>/<CYC>?nfloats=1000&velocity=GLORYS
 ```
 
 #### Visualise prediction results
 
 We made a small webpage with figures and prediction data results. It is accessible at:
-```bash
-    http://<IP>:5000/<WMO>/<CYC>
+```
+http://<IP>:5000/<WMO>/<CYC>
 # or
-    http://<IP>:5000/results/<WMO>/<CYC>
+http://<IP>:5000/results/<WMO>/<CYC>
 ```
 Here is a screenshot:
 ![Screenshot 2022-12-06 at 16 14 17](https://user-images.githubusercontent.com/1956032/205950317-935b815f-c6fd-4e67-8bc3-71ab27d305d0.png)
