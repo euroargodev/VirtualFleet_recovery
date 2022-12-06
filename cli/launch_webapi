@@ -40,8 +40,11 @@ esac
 echo "Launching VirtualFleet-Recovery webapi with Flask on $WHERETO at $IP ..."
 
 export FLASK_DEBUG=True
-export FLASK_APP=app.py
+#export FLASK_APP=app.py
+export FLASK_APP=myapp
 cd $APIDIR
-flask run --host=$IP
+#flask run --host=$IP
+flask -A myapp routes
+flask -A myapp run --host=$IP
 
 exit 0

@@ -78,9 +78,11 @@
 
   <header class="navbar navbar-dark sticky-top bg-dark flex-md-nowrap p-0 shadow">
     <span class="navbar-brand col-md-3 col-lg-2 me-0 px-3 fs-6">
-      &nbsp;<a href="{{url_previous}}"><i class="bi bi-arrow-left-circle" style="color: white;"></i></a>
+      {% if url_previous is not none %}
+        &nbsp;<a href="{{url_previous|safe}}"><i class="bi bi-arrow-left-circle" style="color: white;"></i></a>
+      {% endif %}
       &nbsp;Float {{WMO}} - Cycle {{CYC}}&nbsp;
-      <a href="{{url_next}}"><i class="bi bi-arrow-right-circle" style="color: white;"></i></a>
+      <a href="{{url_next|safe}}"><i class="bi bi-arrow-right-circle" style="color: white;"></i></a>
     </span>
     <button class="navbar-toggler position-absolute d-md-none collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#sidebarMenu" aria-controls="sidebarMenu" aria-expanded="false" aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"></span>
@@ -123,7 +125,7 @@
           <ul class="nav flex-column">
             {% if data_js is not none %}
             <li class="nav-item">
-              <a class="nav-link" href="{{data_js}}">
+              <a class="nav-link" href="{{url_data}}">
                 <span data-feather="download" class="align-text-bottom"></span>
                 Download
               </a>
@@ -189,6 +191,18 @@
               <a class="nav-link disabled" aria-current="page" href="#">
                 <span data-feather="life-buoy" class="align-text-bottom"></span>
                 N floats: {{NFLOATS}}
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link disabled" aria-current="page" href="#">
+                <span data-feather="activity" class="align-text-bottom"></span>
+                Parking Depth: {{CFG_PARKING_DEPTH}}
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link disabled" aria-current="page" href="#">
+                <span data-feather="clock" class="align-text-bottom"></span>
+                Cycle Duration: {{CFG_CYCLE_DURATION}}
               </a>
             </li>
           </ul>

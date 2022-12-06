@@ -140,5 +140,6 @@ knotebooks/
 local_work/
 cli/build-pypi
 *.nc
+*.npi*
 cli/vfrecov/
 webapi/static/data

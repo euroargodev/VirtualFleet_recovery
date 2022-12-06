@@ -6,9 +6,9 @@
     <meta name="description" content="">
     <meta name="author" content="Guillaume Maze and LOPS contributors">
     {% if WMO is not none %}
-    <title>VF Recovery | Map | {{WMO}}</title>
+    <title>VF Recovery | Prediction | {{WMO}}</title>
     {% else %}
-    <title>VF Recovery | Map</title>
+    <title>VF Recovery | Prediction</title>
     {% endif %}
 
     <link href="https://{{cdn_bootstrap}}/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-Zenh87qX5JnK2Jl0vWa8Ck2rdkQ2Bzep5IDxbcnCeuOxjzrPF/et3URy9Bv1WTRi" crossorigin="anonymous">
@@ -79,37 +79,16 @@
         color: gray !important;
       }
 
-      #map {
-        height: 700px;
-      }
-
-      .legend {
-    line-height: 18px;
-    color: #555;
-      }
-      .legend i {
-          width: 18px;
-          height: 18px;
-          float: left;
-          margin-right: 8px;
-          opacity: 0.7;
-      }
-
     </style>
 
-    <link  rel="stylesheet"href="{{css}}/dashboard.css">
+    <link  rel="stylesheet" href="{{css}}/dashboard.css">
 <!--    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css">-->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.9.1/font/bootstrap-icons.css">
 
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.1/dist/jquery.min.js" crossorigin=""/></script>
     <script>
-      url_data = "{{ url_data|safe }}";
-      {% if trajdata is not none %}
-      trajdata = {{ trajdata|safe }};
-      {% else %}
-      trajdata = "";
-      {% endif %}
-      url_wmomap = "{{url_wmomap}}";
+      jsdata = "{{ jsdata|safe }}";
+      app_url = "{{app_url}}";
     </script>
   </head>
   <body>
@@ -117,9 +96,15 @@
 
   <header class="navbar navbar-dark sticky-top bg-dark flex-md-nowrap p-0 shadow">
     {% if WMO is not none %}
-    <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3 fs-6" href="#">Float {{WMO}}</a>
+
+    {% if CYC is not none %}
+    <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3 fs-6" href="#">Float {{WMO}} - Cycle {{CYC}}</a>
     {% else %}
-    <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3 fs-6" href="#" id="Npoints">Loading ...</a>
+    <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3 fs-6" href="#">Float {{WMO}}</a>
+    {% endif %}
+
+    {% else %}
+    <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3 fs-6" href="#" id="Npoints">Prediction</a>
     {% endif %}
     <button class="navbar-toggler position-absolute d-md-none collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#sidebarMenu" aria-controls="sidebarMenu" aria-expanded="false" aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"></span>
@@ -158,7 +143,7 @@
 
           <ul class="nav flex-column">
             <li class="nav-item">
-              <a class="nav-link" href="{{url_data}}">
+              <a class="nav-link disabled" href="#">
                 <span data-feather="download" class="align-text-bottom"></span>
                 Download
               </a>
@@ -179,14 +164,14 @@
               {% if WMO is not none %}
               <a class="nav-link" href="{{url_recap}}">
               {% else %}
-              <a class="nav-link disabled" href="{{url_recap}}">
+              <a class="nav-link disabled" href="#">
               {% endif %}
                 <span data-feather="list" class="align-text-bottom"></span>
                 Swipe all cycles
               </a>
             </li>
             <li class="nav-item">
-              <a class="nav-link active" href="{{url_map}}">
+              <a class="nav-link disabled" href="#">
                 <span data-feather="map" class="align-text-bottom"></span>
                 See on a map
               </a>
@@ -201,13 +186,25 @@
             <li class="nav-item">
               <a class="nav-link disabled" aria-current="page" href="#">
                 <span data-feather="mouse-pointer" class="align-text-bottom"></span>
-                Velocity: {{VELOCITY}}
+                Velocity: -
               </a>
             </li>
             <li class="nav-item">
               <a class="nav-link disabled" aria-current="page" href="#">
                 <span data-feather="life-buoy" class="align-text-bottom"></span>
-                N floats: {{NFLOATS}}
+                N floats: -
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link disabled" aria-current="page" href="#">
+                <span data-feather="activity" class="align-text-bottom"></span>
+                Parking Depth: -
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link disabled" aria-current="page" href="#">
+                <span data-feather="clock" class="align-text-bottom"></span>
+                Cycle Duration: -
               </a>
             </li>
           </ul>
@@ -255,15 +252,12 @@
       <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
 
         <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-            <h1 class="h2">Prediction errors</h1>
+            <h1 class="h2">Prediction form</h1>
         </div>
+        {% include "form.html" %}
 
-        <div class="justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
-          <p>Marker color:<span class="text-muted fw-light"> Transit time (at 12kt) from predicted to truth positions.</span>
-        <br>Marker size:<span class="text-muted fw-light"> Distance error as circle radius in km.</span></p>
-             <div id="map"></div>
-        </div>
       </main>
+
     </div>
   </div>
 
@@ -272,22 +266,10 @@
   <script src="https://{{cdn_bootstrap}}/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/feather-icons@4.29.0/dist/feather.min.js" crossorigin="anonymous"></script>
 
-  <!--    Leaflet-->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.2/dist/leaflet.css"  crossorigin=""/>
-  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.2/dist/leaflet-src.min.js"  crossorigin=""/></script>
-
-  <!-- Mouse position -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-mouse-position@1.2.0/src/L.Control.MousePosition.css"/>
-  <script src="https://cdn.jsdelivr.net/npm/leaflet-mouse-position@1.2.0/src/L.Control.MousePosition.min.js"></script>
-  <!--  Google Color palette-->
-  <script src="https://cdn.jsdelivr.net/npm/google-palette@1.1.0/palette.min.js"></script>
-
-  <!--process the map-->
-  <script src="{{js}}/map_error.js"></script>
-
   <script>
     feather.replace({ 'aria-hidden': 'true' })
   </script>
+  <script src="{{js}}/trigger.js"></script>
 
 <!--  <script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.4/dist/Chart.min.js" integrity="sha384-zNy6FEbO50N+Cg5wap8IKA4M/ZnLJgzc6w2NqACZaK0u0FXfOWRRJOnQtpZun8ha" crossorigin="anonymous"></script>-->
 <!--  <script src="dashboard.js"></script>-->
