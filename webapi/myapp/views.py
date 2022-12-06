@@ -10,7 +10,6 @@
 #
 """
 
-
 Make a prediction for the position of the CYC cycle from float WMO
 (this will return a json file with the prediction results):
     http://134.246.146.178:5000/predict/<WMO>/<CYC>
@@ -70,7 +69,10 @@ def index(wmo, cyc):
                          'runs_html': None,  # get_html_of_simulations_accordion(args.output, request.base_url),
                          'app_url': request.url_root,
                          'url_form': url_for(".trigger", **request_opts_for_data(request, args)),
-                         'css': url_for("static", filename="css")}
+                         'css': url_for("static", filename="css"),
+                         'ea_profile': None,
+                         'ea_float': None,
+                         }
         # print(template_data['runs_html'])
 
         html = render_template('index2.html', **template_data)
@@ -156,7 +158,7 @@ def results(wmo, cyc):
         'vfloatcfg': None,
     }
 
-    if args.cyc == 0:
+    if args.cyc == 0 or args.cyc is None:
         template_data['url_previous'] = None
 
     if args.cyc == df_float['CYCLE_NUMBER'].max():
@@ -167,7 +169,7 @@ def results(wmo, cyc):
     # print('legacy', legacy)
     # jsdata = load_data_for(args, legacy=legacy)
     jsdata = load_data_for(args)
-    print(jsdata)
+    # print(jsdata)
 
     if jsdata is not None:
         data = [
@@ -223,8 +225,8 @@ def predict(wmo, cyc):
     """
     # Parse request parameters:
     args = parse_args(wmo, cyc)
-    print(args.amap)
-    print(request.args)
+    # print(args.amap)
+    # print(request.args)
 
     # Load data for this set-up:
     jsdata = load_data_for(args)
@@ -273,8 +275,8 @@ def data(wmo):
     return jsonify(FeatureCollection(feature_list))
 
 
-@app.route('/map_error', defaults={'wmo': None}, methods=['GET', 'POST'])
-@app.route('/map_error/<int:wmo>', methods=['GET', 'POST'])
+@app.route('/map_error', defaults={'wmo': None}, methods=['GET'])
+@app.route('/map_error/<int:wmo>', methods=['GET'])
 def map_error(wmo):
     # Parse request parameters:
     wmo = wmo if wmo is not None else 0
@@ -297,6 +299,8 @@ def map_error(wmo):
                      'CYC': args.cyc if args.wmo != 0 else None,
                      'VELOCITY': args.velocity,
                      'NFLOATS': args.nfloats,
+                     'CFG_PARKING_DEPTH': args.cfg_parking_depth,
+                     'CFG_CYCLE_DURATION': args.cfg_cycle_duration,
                      'trajdata': get_traj(args.wmo if args.wmo != 0 else None),
                      }
     # print(jsonify(template_data))
@@ -355,9 +359,9 @@ def trigger(wmo, cyc):
         form_args.cfg_cycle_duration = int(float_cfg['cycle_duration'])
 
         # print()
-        print(request)
-        print(args.amap)
-        print(form_args.amap)
+        # print(request)
+        # print(args.amap)
+        # print(form_args.amap)
 
         # print(float_cfg)
         # url_predict = url_for(".predict", wmo=args.wmo, cyc=args.cyc, nfloats=args.nfloats, velocity=args.velocity)

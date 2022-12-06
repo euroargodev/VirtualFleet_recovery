@@ -7,6 +7,7 @@ from myapp import app
 
 
 APP_NAME = __name__.split('.')[0]
+print("myapp/utils/flask.py:", app.config)
 
 
 class Args:
@@ -23,7 +24,7 @@ class Args:
         if 'output' in kwargs:
             self.output = kwargs['output']
         else:
-            self.output = './static/data'
+            self.output = os.path.join(app.config['DATASTORE'], 'data')
 
         if 'velocity' in kwargs:
             self.velocity = kwargs['velocity']

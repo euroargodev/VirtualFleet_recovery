@@ -1402,7 +1402,7 @@ def predictor(args):
 
     # Set-up the working directory:
     if not args.output:
-        WORKDIR = os.path.sep.join(["..", "webapi", "static", "data", str(WMO), str(CYC[1])])
+        WORKDIR = os.path.sep.join(["..", "webapi", "myapp", "static", "data", str(WMO), str(CYC[1])])
     else:
         WORKDIR = os.path.sep.join([args.output, str(WMO), str(CYC[1])])
     WORKDIR = os.path.abspath(WORKDIR)

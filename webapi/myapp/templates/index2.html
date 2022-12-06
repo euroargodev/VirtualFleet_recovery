@@ -104,25 +104,94 @@
                 Prediction form
               </a>
             </li>
-          </ul>
+          </ul>          <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted text-uppercase">
+            <span>Prediction results</span>
+<!--            <a class="link-secondary" href="#" aria-label="Add a new report">-->
+<!--              <span data-feather="plus-circle" class="align-text-bottom"></span>-->
+<!--            </a>-->
+          </h6>
 
           <ul class="nav flex-column">
+            {% if data_js is not none %}
             <li class="nav-item">
-              <a class="nav-link" href="#start">
+              <a class="nav-link" href="{{url_data}}">
                 <span data-feather="download" class="align-text-bottom"></span>
-                Get started
+                Download
               </a>
             </li>
             <li class="nav-item">
-              <a class="nav-link" href="#swipe">
+              <a class="nav-link disabled" href="#">
+                <span data-feather="star" class="align-text-bottom"></span>
+                Synthesis
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link disabled" href="#">
                 <span data-feather="image" class="align-text-bottom"></span>
                 Figures
               </a>
             </li>
+              {% else %}
             <li class="nav-item">
-              <a class="nav-link" href="#maps">
+              <a class="nav-link disabled" href="#">
+                <span data-feather="download" class="align-text-bottom"></span>
+                Download
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link disabled" href="#synthesis">
+                <span data-feather="star" class="align-text-bottom"></span>
+                Synthesis
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link disabled" href="#figures">
+                <span data-feather="image" class="align-text-bottom"></span>
+                Figures
+              </a>
+            </li>
+              {% endif %}
+            <li class="nav-item">
+              <a class="nav-link" href="{{url_recap}}">
+                <span data-feather="list" class="align-text-bottom"></span>
+                Swipe all cycles
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="{{url_map}}">
                 <span data-feather="map" class="align-text-bottom"></span>
-                Maps
+                See on a map
+              </a>
+            </li>
+
+          </ul>
+
+          <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted text-uppercase">
+            <span>Parameters</span>
+          </h6>
+          <ul class="nav flex-column">
+            <li class="nav-item">
+              <a class="nav-link disabled" aria-current="page" href="#">
+                <span data-feather="mouse-pointer" class="align-text-bottom"></span>
+                Velocity: {{VELOCITY}}
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link disabled" aria-current="page" href="#">
+                <span data-feather="life-buoy" class="align-text-bottom"></span>
+                N floats: {{NFLOATS}}
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link disabled" aria-current="page" href="#">
+                <span data-feather="activity" class="align-text-bottom"></span>
+                Parking Depth: {{CFG_PARKING_DEPTH}}
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link disabled" aria-current="page" href="#">
+                <span data-feather="clock" class="align-text-bottom"></span>
+                Cycle Duration: {{CFG_CYCLE_DURATION}}
               </a>
             </li>
           </ul>
@@ -134,6 +203,26 @@
 <!--            </a>-->
           </h6>
           <ul class="nav flex-column mb-2">
+            <li class="nav-item">
+              {% if ea_float is not none %}
+              <a class="nav-link" href="{{ea_float}}">
+              {% else %}
+              <a class="nav-link disabled" href="#">
+              {% endif %}
+                <span data-feather="table" class="align-text-bottom"></span>
+                Float dashboard
+              </a>
+            </li>
+            <li class="nav-item">
+              {% if ea_profile is not none %}
+              <a class="nav-link" href="{{ea_profile}}">
+              {% else %}
+              <a class="nav-link disabled" href="#">
+              {% endif %}
+                <span data-feather="anchor" class="align-text-bottom"></span>
+                Profile page
+              </a>
+            </li>
             <li class="nav-item">
               <a class="nav-link" aria-current="page" href="https://floatrecovery.euro-argo.eu">
                 <span data-feather="zap" class="align-text-bottom"></span>
@@ -156,8 +245,19 @@
       </nav>
 
       <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
+          <div class="row row-cols-1">
+            <div class="col mx-auto col-5">
+             <img src="https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/master/docs/img/logo-virtual-fleet-recovery.png" class="img-fluid rounded mx-auto d-block" alt="VirtualFleet-recovery logo">
+            </div>
+            <div class="col mx-auto">
+              <h1 class="h3 text-center">A tool to make predictions of Argo float positions</h1>
+            </div>
+          </div>
+
+        </div>
         <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-          <h1 class="h2" id="start">Get started</h1>
+          <h1 class="h2" id="start">Getting started</h1>
         </div>
         <div class="justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
             <p class="fs-6">
@@ -166,6 +266,13 @@
               Once the prediction is ready (in about 1min30), this will return a json file with the prediction results.<br><br>
           You can customize the prediction by choosing the velocity field ARMOR3D (default) or GLORYS12 and the number of virtual floats to simulate (2000 by default) with the URL parameters <code class="language-http">velocity</code> and <code class="language-http">nfloats</code>:<br>
               <pre><code class="language-http" data-prismjs-copy="Copy snippet!">{{app_url}}predict/WMO/CYC?velocity=GLORYS&nfloats=1000</code></pre>
+              Virtual floats mission configuration parameters are automatically extracted from the real float previous cycle, using the Euro-Argo meta-data API.
+          It is possible to override 2 parameters:
+            <ul>
+              <li>the parking depth (set in db), using the <code class="language-http" data-prismjs-copy="Copy snippet!">cfg_parking_depth</code> argument</li>
+              <li>the cycle period (set in hours), using the <code class="language-http" data-prismjs-copy="Copy snippet!">cfg_cycle_duration</code> argument</li>
+            </ul>
+
 
             </p>
         </div>
