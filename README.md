@@ -137,7 +137,15 @@ You should know the <IP> address of the server where the Flask app is running.
 
 **Method 1**
 
-To make a prediction for the position of the ``CYC`` cycle from float ``WMO``, send a GET, or POST, request to:
+Simply visit the prediction triggering form at:
+
+```bash
+    http://<IP>:5000/trigger
+```
+
+**Method 2**
+
+Go the full webAPI way: to make a prediction for the position of the ``CYC`` cycle from float ``WMO``, send a POST, request to:
 ```bash
     http://<IP>:5000/predict/<WMO>/<CYC>
 ```
@@ -156,17 +164,14 @@ Options can be used, or combined:
     http://<IP>:5000/predict/<WMO>/<CYC>?nfloats=1000&velocity=GLORYS
 ```
 
-**Method 2**
-
-Simply visit the prediction triggering form at:
-
-```bash
-    http://<IP>:5000/trigger
-```
-
 #### Visualise prediction results
 
 We made a small webpage with figures and prediction data results. It is accessible at:
 ```bash
     http://<IP>:5000/<WMO>/<CYC>
+# or
+    http://<IP>:5000/results/<WMO>/<CYC>
 ```
+Here is a screenshot:
+![Screenshot 2022-12-06 at 16 14 17](https://user-images.githubusercontent.com/1956032/205950317-935b815f-c6fd-4e67-8bc3-71ab27d305d0.png)
+
