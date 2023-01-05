@@ -1,8 +1,8 @@
 |<img src="https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/master/docs/img/logo-virtual-fleet-recovery.png" alt="VirtualFleet-Recovery logo" width="400"><br>``Virtual Fleet - Recovery`` is a CLI and webAPI to make predictions of Argo float positions|
 |:---------:|
 
-The goal of this repository is to provide a library to make Argo floats trajectory predictions in order to facilitate recovery.  
-The prediction _patch_ or _cone_ could be displayed on the map at: https://floatrecovery.euro-argo.eu  
+The goal of this repository is to provide a library to make Argo floats trajectory predictions easy, in order to facilitate recovery.  
+The library produces a prediction _patch_ or _cone_ that could be displayed on a map like here: https://floatrecovery.euro-argo.eu  
 More about Argo floats recovery in here: https://github.com/euroargodev/recovery/issues
 
 - [POC #1](#poc--1)
@@ -22,7 +22,7 @@ More about Argo floats recovery in here: https://github.com/euroargodev/recovery
 ## Working design of the procedure
 1. Given a specific float cycle to predict ``C``, we extract:
    - space/time position of the previous cycle ``C-1``, 
-   - configuration parameters of the previous cycle ``C-1``, such as parking depth, profiling depth and cycling period using the EA API.
+   - configuration parameters of the previous cycle ``C-1``, such as parking depth, profiling depth and cycling period using the EA API (but these can be overwritten if necessary).
 
 2. We download the hourly CMEMS velocity fields for a large region around the previous cycle ``C-1`` coordinates
 
@@ -31,6 +31,8 @@ More about Argo floats recovery in here: https://github.com/euroargodev/recovery
    - for the cycle ``C-1`` duration
 
 4. We compute the most probable position of the float cycle ``C`` and prediction metrics and figures.
+
+The reason why we make random perturbations of the float cycle ``C-1`` position is not because the float position is uncertain (with GPS it is fairly accurate most of the time), but because it is a cheap way to account for errors in the velocity field. Indeed, we assume that the _phase_ of the velocity field used to advect floats is the primary source of uncertainties to predict the final position. We do not account for strain errors at this point. 
 
 ## Installation
 - Get this repository:
@@ -43,7 +45,7 @@ export PATH="/Users/gmaze/git/github/euroargodev/VirtualFleet_recovery/cli:$PATH
 ```
 - Make sure to get the appropriate Python 3.8 environment ([using this conda file](environment.yml)):
 ```bash
-conda create -f environment.yml
+conda env create -f environment.yml
 ```
 - Install the experimental VirtualFleet "GulfStream" branch:
 ```bash
@@ -111,7 +113,7 @@ The really observed 99th cycle is shown at the tip of the arrow (red point) star
 The VirtualFleet Recovery prediction is in the probabilistic red shading: the most probable position predicted is in the redder region.
 ![Figure](data/6902915/116/vfrecov_predictions.png)
 
-## web API
+## web API (highly experimental)
 
 In order to easily use prediction results with other (web)applications, we set-up a small web API based on [Flask](https://flask.palletsprojects.com/).
 
