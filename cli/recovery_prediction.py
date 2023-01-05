@@ -19,7 +19,7 @@ import shutil
 import sys, os, glob
 import logging
 import shutil
-
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -61,6 +61,11 @@ class COLORS:
     white = "37m"
 
 
+def get_package_dir():
+    fpath = Path(__file__)
+    return str(fpath.parent.parent)
+
+
 def puts(text, color=None, bold=False, file=sys.stdout):
     """Alternative to print, uses no color by default but accepts any color from the COLORS class.
 
@@ -77,7 +82,7 @@ def puts(text, color=None, bold=False, file=sys.stdout):
     else:
         txt = f'{PREF}{1 if bold else 0};{color}' + text + RESET
         print(txt, file=file)
-        log.debug(txt)
+    log.info(text)
 
 
 def haversine(lon1, lat1, lon2, lat2):
@@ -516,6 +521,7 @@ def save_figurefile(this_fig, a_name, folder='.'):
     path
     """
     figname = os.path.join(folder, "%s.png" % a_name)
+    log.debug("Saving %s ..." % figname)
     this_fig.savefig(figname)
     return figname
 
@@ -619,6 +625,7 @@ def figure_velocity(box,
 
 def figure_positions(this_args, vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name,
                      dd=1, save_figure=False, workdir='.'):
+    log.debug("Starts figure_positions")
     ebox = get_HBOX(df_sim, dd=dd)
     nfloats = df_plan.shape[0]
 
@@ -668,6 +675,7 @@ def figure_positions(this_args, vel, df_sim, df_plan, this_profile, cfg, wmo, cy
 def figure_predictions(this_args, weights, bin_X, bin_Y, bin_res, Hrel, recovery,
                        vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name,
                        s=0.2, alpha=False, save_figure=False, workdir='.'):
+    log.debug("Starts figure_predictions")
     ebox = get_EBOX(df_sim, df_plan, this_profile, s=s)
     nfloats = df_plan.shape[0]
     # fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(25,7), dpi=90,
@@ -682,6 +690,7 @@ def figure_predictions(this_args, weights, bin_X, bin_Y, bin_res, Hrel, recovery
                    recovery['prediction_location']['latitude']['value']
 
     for ix in [0, 1, 2, 3]:
+        # log.debug("Plot %i" % ix)
         ax[ix].set_extent(ebox)
         ax[ix] = map_add_features(ax[ix])
 
@@ -776,6 +785,8 @@ def figure_predictions(this_args, weights, bin_X, bin_Y, bin_res, Hrel, recovery
         ax[ix] = map_add_profiles(ax[ix], this_profile)
         ax[ix].set_title(title)
 
+    log.debug("Start to write metrics string")
+
     err = recovery['prediction_location_error']
     met = recovery['prediction_metrics']
     if this_profile.shape[0] > 1:
@@ -803,6 +814,7 @@ def figure_predictions(this_args, weights, bin_X, bin_Y, bin_res, Hrel, recovery
 def figure_predictions_recap(this_args, weights, bin_X, bin_Y, bin_res, Hrel, recovery,
                        vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name,
                        s=0.2, alpha=False, save_figure=False, workdir='.'):
+    log.debug("Starts figure_predictions_recap")
     ebox = get_EBOX(df_sim, df_plan, this_profile, s=s)
     nfloats = df_plan.shape[0]
     # fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(25,7), dpi=90,
@@ -1167,9 +1179,10 @@ def analyse_pairwise_distances(this_args, this_cfg,  data):
         if not os.path.exists(ncfile):
             puts('Cannot analyse pairwise distances because the trajectory file cannot be found at: %s' % ncfile,
                  color=COLORS.red)
-            return None
+            return data  # Return results dict unchanged
 
     # Open trajectory file:
+    # print(ncfile)
     ds = xr.open_dataset(ncfile)
 
     # Compute trajectories relative to the single/only real float initial position:
@@ -1402,7 +1415,7 @@ def predictor(args):
 
     # Set-up the working directory:
     if not args.output:
-        WORKDIR = os.path.sep.join(["..", "webapi", "myapp", "static", "data", str(WMO), str(CYC[1])])
+        WORKDIR = os.path.sep.join([get_package_dir(), "webapi", "myapp", "static", "data", str(WMO), str(CYC[1])])
     else:
         WORKDIR = os.path.sep.join([args.output, str(WMO), str(CYC[1])])
     WORKDIR = os.path.abspath(WORKDIR)
@@ -1416,7 +1429,7 @@ def predictor(args):
 
     # Set-up logger
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format=DEBUGFORMATTER,
         datefmt='%m/%d/%Y %I:%M:%S %p',
         handlers=[logging.FileHandler(os.path.join(WORKDIR, "vfpred.log"), mode='a')]
@@ -1450,9 +1463,13 @@ def predictor(args):
         CFG = FloatConfiguration('default')
 
     if args.cfg_parking_depth is not None:
+        puts("parking_depth=%i is overwritten with %i" % (CFG.mission['parking_depth'],
+                                                          float(args.cfg_parking_depth)))
         CFG.update('parking_depth', float(args.cfg_parking_depth))
 
     if args.cfg_cycle_duration is not None:
+        puts("cycle_duration=%i is overwritten with %i" % (CFG.mission['cycle_duration'],
+                                                          float(args.cfg_cycle_duration)))
         CFG.update('cycle_duration', float(args.cfg_cycle_duration))
 
     # Save virtual float configuration on file:
@@ -1477,7 +1494,7 @@ def predictor(args):
                                            n_days=CYCLING_FREQUENCY+1,
                                            output=WORKDIR,
                                            dataset=VEL_NAME)
-    VEL = VelocityField('GLORYS12V1' if VEL_NAME == 'GLORYS' else VEL_NAME, src=ds_vel)
+    VEL = VelocityField(model='GLORYS12V1' if VEL_NAME == 'GLORYS' else VEL_NAME, src=ds_vel)
     if not args.json:
         puts("\tLoaded velocity field from %s to %s" %
              (pd.to_datetime(ds_vel['time'][0].values).strftime("%Y-%m-%dT%H:%M:%S"),
@@ -1488,17 +1505,19 @@ def predictor(args):
     if not args.json:
         puts("\nVirtualFleet, get a deployment plan...")
     DF_PLAN = setup_deployment_plan(CENTER, THIS_DATE, nfloats=args.nfloats)
+    PLAN = {'lon': DF_PLAN['longitude'],
+            'lat': DF_PLAN['latitude'],
+            'time': np.array([np.datetime64(t) for t in DF_PLAN['date'].dt.strftime('%Y-%m-%d %H:%M').array]),
+            }
     if not args.json:
         puts("\t%i virtual floats to deploy" % DF_PLAN.shape[0], color=COLORS.green)
 
     # VirtualFleet, set-up the fleet:
     if not args.json:
         puts("\nVirtualFleet, set-up the fleet...")
-    VFleet = VirtualFleet(lat=DF_PLAN['latitude'],
-                          lon=DF_PLAN['longitude'],
-                          time=np.array([np.datetime64(t) for t in DF_PLAN['date'].dt.strftime('%Y-%m-%d %H:%M').array]),
-                          fieldset=VEL.fieldset,
-                          mission=CFG.mission)
+    VFleet = VirtualFleet(plan=PLAN,
+                          fieldset=VEL,
+                          mission=CFG)
 
     # VirtualFleet, execute the simulation:
     if not args.json:
@@ -1512,7 +1531,8 @@ def predictor(args):
     VFleet.simulate(duration=timedelta(hours=CYCLING_FREQUENCY*24+1),
                     step=timedelta(minutes=5),
                     record=timedelta(minutes=30),
-                    output_folder=WORKDIR if args.save_sim else None,
+                    output=args.save_sim,
+                    output_folder=WORKDIR,
                     output_file='trajectories_%s.zarr' % get_sim_suffix(args, CFG),
                     verbose_progress=not args.json,
                     )
@@ -1520,13 +1540,13 @@ def predictor(args):
     # VirtualFleet, get simulated profiles index:
     if not args.json:
         puts("\nVirtualFleet, extract simulated profiles index...")
-    # ds_traj = xr.open_dataset(VFleet.run_params['output_file'])
+    # ds_traj = xr.open_dataset(VFleet.output)
     # DF_SIM = simu2index_legacy(DF_PLAN, ds_traj)
     # DF_SIM = ds_simu2index(ds_traj)
     try:
         DF_SIM = get_index(VFleet, VEL, DF_PLAN)
     except ValueError:
-        ds_traj = xr.open_dataset(VFleet.run_params['output_file'])
+        ds_traj = xr.open_zarr(VFleet.output)
         DF_SIM = ds_simu2index(ds_traj)
     DF_SIM = postprocess_index(DF_SIM, THIS_PROFILE)
     if not args.json:
