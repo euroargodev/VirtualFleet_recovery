@@ -5,7 +5,6 @@
 # - the previous cycle
 # - the ARMORD3D or CMEMS GLORYS12 forecast at the time of the previous cycle
 #
-# This script is for testing the prediction system, and must be run on past float cycles.
 #
 # mprof run ../cli/recovery_prediction.py --output data 2903691 80
 # mprof plot
@@ -14,9 +13,9 @@
 # Capital variables are considered global and usable anywhere
 #
 # Created by gmaze on 06/10/2022
-import shutil
-
-import sys, os, glob
+import sys
+import os
+import glob
 import logging
 import shutil
 from pathlib import Path

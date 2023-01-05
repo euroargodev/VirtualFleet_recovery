@@ -54,4 +54,5 @@ dependencies:
     - Flask
     - flask-swagger
     - geojson
+    - dominate
 

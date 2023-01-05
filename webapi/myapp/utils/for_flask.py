@@ -8,7 +8,7 @@ from myapp import app
 
 
 APP_NAME = __name__.split('.')[0]
-print("myapp/utils/flask.py:", app.config)
+print("myapp/utils/for_flask.py:", app.config)
 
 
 class Args:

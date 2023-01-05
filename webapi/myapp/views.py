@@ -45,8 +45,8 @@ APP_NAME = __name__.split('.')[0]
 print("myapp/views.py:", app.config)
 print(os.getcwd())
 
-from .utils.flask import Args, parse_args, get_sim_files, load_data_for, request_opts_for_data
-from .utils.flask import read_params_from_path, search_local_prediction_datafiles, search_local_prediction_figfiles
+from .utils.for_flask import Args, parse_args, get_sim_files, load_data_for, request_opts_for_data
+from .utils.for_flask import read_params_from_path, search_local_prediction_datafiles, search_local_prediction_figfiles
 from .utils.misc import strfdelta, get_traj
 from .utils.html import Bootstrap_Carousel, Bootstrap_Figure, Bootstrap_Accordion
 
@@ -89,7 +89,7 @@ def recap(wmo):
 
     slist = search_local_prediction_figfiles(args, request)
 
-    carousel_html = Bootstrap_Carousel(slist, 'recapCarousel', args).html if len(slist) > 0 else None
+    carousel_html = Bootstrap_Carousel(slist, 'recapCarousel', args, opts).html if len(slist) > 0 else None
     template_data = {'css': url_for("static", filename="css"),
                      'js': url_for("static", filename="js"),
                      'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
