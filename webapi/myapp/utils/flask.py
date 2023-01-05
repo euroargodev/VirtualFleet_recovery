@@ -1,3 +1,4 @@
+import numpy as np
 import os
 import json
 import glob
@@ -19,17 +20,17 @@ class Args:
         if 'nfloats' in kwargs:
             self.nfloats = kwargs['nfloats']
         else:
-            self.nfloats = 2000
+            self.nfloats = None
+
+        if 'velocity' in kwargs:
+            self.velocity = kwargs['velocity']
+        else:
+            self.velocity = None
 
         if 'output' in kwargs:
             self.output = kwargs['output']
         else:
             self.output = os.path.join(app.config['DATASTORE'], 'data')
-
-        if 'velocity' in kwargs:
-            self.velocity = kwargs['velocity']
-        else:
-            self.velocity = 'ARMOR3D'
 
         if 'save_figure' in kwargs:
             self.save_figure = kwargs['save_figure']
@@ -49,12 +50,12 @@ class Args:
         if 'cfg_parking_depth' in kwargs:
             self.cfg_parking_depth = kwargs['cfg_parking_depth']
         else:
-            self.cfg_parking_depth = 1000
+            self.cfg_parking_depth = None
 
         if 'cfg_cycle_duration' in kwargs:
             self.cfg_cycle_duration = kwargs['cfg_cycle_duration']
         else:
-            self.cfg_cycle_duration = 240
+            self.cfg_cycle_duration = None
 
     def __iter__(self):
         self.__i = 0
@@ -103,7 +104,7 @@ def parse_args(wmo, cyc):
     args.nfloats = request.args.get('nfloats', args.__getattribute__('nfloats'), int)
     args.velocity = request.args.get('velocity', args.__getattribute__('velocity'), str)
     args.cfg_parking_depth = request.args.get('cfg_parking_depth', args.__getattribute__('cfg_parking_depth'), int)
-    args.cfg_cycle_duration = request.args.get('cfg_cycle_duration', args.__getattribute__('cfg_cycle_duration'), str)
+    args.cfg_cycle_duration = request.args.get('cfg_cycle_duration', args.__getattribute__('cfg_cycle_duration'), int)
     return args
 
 
@@ -157,11 +158,40 @@ def get_sim_suffix(this_args, legacy=False):
     if legacy:
         suf = '%s_%i' % (this_args.velocity, this_args.nfloats)
     else:
-        suf = 'VEL%s_NF%i_CYCDUR%i_PDPTH%i' % (this_args.velocity,
-                                               this_args.nfloats,
-                                               int(this_args.cfg_cycle_duration),
-                                               int(this_args.cfg_parking_depth))
+        # suf = 'VEL%s_NF%i_CYCDUR%i_PDPTH%i' % (this_args.velocity,
+        #                                        this_args.nfloats,
+        #                                        int(this_args.cfg_cycle_duration),
+        #                                        int(this_args.cfg_parking_depth))
+        # suf = 'VEL%s_NF%i' % (this_args.velocity, this_args.nfloats)
+        if this_args.velocity is not None:
+            suf = "VEL%s" % this_args.velocity
+        else:
+            suf = "VEL*"
+        if this_args.nfloats is not None:
+            suf += "_NF%i" % this_args.nfloats
+        else:
+            suf += "_NF*"
+        if this_args.cfg_cycle_duration is not None:
+            suf += "_CYCDUR%i" % this_args.cfg_cycle_duration
+        else:
+            suf += "_CYCDUR*"
+        if this_args.cfg_parking_depth is not None:
+            suf += "_PDPTH%i" % this_args.cfg_parking_depth
+        else:
+            suf += "_PDPTH*"
+
     return suf
+
+
+def get_sim_files(this_args, legacy=False):
+    js = os.path.sep.join([
+                           "data",
+                           str(this_args.wmo),
+                           str(this_args.cyc),
+                           "prediction_%s.json" % get_sim_suffix(this_args, legacy=legacy)])
+    ajs = os.path.abspath(os.path.sep.join([".", APP_NAME, "static", js]))
+    ajs_list = sorted(glob.glob(ajs))
+    return ajs_list
 
 
 def complete_data_for(this_args, this_js, legacy=False):
@@ -204,17 +234,12 @@ def load_data_for(this_args, legacy=False):
     Simulation parameters are determined using args
     Raw data are complemented with results from complete_data_for() function
     """
-    js = os.path.sep.join([
-                           "data",
-                           str(this_args.wmo),
-                           str(this_args.cyc),
-                           "prediction_%s.json" % get_sim_suffix(this_args, legacy=legacy)])
-    ajs = os.path.abspath(os.path.sep.join([".", APP_NAME, "static", js]))
-    if os.path.exists(ajs):
-        with open(ajs) as f:
+    ajs_list = get_sim_files(this_args, legacy=legacy)
+    if (len(ajs_list) > 0) and os.path.exists(ajs_list[0]):
+        with open(ajs_list[0]) as f:
             jsdata = json.load(f)
     else:
-        print('No data found at: ', ajs)
+        print('No data found at: ', ajs_list)
         jsdata = None
 
     if jsdata is not None:

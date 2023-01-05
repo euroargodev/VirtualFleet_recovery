@@ -1,4 +1,22 @@
-<form class="row g-3 col-md-6" method="post">
+<form class="row g-3 col-md-7" method="post">
+
+  <div class="col-md-12 mb-3">
+      <label class="form-label">Identify profile to predict position for:</label>
+      <div class="input-group mb-3">
+        <span class="input-group-text">Float</span>
+        {% if WMO is not none %}
+        <input type="text" class="form-control" placeholder="WMO: PLATFORM_NUMBER" aria-label="WMO" name="WMO" value="{{WMO}}" required>
+        {% else %}
+        <input type="text" class="form-control" placeholder="WMO: PLATFORM_NUMBER" aria-label="WMO" name="WMO" required>
+        {% endif %}
+        <span class="input-group-text">Cycle</span>
+        {% if CYC is not none %}
+        <input type="text" class="form-control" placeholder="CYCLE_NUMBER" aria-label="CYC" name="CYC" value="{{CYC}}" required>
+        {% else %}
+        <input type="text" class="form-control" placeholder="CYCLE_NUMBER" aria-label="CYC" name="CYC" required>
+        {% endif %}
+      </div>
+  </div>
 
   <div class="col-md-3 mb-3">
     <label class="form-label">Velocity field:</label>
@@ -30,33 +48,28 @@
     <input type="range" class="form-range" min="100" max="5000" step="100" id="customNfloats" name="nfloats" value="{{NFLOATS}}">
   </div>
 
-  <div class="col-md-12 mb-3">
-    <div class="input-group mb-3">
-      <span class="input-group-text">Float</span>
-      {% if WMO is not none %}
-      <input type="text" class="form-control" placeholder="WMO" aria-label="WMO" name="WMO" value="{{WMO}}" required>
-      {% else %}
-      <input type="text" class="form-control" placeholder="WMO" aria-label="WMO" name="WMO" required>
-      {% endif %}
-      <span class="input-group-text">Cycle</span>
-      {% if CYC is not none %}
-      <input type="text" class="form-control" placeholder="CYC" aria-label="CYC" name="CYC" value="{{CYC}}" required>
-      {% else %}
-      <input type="text" class="form-control" placeholder="CYC" aria-label="CYC" name="CYC" required>
-      {% endif %}
-    </div>
-  </div>
 
   <div class="col-md-12 mb-3">
-    <label class="form-label">Float configuration:</label>
+<!--    <label class="form-label">Float configuration:</label>-->
 
-    <div class="input-group mb-3">
-      <span class="input-group-text">Parking Depth</span>
-      <input type="text" class="form-control" placeholder="{{CFG_PARKING_DEPTH}} db" aria-label="parking_depth" name="cfg_parking_depth">
+    <div class="mb-3">
+      <label for="CFG_PARKING_DEPTH" class="form-label">Parking Depth [db]</label>
+      {% if CFG_PARKING_DEPTH is not none %}
+      <input type="text" id="CFG_PARKING_DEPTH" class="form-control" value="{{CFG_PARKING_DEPTH}}" aria-label="parking_depth" name="cfg_parking_depth" aria-describedby="CFG_PARKING_DEPTHHelp">
+      {% else %}
+      <input type="text" id="CFG_PARKING_DEPTH" class="form-control" aria-label="parking_depth" name="cfg_parking_depth" aria-describedby="CFG_PARKING_DEPTHHelp">
+      {% endif %}
+      <div id="CFG_PARKING_DEPTHHelp" class="form-text">Leave blank to use previous cycle value</div>
     </div>
-    <div class="input-group mb-3">
-      <span class="input-group-text">Cycle duration</span>
-      <input type="text" class="form-control" placeholder="{{CFG_CYCLE_DURATION}} hours" aria-label="cycle_duration" name="cfg_cycle_duration">
+
+    <div class="mb-3">
+      <label for="CFG_CYCLE_DURATION" class="form-label">Cycle duration [hours]</label>
+      {% if CFG_CYCLE_DURATION is not none %}
+      <input type="text" id="CFG_CYCLE_DURATION" class="form-control" value="{{CFG_CYCLE_DURATION}}" aria-label="cycle_duration" name="cfg_cycle_duration" aria-describedby="CFG_CYCLE_DURATIONHelp">
+      {% else %}
+      <input type="text" id="CFG_CYCLE_DURATION" class="form-control" aria-label="cycle_duration" name="cfg_cycle_duration" aria-describedby="CFG_CYCLE_DURATIONHelp">
+      {% endif %}
+      <div id="CFG_CYCLE_DURATIONHelp" class="form-text">Leave blank to use previous cycle value</div>
     </div>
 
   </div>

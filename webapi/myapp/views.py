@@ -45,7 +45,7 @@ APP_NAME = __name__.split('.')[0]
 print("myapp/views.py:", app.config)
 print(os.getcwd())
 
-from .utils.flask import Args, parse_args, load_data_for, request_opts_for_data
+from .utils.flask import Args, parse_args, get_sim_files, load_data_for, request_opts_for_data
 from .utils.flask import read_params_from_path, search_local_prediction_datafiles, search_local_prediction_figfiles
 from .utils.misc import strfdelta, get_traj
 from .utils.html import Bootstrap_Carousel, Bootstrap_Figure, Bootstrap_Accordion
@@ -168,10 +168,15 @@ def results(wmo, cyc):
     # legacy = not 'cfg_parking_depth' in request.args
     # print('legacy', legacy)
     # jsdata = load_data_for(args, legacy=legacy)
+    results = get_sim_files(args)
+    print("Found %i simulations config for this profile" % len(results))
     jsdata = load_data_for(args)
     # print(jsdata)
 
-    if jsdata is not None:
+    if jsdata is None:
+        url_trigger = url_for(".trigger", **args.amap)
+        return redirect(url_trigger)
+    else:
         data = [
         {'title': 'Prediction',
          'body': Bootstrap_Figure(src=jsdata['meta']['figures']['predictions_recap']).html},
@@ -212,10 +217,12 @@ def results(wmo, cyc):
         if 'VFloats_config' in jsdata['meta']:
             template_data['vfloatcfg'] = jsdata['meta']['VFloats_config']
 
-    template_data['ea_float'] = argopy.dashboard(argopy.utilities.check_wmo(args.wmo), url_only=True)
+        template_data['ea_float'] = argopy.dashboard(argopy.utilities.check_wmo(args.wmo), url_only=True)
 
-    html = render_template('results4.html', **template_data)
-    return html
+        html = render_template('results4.html', **template_data)
+        return html
+
+
 
 
 @app.route('/predict/<int:wmo>/<int:cyc>', methods=['GET', 'POST'])
@@ -225,8 +232,8 @@ def predict(wmo, cyc):
     """
     # Parse request parameters:
     args = parse_args(wmo, cyc)
-    # print(args.amap)
-    # print(request.args)
+    print(args.amap)
+    print(request.args)
 
     # Load data for this set-up:
     jsdata = load_data_for(args)
@@ -326,58 +333,57 @@ def trigger(wmo, cyc):
                      'app_url': request.url_root,
                      'WMO': args.wmo if args.wmo != 0 else None,
                      'CYC': args.cyc if args.cyc != 0 else None,
-                     'VELOCITY': args.velocity,
-                     'NFLOATS': args.nfloats,
+                     'VELOCITY': args.velocity if args.velocity is not None else app.config['DEFAULT_PARAMS']['velocity'],
+                     'NFLOATS': args.nfloats if args.nfloats is not None else app.config['DEFAULT_PARAMS']['nfloats'],
                      'CFG_PARKING_DEPTH': args.cfg_parking_depth,
                      'CFG_CYCLE_DURATION': args.cfg_cycle_duration,
                      'jsdata': url_for('.data', **request_opts_for_data(request, args)),
                      }
 
-    if request.method == 'POST':
+    if request.method == 'POST':  # We arrive here when the form submit button is pressed
 
-        float_cfg = {}
-        if request.form['cfg_parking_depth'] == '':
-            float_cfg['parking_depth'] = args.cfg_parking_depth
-        else:
-            float_cfg['parking_depth'] = int(request.form['cfg_parking_depth'])
-
-        if request.form['cfg_cycle_duration'] == '':
-            float_cfg['cycle_duration'] = args.cfg_cycle_duration
-        else:
-            float_cfg['cycle_duration'] = int(request.form['cfg_cycle_duration'])
-
-        # Trigger prediction
+        # Get prediction parameters from the submitted form:
         WMO = int(request.form['WMO'])
         CYC = int(request.form['CYC'])
         nfloats = int(request.form['nfloats'])
         velocity = request.form['VELOCITY']
 
+        # float_cfg = {}
+        # if request.form['cfg_parking_depth'] == '':
+        #     float_cfg['parking_depth'] = args.cfg_parking_depth
+        # else:
+        #     float_cfg['parking_depth'] = int(request.form['cfg_parking_depth'])
+        #
+        # if request.form['cfg_cycle_duration'] == '':
+        #     float_cfg['cycle_duration'] = args.cfg_cycle_duration
+        # else:
+        #     float_cfg['cycle_duration'] = int(request.form['cfg_cycle_duration'])
+
         form_args = Args(WMO, CYC, json=True)
         form_args.nfloats = int(nfloats)
         form_args.velocity = velocity
-        form_args.cfg_parking_depth = int(float_cfg['parking_depth'])
-        form_args.cfg_cycle_duration = int(float_cfg['cycle_duration'])
+        # form_args.cfg_parking_depth = int(float_cfg['parking_depth'])
+        # form_args.cfg_cycle_duration = int(float_cfg['cycle_duration'])
 
         # print()
-        # print(request)
+        print("trigger.request.form", request.form)
         # print(args.amap)
-        # print(form_args.amap)
-
+        print("trigger.POST:", form_args.amap)
         # print(float_cfg)
-        # url_predict = url_for(".predict", wmo=args.wmo, cyc=args.cyc, nfloats=args.nfloats, velocity=args.velocity)
-        url_predict = url_for(".predict", **form_args.amap, redirect=True)
-        url_results = url_for('.results', **form_args.amap)
 
         # Check if results are already available, otherwise, trigger prediction:
         if load_data_for(form_args) is not None:
             print('Found results, redirect to results page')
+            url_results = url_for('.results', **form_args.amap)
             return redirect(url_results)
         else:
             print('No results, trigger computation')
+            url_predict = url_for(".predict", **form_args.amap, redirect=True)
             return redirect(url_predict)
 
-    html = render_template('trigger.html', **template_data)
-    return html
+    else:
+        html = render_template('trigger.html', **template_data)
+        return html
 
 # @app.route("/spec")
 # def spec():
