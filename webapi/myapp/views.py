@@ -48,7 +48,7 @@ print(os.getcwd())
 from .utils.for_flask import Args, parse_args, get_sim_files, load_data_for, request_opts_for_data
 from .utils.for_flask import read_params_from_path, search_local_prediction_datafiles, search_local_prediction_figfiles
 from .utils.misc import strfdelta, get_traj
-from .utils.html import Bootstrap_Carousel, Bootstrap_Figure, Bootstrap_Accordion
+from .utils.html import Bootstrap_Carousel, Bootstrap_Figure, Bootstrap_Accordion, Bootstrap_Carousel_Recovery
 
 
 @app.route('/', defaults={'wmo': None, 'cyc': None}, methods=['GET'])
@@ -89,7 +89,7 @@ def recap(wmo):
 
     slist = search_local_prediction_figfiles(args, request)
 
-    carousel_html = Bootstrap_Carousel(slist, 'recapCarousel', args, opts).html if len(slist) > 0 else None
+    carousel_html = Bootstrap_Carousel_Recovery(slist, 'recapCarousel').html if len(slist) > 0 else None
     template_data = {'css': url_for("static", filename="css"),
                      'js': url_for("static", filename="js"),
                      'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
@@ -187,7 +187,7 @@ def results(wmo, cyc):
         {'title': 'Velocity field domain',
          'body': Bootstrap_Figure(src=jsdata['meta']['figures']['velocity']).html},
             ]
-        template_data['figures'] = Bootstrap_Accordion(data=data, name='Figures').html
+        template_data['figures'] = Bootstrap_Accordion(data=data, id='Figures').html
 
         template_data['prediction_lon'] = "%0.3f" % jsdata['prediction_location']['longitude']['value']
         template_data['prediction_lon_unit'] = "%s" % jsdata['prediction_location']['longitude']['unit']#.replace("degree", "deg")

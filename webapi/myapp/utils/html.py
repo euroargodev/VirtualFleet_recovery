@@ -1,5 +1,3 @@
-import os
-import glob
 import numpy as np
 from flask import request, url_for
 from .for_flask import parse_args, request_opts_for_data, read_params_from_path
@@ -8,121 +6,33 @@ from dominate.tags import img, figure, figcaption
 from dominate.util import raw
 
 
-def get_html_of_simulations_list_deprecated(this_src, this_urlroot):
-    pattern = os.path.sep.join([this_src, "*", "*", "prediction_*.json"])
-    # print(pattern)
-    flist = sorted(glob.glob(pattern))
-    if len(flist) == 0:
-        return None
-    WMOs = {}
-    for f in flist:
-        p = f.replace(this_src, "").split(os.path.sep)
-        wmo, cyc, js = p[1], p[2], p[-1]
-        wmo, cyc = int(wmo), int(cyc)
-        cyc = "%.3d" % cyc
-        # velocity, nfloats = js.replace("prediction_", "").replace(".json", "").split("_")[0], \
-        #                     js.replace("prediction_", "").replace(".json", "").split("_")[1]
-        # print(wmo, cyc, velocity, nfloats)
-        if wmo not in WMOs:
-            WMOs[wmo] = {}
-        if cyc not in WMOs[wmo]:
-            WMOs[wmo][cyc] = []
-        WMOs[wmo][cyc].append(js)
-    WMOs = dict(sorted(WMOs.items()))
-
-    f_wline = "<li>\n<ul><h3>{wmo}</h3>\n{cycs}\n</ul>\n</li>".format
-    f_cline = "<li><b>{cyc}:</b> {links}</li>".format
-    f_html_link = "<a href=\"{url}\">{text}</a>".format
-    f_app_url = "{root}/results/{wmo}/{cyc}".format
-
-    lines = ["<ul>"]
-    for wmo in WMOs:
-        clines = []
-        cyc_list = dict(sorted(WMOs[wmo].items()))
-        for cyc in cyc_list:
-            links = []
-            for run in WMOs[wmo][cyc]:
-                # links.append(f_html_link(url = os.path.sep.join([src, str(wmo), str(cyc), run]),
-                #                          text = run.replace("prediction_","").replace(".json","").replace("_","-")))
-                links.append(f_html_link(url=f_app_url(root=this_urlroot, wmo=wmo, cyc=cyc),
-                                         text=run.replace("prediction_", "").replace(".json", "").replace("_", "-")))
-            links = ", ".join(links)
-            clines.append(f_cline(cyc=cyc, links=links))
-        clines = "\n".join(clines)
-        lines.append(f_wline(wmo=wmo, cycs=clines))
-    lines.append("</ul>")
-    return "\n".join(lines)
-
-
-def get_html_of_simulations_accordion_deprecated(this_src, this_urlroot):
-    flist = sorted(glob.glob(os.path.sep.join([this_src, "*", "*", "prediction_*.json"])))
-    WMOs = {}
-    for f in flist:
-        p = f.replace(this_src, "").split(os.path.sep)
-        wmo, cyc, js = p[1], p[2], p[-1]
-        wmo, cyc = int(wmo), int(cyc)
-        cyc = "%.3d" % cyc
-        # velocity, nfloats = js.replace("prediction_", "").replace(".json", "").split("_")[0], \
-        #                     js.replace("prediction_", "").replace(".json", "").split("_")[1]
-        # print(wmo, cyc, velocity, nfloats)
-        if wmo not in WMOs:
-            WMOs[wmo] = {}
-        if cyc not in WMOs[wmo]:
-            WMOs[wmo][cyc] = []
-        WMOs[wmo][cyc].append(js)
-    WMOs = dict(sorted(WMOs.items()))
-
-    f_accordionItem = "<div class=\"accordion-item\">\
-    <h2 class=\"accordion-header\" id=\"{wmo}\">\
-    <button class=\"accordion-button {collapsed}\" type=\"button\" data-bs-toggle=\"collapse\" data-bs-target=\"#collapse{wmo}\" aria-expanded=\"true\" aria-controls=\"collapse{wmo}\">\
-        Float {wmo} ({ncyc} cycles simulated)\
-    </button>\
-    </h2>\
-    <div id=\"collapse{wmo}\" class=\"accordion-collapse collapse {show}\" aria-labelledby=\"{wmo}\" data-bs-parent=\"#accordionSimulations\">\
-        <div class=\"accordion-body\">\
-            {cycs}\
-        </div>\
-    </div>\
-    </div>".format
-
-    # f_wline = "<li>\n<ul><h3>{wmo}</h3>\n{cycs}\n</ul>\n</li>".format
-    f_cline = "<li><b>{cyc}:</b> {links}</li>".format
-    f_html_link = "<a href=\"{url}\" target=\"blank\">{text}</a>".format
-    # f_app_url = "{root}results/{wmo}/{cyc}".format
-    f_app_url = "{root}results/{wmo}/{cyc}?velocity={velocity}&nfloats={nfloats}".format
-
-    lines = ["<div class=\"accordion w-100\" id=\"accordionSimulations\">"]
-    for iw, wmo in enumerate(WMOs):
-        clines = []
-        cyc_list = dict(sorted(WMOs[wmo].items()))
-        for cyc in cyc_list:
-            links = []
-            for run in WMOs[wmo][cyc]:
-                label = run.replace("prediction_", "").replace(".json", "")
-                # url = f_app_url(root=this_urlroot, wmo=wmo, cyc=int(cyc))
-                velocity, nfloats = label.split("_")[0], label.split("_")[1]
-                url = f_app_url(root=this_urlroot, wmo=wmo, cyc=int(cyc), velocity=velocity, nfloats=nfloats)
-                links.append(f_html_link(url=url, text=label.replace("_", "/N=")))
-            links = ", ".join(links)
-            clines.append(f_cline(cyc=cyc, links=links))
-        clines = "".join(clines)
-        # lines.append(f_wline(wmo=wmo, cycs=clines))
-        if iw < 0:
-            show = 'show'
-            collapsed = ''
-        else:
-            show = ''
-            collapsed = 'collapsed'
-        lines.append(f_accordionItem(wmo=wmo, cycs=clines, show=show, collapsed=collapsed, ncyc=len(cyc_list)))
-    lines.append("</div>")
-    return "\n".join(lines)
-
-
 class Bootstrap_Figure:
+    """Return a Boostrap figure
 
+    Based on: https://getbootstrap.com/docs/5.3/content/figures/
+
+    HTML pattern of the figure component:
+    ```html
+        <figure class="figure">
+          <img src="..." class="figure-img img-fluid rounded" alt="...">
+          <figcaption class="figure-caption text-end">A caption for the above image.</figcaption>
+        </figure>
+    ```
+    """
     def __init__(self, src=None, alt="", caption=""):
         """Return a Boostrap Figure html
 
+        Parameters
+        ----------
+        src: str
+            Path the image file
+        alt: str, optional
+            Alternative text to the image
+        caption: str, optional
+            Text to insert as a caption to the figure
+
+        Examples
+        --------
         >>> Bootstrap_Figure(src='logo-virtual-fleet-recovery.png', caption='coucou').html
         """
         self.src = src
@@ -139,11 +49,81 @@ class Bootstrap_Figure:
 
 
 class Bootstrap_Accordion:
+    """Return a Boostrap accordion
 
-    def __init__(self, data=[], name='AccordionExample', args=None):
+    Based on: https://getbootstrap.com/docs/5.3/components/accordion/
+
+    HTML pattern of an accordion:
+    ```html
+        <div class="accordion" id="accordionPanelsStayOpenExample">
+          <div class="accordion-item">
+            <h2 class="accordion-header" id="panelsStayOpen-headingOne">
+              <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#panelsStayOpen-collapseOne" aria-expanded="true" aria-controls="panelsStayOpen-collapseOne">
+                Accordion Item #1
+              </button>
+            </h2>
+            <div id="panelsStayOpen-collapseOne" class="accordion-collapse collapse show" aria-labelledby="panelsStayOpen-headingOne">
+              <div class="accordion-body">
+                <strong>This is the first item's accordion body.</strong>
+              </div>
+            </div>
+          </div>
+          <div class="accordion-item">
+            <h2 class="accordion-header" id="panelsStayOpen-headingTwo">
+              <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#panelsStayOpen-collapseTwo" aria-expanded="false" aria-controls="panelsStayOpen-collapseTwo">
+                Accordion Item #2
+              </button>
+            </h2>
+            <div id="panelsStayOpen-collapseTwo" class="accordion-collapse collapse" aria-labelledby="panelsStayOpen-headingTwo">
+              <div class="accordion-body">
+                <strong>This is the second item's accordion body.</strong>
+              </div>
+            </div>
+          </div>
+          <div class="accordion-item">
+            <h2 class="accordion-header" id="panelsStayOpen-headingThree">
+              <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#panelsStayOpen-collapseThree" aria-expanded="false" aria-controls="panelsStayOpen-collapseThree">
+                Accordion Item #3
+              </button>
+            </h2>
+            <div id="panelsStayOpen-collapseThree" class="accordion-collapse collapse" aria-labelledby="panelsStayOpen-headingThree">
+              <div class="accordion-body">
+                <strong>This is the third item's accordion body.</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+    ```
+    """
+
+
+    def __init__(self, data=[], id='AccordionExample'):
+        """Return a Bootstrap accordion html
+
+        Parameters
+        ----------
+        data: list of dict with ``title`` and ``description`` keys
+            List of accordion panels data. For each panel (i.e. an item of the ``data`` list), we use the ``title`` value
+            to populate the accordion header, and the ``description`` value for the accordion body.
+        id: str, optional, default='AccordionExample'
+            HTML id of the accordion
+
+        Examples
+        --------
+        data = [
+                {'title': 'Prediction',
+                 'body': Bootstrap_Figure(src=jsdata['meta']['figures']['predictions_recap']).html},
+                {'title': 'Probabilistic prediction details',
+                 'body': Bootstrap_Figure(src=jsdata['meta']['figures']['predictions']).html},
+                {'title': 'Trajectory analysis details',
+                 'body': Bootstrap_Figure(src=jsdata['meta']['figures']['metrics']).html},
+                {'title': 'Velocity field domain',
+                 'body': Bootstrap_Figure(src=jsdata['meta']['figures']['velocity']).html},
+            ]
+        html = Bootstrap_Accordion(data=data, id='Figures').html
+        """
         self.data = data
-        self.name = name
-        self.args = args
+        self.id = id
 
     def _html_accordion_btn(self, txt="", collapsed=False, target=""):
         b = button(txt,
@@ -166,12 +146,12 @@ class Bootstrap_Accordion:
 
     @property
     def html(self):
-        code = div(cls="accordion w-100", id=self.name)
+        code = div(cls="accordion w-100", id=self.id)
         for ii, item in enumerate(self.data):
             with code:
                 item_html = self._html_accordion_item(title=item['title'],
                                                       body=item['body'],
-                                                      itemID="%s-item%i" % (self.name, ii),
+                                                      itemID="%s-item%i" % (self.id, ii),
                                                       collapsed=ii != 0)
                 item_html
         return code
@@ -180,16 +160,16 @@ class Bootstrap_Accordion:
 class Bootstrap_Carousel:
     """Return a Boostrap carousel, a slideshow component for cycling through elements—images or slides of text—like a carousel.
 
-    https://getbootstrap.com/docs/4.0/components/carousel/
+    Based on: https://getbootstrap.com/docs/4.0/components/carousel/
 
-    Pattern:
+    HTML pattern of a carousel:
     ```html
-        <div id="carouselExampleIndicators" class="carousel slide">
+        <div id="carouselExample" class="carousel slide">
 
           <div class="carousel-indicators">
-            <button type="button" data-bs-target="#carouselExampleIndicators" data-bs-slide-to="0" class="active" aria-current="true" aria-label="Slide 1"></button>
-            <button type="button" data-bs-target="#carouselExampleIndicators" data-bs-slide-to="1" aria-label="Slide 2"></button>
-            <button type="button" data-bs-target="#carouselExampleIndicators" data-bs-slide-to="2" aria-label="Slide 3"></button>
+            <button type="button" data-bs-target="#carouselExample" data-bs-slide-to="0" class="active" aria-current="true" aria-label="Slide 1"></button>
+            <button type="button" data-bs-target="#carouselExample" data-bs-slide-to="1" aria-label="Slide 2"></button>
+            <button type="button" data-bs-target="#carouselExample" data-bs-slide-to="2" aria-label="Slide 3"></button>
           </div>
 
           <div class="carousel-inner">
@@ -209,11 +189,11 @@ class Bootstrap_Carousel:
           </div>
 
 
-          <button class="carousel-control-prev" type="button" data-bs-target="#carouselExampleIndicators" data-bs-slide="prev">
+          <button class="carousel-control-prev" type="button" data-bs-target="#carouselExample" data-bs-slide="prev">
             <span class="carousel-control-prev-icon" aria-hidden="true"></span>
             <span class="visually-hidden">Previous</span>
           </button>
-          <button class="carousel-control-next" type="button" data-bs-target="#carouselExampleIndicators" data-bs-slide="next">
+          <button class="carousel-control-next" type="button" data-bs-target="#carouselExample" data-bs-slide="next">
             <span class="carousel-control-next-icon" aria-hidden="true"></span>
             <span class="visually-hidden">Next</span>
           </button>
@@ -222,12 +202,28 @@ class Bootstrap_Carousel:
     ```
     """
 
-    def __init__(self, figure_list=[], id='carouselExample', args=None, opts=None):
-        """Create a Bootstrap Carousel for a given list of figure files"""
+    def __init__(self, figure_list=[], id='carouselExample', label=None, description=None):
+        """Create a Bootstrap Carousel for a given list of figure files
+
+        Instantiate with a list of files and access the `html` instance property to get the code to insert.
+
+        Parameters
+        ----------
+        figure_list: list of str
+            The list of figure files to insert in the carousel
+        id: str, optional, default 'carouselExample'
+            HTML id of the carousel
+        label: function, optional
+            A function called on each slide with the number and figure file as arguments and that return a label string
+            to insert on each slide caption.
+        description: function, optional
+            A function called on each slide with the number and figure file as arguments and that return a description
+            string to insert on each slide caption.
+        """
         self.flist = figure_list
         self.id = id
-        self.args = args
-        self.opts = opts
+        self.get_label = self._get_label if label is None else label
+        self.get_description = self._get_description if description is None else description
 
     def __repr__(self):
         summary = []
@@ -235,6 +231,12 @@ class Bootstrap_Carousel:
         summary.append("Figures: %i" % len(self.flist))
         summary.append("ID: %s" % self.id)
         return "\n".join(summary)
+
+    def _get_label(self, slide_number, figure_file):
+        return "Figure %i" % (slide_number + 1)
+
+    def _get_description(self, slide_number, figure_file):
+        return "File: %s" % figure_file
 
     def _html_carousel_indicators_btn(self, islide=0, active=False, target: str = None):
         b = button(type='button',
@@ -251,37 +253,11 @@ class Bootstrap_Carousel:
             d += self._html_carousel_indicators_btn(islide, active=islide == 0, target=self.id)
         return d
 
-    def _get_results_lnk(self, wmo, cyc, params):
-        """Return link to an individual cycle result page"""
-        this_figure_args = parse_args(wmo, cyc)
-        this_figure_request = {'args': {}}
-        for p in params:
-            if p == 'VEL':
-                this_figure_request['args']['velocity'] = params[p]
-                this_figure_args.velocity = params[p]
-            if p == 'NF':
-                this_figure_request['args']['nfloats'] = params[p]
-                this_figure_args.nfloats = params[p]
-            if p == 'CYCDUR':
-                this_figure_request['args']['cfg_cycle_duration'] = params[p]
-                this_figure_args.cfg_cycle_duration = params[p]
-            if p == 'PDPTH':
-                this_figure_request['args']['cfg_parking_depth'] = params[p]
-                this_figure_args.cfg_parking_depth = params[p]
-        results_lnk = url_for('.results', **request_opts_for_data(this_figure_request, this_figure_args))
-        return results_lnk
-
-    def _get_recap_lnk(self, wmo, cyc):
-        opts = request_opts_for_data(request, parse_args(wmo, cyc))
-        opts.pop('cyc')
-        results_lnk = url_for('.recap', **opts)
-        return results_lnk
-
-    def _get_carousel_item(self,
-                            src='...',
-                            label='Slide label',
-                            description='Some representative placeholder content for the second slide.',
-                            active=False):
+    def get_carousel_item(self,
+                          src='...',
+                          label='Slide label',
+                          description='Some representative placeholder content for this slide.',
+                          active=False):
         d = div(cls="carousel-item %s" % ("active" if active else ""), data_bs_interval=10)
         d += img(src=src, cls='d-block w-100', alt='')
         d += div([h5(label), p(raw(description))], cls="carousel-caption d-none d-md-block")
@@ -290,19 +266,9 @@ class Bootstrap_Carousel:
     def get_list_of_carousel_items(self):
         d = div(cls="carousel-inner")
         for islide, figure_file in enumerate(self.flist):
-
-            # Get data to make description links:
-            params = read_params_from_path(figure_file, plist=['VEL', 'NF', 'CYCDUR', 'PDPTH'])
-            wmo = figure_file.replace("static/data/", "").split("/")[1]
-            cyc = figure_file.replace("static/data/", "").split("/")[2]
-
-            results_lnk = self._get_results_lnk(wmo, cyc, params)
-            recap_lnk = self._get_recap_lnk(wmo, cyc)
-            description = "%s / %s" % (a("Swipe only this float", href=recap_lnk, target=""),
-                                       a("Check this cycle details", href=results_lnk, target=""))
-
-            label = "Float %s - Cycle %s" % (wmo, cyc)
-            d += self._get_carousel_item(src=figure_file, label=label, description=description, active=islide == 0)
+            label = self.get_label(islide, figure_file)
+            description = self.get_description(islide, figure_file)
+            d += self.get_carousel_item(src=figure_file, label=label, description=description, active=islide == 0)
         return d
 
     def get_carousel_controls(self):
@@ -322,12 +288,74 @@ class Bootstrap_Carousel:
     @property
     def html(self):
         d = div(id=self.id, cls="carousel carousel-dark slide", data_bs_ride="false")
-
         d += self.get_list_of_carousel_indicators_btn()
         d += self.get_list_of_carousel_items()
-
-        # Add control buttons:
         for b in self.get_carousel_controls():
             d += b
-
         return d
+
+
+class Bootstrap_Carousel_Recovery:
+
+    def read_data(self, figure_file):
+        params = read_params_from_path(figure_file, plist=['VEL', 'NF', 'CYCDUR', 'PDPTH'])
+        wmo = figure_file.replace("static/data/", "").split("/")[1]
+        cyc = figure_file.replace("static/data/", "").split("/")[2]
+        return wmo, cyc, params
+
+    def results_lnk(self, wmo, cyc, params):
+        """Return link to an individual cycle result page"""
+        this_figure_args = parse_args(wmo, cyc)
+        this_figure_request = {'args': {}}
+        for p in params:
+            if p == 'VEL':
+                this_figure_request['args']['velocity'] = params[p]
+                this_figure_args.velocity = params[p]
+            if p == 'NF':
+                this_figure_request['args']['nfloats'] = params[p]
+                this_figure_args.nfloats = params[p]
+            if p == 'CYCDUR':
+                this_figure_request['args']['cfg_cycle_duration'] = params[p]
+                this_figure_args.cfg_cycle_duration = params[p]
+            if p == 'PDPTH':
+                this_figure_request['args']['cfg_parking_depth'] = params[p]
+                this_figure_args.cfg_parking_depth = params[p]
+        results_lnk = url_for('.results', **request_opts_for_data(this_figure_request, this_figure_args))
+        return results_lnk
+
+    def recap_lnk(self, wmo, cyc):
+        opts = request_opts_for_data(request, parse_args(wmo, cyc))
+        opts.pop('cyc')
+        results_lnk = url_for('.recap', **opts)
+        return results_lnk
+
+    def get_custom_label(self, islide, figure_file):
+        wmo, cyc, params = self.read_data(figure_file)
+        return "Float %s - Cycle %s" % (wmo, cyc)
+
+    def get_custom_description(self, islide, figure_file):
+        wmo, cyc, params = self.read_data(figure_file)
+        results_lnk = self.results_lnk(wmo, cyc, params)
+        recap_lnk = self.recap_lnk(wmo, cyc)
+        description = "%s / %s" % (a("Swipe only this float", href=recap_lnk, target=""),
+                                   a("Check this cycle details", href=results_lnk, target=""))
+        return description
+
+    def __init__(self, figure_list=[], id='carouselExample'):
+        """A customized carousel for the Virtual Fleet recovery image files
+
+        Parameters
+        ----------
+        figure_list: list of str
+            The list of figure files to insert in the carousel
+        id: str, optional, default 'carouselExample'
+            HTML id of the carousel
+        """
+        self.carousel = Bootstrap_Carousel(figure_list=figure_list,
+                                           id=id,
+                                           label=self.get_custom_label,
+                                           description=self.get_custom_description)
+
+    @property
+    def html(self):
+        return self.carousel.html
