@@ -324,6 +324,7 @@ class Bootstrap_Carousel_Recovery:
         return results_lnk
 
     def recap_lnk(self, wmo, cyc):
+        """Return link to a float recap page"""
         opts = request_opts_for_data(request, parse_args(wmo, cyc))
         opts.pop('cyc')
         results_lnk = url_for('.recap', **opts)

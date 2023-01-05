@@ -223,8 +223,6 @@ def results(wmo, cyc):
         return html
 
 
-
-
 @app.route('/predict/<int:wmo>/<int:cyc>', methods=['GET', 'POST'])
 def predict(wmo, cyc):
     """
