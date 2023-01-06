@@ -4,6 +4,7 @@ from .for_flask import parse_args, request_opts_for_data, read_params_from_path
 from dominate.tags import button, div, h2, h5, p, a, span
 from dominate.tags import img, figure, figcaption
 from dominate.util import raw
+from abc import ABC
 
 
 class Bootstrap_Figure:
@@ -45,7 +46,7 @@ class Bootstrap_Figure:
         with f:
             img(src=self.src, alt=self.alt, cls="figure-img img-fluid rounded")
             figcaption(self.caption, cls='figure-caption')
-        return f
+        return f.render()
 
 
 class Bootstrap_Accordion:
@@ -95,8 +96,6 @@ class Bootstrap_Accordion:
         </div>
     ```
     """
-
-
     def __init__(self, data=[], id='AccordionExample'):
         """Return a Bootstrap accordion html
 
@@ -137,11 +136,13 @@ class Bootstrap_Accordion:
 
     def _html_accordion_item(self, title="", body="", itemID="", collapsed=False):
         d = div(cls="accordion-item")
-        d += h2(self._html_accordion_btn(txt=title, collapsed=collapsed, target=itemID), cls="accordion-header",
+        d += h2(self._html_accordion_btn(txt=title, collapsed=collapsed, target=itemID),
+                cls="accordion-header",
                 id="%s-heading" % itemID)
-        d += div(id="%s" % itemID, cls="accordion-collapse collapse %s" % ("show" if not collapsed else ""),
+        d += div(div(raw(body), cls="accordion-body"),
+                 id="%s" % itemID,
+                 cls="accordion-collapse collapse %s" % ("show" if not collapsed else ""),
                  aria_labelledby="%s-heading" % itemID)
-        d += div(raw(body), cls="accordion-body")
         return d
 
     @property
@@ -149,15 +150,14 @@ class Bootstrap_Accordion:
         code = div(cls="accordion w-100", id=self.id)
         for ii, item in enumerate(self.data):
             with code:
-                item_html = self._html_accordion_item(title=item['title'],
-                                                      body=item['body'],
-                                                      itemID="%s-item%i" % (self.id, ii),
-                                                      collapsed=ii != 0)
-                item_html
-        return code
+                self._html_accordion_item(title=item['title'],
+                                          body=item['body'],
+                                          itemID="%s-item%i" % (self.id, ii),
+                                          collapsed=ii != 0)
+        return code.render()
 
 
-class Bootstrap_Carousel:
+class Bootstrap_Carousel(ABC):
     """Return a Boostrap carousel, a slideshow component for cycling through elements—images or slides of text—like a carousel.
 
     Based on: https://getbootstrap.com/docs/4.0/components/carousel/
@@ -292,10 +292,10 @@ class Bootstrap_Carousel:
         d += self.get_list_of_carousel_items()
         for b in self.get_carousel_controls():
             d += b
-        return d
+        return d.render()
 
 
-class Bootstrap_Carousel_Recovery:
+class Bootstrap_Carousel_Recovery(Bootstrap_Carousel):
 
     def read_data(self, figure_file):
         params = read_params_from_path(figure_file, plist=['VEL', 'NF', 'CYCDUR', 'PDPTH'])
@@ -330,33 +330,14 @@ class Bootstrap_Carousel_Recovery:
         results_lnk = url_for('.recap', **opts)
         return results_lnk
 
-    def get_custom_label(self, islide, figure_file):
+    def _get_label(self, islide, figure_file):
         wmo, cyc, params = self.read_data(figure_file)
         return "Float %s - Cycle %s" % (wmo, cyc)
 
-    def get_custom_description(self, islide, figure_file):
+    def _get_description(self, islide, figure_file):
         wmo, cyc, params = self.read_data(figure_file)
         results_lnk = self.results_lnk(wmo, cyc, params)
         recap_lnk = self.recap_lnk(wmo, cyc)
         description = "%s / %s" % (a("Swipe only this float", href=recap_lnk, target=""),
                                    a("Check this cycle details", href=results_lnk, target=""))
         return description
-
-    def __init__(self, figure_list=[], id='carouselExample'):
-        """A customized carousel for the Virtual Fleet recovery image files
-
-        Parameters
-        ----------
-        figure_list: list of str
-            The list of figure files to insert in the carousel
-        id: str, optional, default 'carouselExample'
-            HTML id of the carousel
-        """
-        self.carousel = Bootstrap_Carousel(figure_list=figure_list,
-                                           id=id,
-                                           label=self.get_custom_label,
-                                           description=self.get_custom_description)
-
-    @property
-    def html(self):
-        return self.carousel.html
