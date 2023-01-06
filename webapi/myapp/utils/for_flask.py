@@ -8,22 +8,26 @@ from myapp import app
 
 
 APP_NAME = __name__.split('.')[0]
-print("myapp/utils/for_flask.py:", app.config)
+# print("myapp/utils/for_flask.py:", app.config)
 
 
 class Args:
 
-    def __init__(self, wmo, cyc, *args, **kwargs):
+    def __init__(self, wmo, cyc, default=True, *args, **kwargs):
         self.wmo = wmo
         self.cyc = cyc
         self.vf = None
         if 'nfloats' in kwargs:
             self.nfloats = kwargs['nfloats']
+        elif default:
+            self.nfloats = app.config['DEFAULT_PARAMS']['nfloats']
         else:
             self.nfloats = None
 
         if 'velocity' in kwargs:
             self.velocity = kwargs['velocity']
+        elif default:
+            self.velocity = app.config['DEFAULT_PARAMS']['velocity']
         else:
             self.velocity = None
 
@@ -49,11 +53,15 @@ class Args:
 
         if 'cfg_parking_depth' in kwargs:
             self.cfg_parking_depth = kwargs['cfg_parking_depth']
+        elif default:
+            self.cfg_parking_depth = app.config['DEFAULT_PARAMS']['cfg_parking_depth']
         else:
             self.cfg_parking_depth = None
 
         if 'cfg_cycle_duration' in kwargs:
             self.cfg_cycle_duration = kwargs['cfg_cycle_duration']
+        elif default:
+            self.cfg_cycle_duration = app.config['DEFAULT_PARAMS']['cfg_cycle_duration']
         else:
             self.cfg_cycle_duration = None
 
@@ -96,11 +104,11 @@ class Args:
         return "<br>".join(summary)
 
 
-def parse_args(wmo, cyc):
+def parse_args(wmo, cyc, default=True):
     """Return request parameters as an Args instance"""
     WMO = int(escape(wmo)) if wmo is not None else None
     CYC = int(escape(cyc)) if cyc is not None else None
-    args = Args(WMO, CYC, json=True)
+    args = Args(WMO, CYC, default=default, json=True)
     args.nfloats = request.args.get('nfloats', args.__getattribute__('nfloats'), int)
     args.velocity = request.args.get('velocity', args.__getattribute__('velocity'), str)
     args.cfg_parking_depth = request.args.get('cfg_parking_depth', args.__getattribute__('cfg_parking_depth'), int)
@@ -143,11 +151,11 @@ def simulation_file_url(this_args, filename, safe=False):
                                                        filename]))
         # local_file = os.path.sep.join([this_args.output, , filename])
         # local_file = os.path.abspath(local_file)
-        # print(local_file)
         if os.path.lexists(local_file):
+            # print(local_file)
             return url
         else:
-            # print("%s not found" % local_file)
+            print("%s not found" % local_file)
             return None
     return url
 
@@ -195,49 +203,77 @@ def get_sim_files(this_args, legacy=False):
 
 
 def complete_data_for(this_args, this_js, legacy=False):
-    """Return API completed json data from a simulation
+    """Return API complemented json data for a simulation
+
     Simulation parameters are determined using args
     """
-    # Add url to figures in the json result:
-    # figlist = {'predictions': simulation_file_url(this_args, "vfrecov_predictions_%s_%i.png" % (this_args.velocity, this_args.nfloats), safe=True),
-    #            'metrics': simulation_file_url(this_args, "vfrecov_metrics01_%s_%i.png" % (this_args.velocity, this_args.nfloats), safe=True),
-    #            'velocity': simulation_file_url(this_args, "vfrecov_velocity_%s.png" % (this_args.velocity)),
-    #            'positions': simulation_file_url(this_args, "vfrecov_positions_%s_%i.png" % (this_args.velocity, this_args.nfloats), safe=True),
-    #            'predictions_recap': simulation_file_url(this_args, "vfrecov_predictions_recap_%s_%i.png" % (this_args.velocity, this_args.nfloats), safe=True)}
+    suffix = get_sim_suffix(this_args, legacy=legacy)
+    if "*" in suffix:
+        raise ValueError("We can complement json data structure only for a single simulation, a wild card was found")
     figlist = {'predictions': simulation_file_url(this_args,
-                                                  "vfrecov_predictions_%s.png" %
-                                                  get_sim_suffix(this_args, legacy=legacy), safe=True),
+                                                  "vfrecov_predictions_%s.png" % suffix,
+                                                  safe=True),
                'metrics': simulation_file_url(this_args,
-                                              "vfrecov_metrics01_%s.png" %
-                                              get_sim_suffix(this_args, legacy=legacy), safe=True),
+                                              "vfrecov_metrics01_%s.png" % suffix,
+                                              safe=True),
                'velocity': simulation_file_url(this_args,
-                                               "vfrecov_velocity_%s.png" %
-                                               (this_args.velocity)),
+                                               "vfrecov_velocity_%s.png" % this_args.velocity),
                'positions': simulation_file_url(this_args,
-                                                "vfrecov_positions_%s.png" %
-                                                get_sim_suffix(this_args, legacy=legacy), safe=True),
+                                                "vfrecov_positions_%s.png" % suffix,
+                                                safe=True),
                'predictions_recap': simulation_file_url(this_args,
-                                                        "vfrecov_predictions_recap_%s.png" %
-                                                        get_sim_suffix(this_args, legacy=legacy), safe=True)}
+                                                        "vfrecov_predictions_recap_%s.png" % suffix,
+                                                        safe=True)}
     this_js['meta']['figures'] = figlist
-    this_js['meta']['api'] = {'cycle_page': "".join([request.host_url[0:-1], url_for(".index", wmo=this_args.wmo, cyc=this_args.cyc, nfloats=this_args.nfloats, velocity=this_args.velocity)]),
-                              'float_page': "".join([request.host_url[0:-1], url_for(".recap", wmo=this_args.wmo, nfloats=this_args.nfloats, velocity=this_args.velocity)]),
-                              'float_map': "".join([request.host_url[0:-1], url_for(".map_error", wmo=this_args.wmo, nfloats=this_args.nfloats, velocity=this_args.velocity)])}
 
-    # request_opts_for_data(request, this_args)
+    this_js['meta']['api'] = {'cycle_page': "".join([request.host_url[0:-1],
+                                                     url_for(".index",
+                                                             wmo=this_args.wmo,
+                                                             cyc=this_args.cyc,
+                                                             nfloats=this_args.nfloats,
+                                                             velocity=this_args.velocity)]),
+                              'float_page': "".join([request.host_url[0:-1],
+                                                     url_for(".recap",
+                                                             wmo=this_args.wmo,
+                                                             nfloats=this_args.nfloats,
+                                                             velocity=this_args.velocity)]),
+                              'float_map': "".join([request.host_url[0:-1],
+                                                    url_for(".map_error",
+                                                            wmo=this_args.wmo,
+                                                            nfloats=this_args.nfloats,
+                                                            velocity=this_args.velocity)]),
+                              }
 
     return this_js
 
 
 def load_data_for(this_args, legacy=False):
-    """Return the complete json file data from a simulation
-    Simulation parameters are determined using args
+    """Return the complete json file data from a single simulation
+
+    Simulation parameters are determined using `args`
+
+    If more than one simulation correspond the `args` parameters, return data for the 1st simulation
+
     Raw data are complemented with results from complete_data_for() function
     """
     ajs_list = get_sim_files(this_args, legacy=legacy)
     if (len(ajs_list) > 0) and os.path.exists(ajs_list[0]):
-        with open(ajs_list[0]) as f:
+        # Work with the 1st available simulation set of files:
+        ajs = ajs_list[0]
+        # print(ajs)
+        with open(ajs) as f:
             jsdata = json.load(f)
+        # Update `args` with the selected simulation
+        this_args.nfloats = int(jsdata['meta']['Nfloats'])
+        this_args.velocity = jsdata['meta']['Velocity field']
+        if 'VFloats_config' in jsdata['meta']:
+            this_args.cfg_cycle_duration = int(jsdata['meta']['VFloats_config']['data']['cycle_duration']['value'])
+            this_args.cfg_parking_depth = int(jsdata['meta']['VFloats_config']['data']['parking_depth']['value'])
+        else:
+            this_args.cfg_cycle_duration = 240
+            this_args.cfg_parking_depth = 1000
+        # print(this_args.amap)
+        # print(jsdata)
     else:
         print('No data found at: ', ajs_list)
         jsdata = None
@@ -245,7 +281,7 @@ def load_data_for(this_args, legacy=False):
     if jsdata is not None:
         jsdata = complete_data_for(this_args, jsdata, legacy=legacy)
 
-    return jsdata
+    return jsdata, this_args
 
 
 def request_opts_for_data(req, this_args):
