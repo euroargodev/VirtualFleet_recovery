@@ -48,7 +48,8 @@ print(os.getcwd())
 from .utils.for_flask import Args, parse_args, get_sim_files, load_data_for, request_opts_for_data
 from .utils.for_flask import read_params_from_path, search_local_prediction_datafiles, search_local_prediction_figfiles
 from .utils.misc import strfdelta, get_traj
-from .utils.html import Bootstrap_Carousel, Bootstrap_Figure, Bootstrap_Accordion, Bootstrap_Carousel_Recovery
+from .utils.bootstrap import Bootstrap_Figure, Bootstrap_Accordion
+from .utils.html import Bootstrap_Carousel_Recovery
 
 
 @app.route('/', defaults={'wmo': None, 'cyc': None}, methods=['GET'])
