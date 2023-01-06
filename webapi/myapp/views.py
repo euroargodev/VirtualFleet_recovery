@@ -60,7 +60,7 @@ def index(wmo, cyc):
     # wmo = wmo if wmo is not None else 0
     # cyc = cyc if cyc is not None else 0
     args = parse_args(wmo, cyc)
-    print(args.amap)
+    # print(args.amap)
 
     if args.wmo is not None and args.cyc is not None:
         return redirect(url_for('.results', **request_opts_for_data(request, args)))
@@ -119,13 +119,14 @@ def results(wmo, cyc):
     args = parse_args(wmo, cyc)
     opts = request_opts_for_data(request, args)
     opts.pop('cyc')
-    print(args.amap)
+    # print(args.amap)
 
     # Load data for this set-up:
     results = get_sim_files(args)
-    print("Found %i simulation(s) config for this profile, loading data for the 1st one" % len(results))
+    if len(results) > 1:
+        print("Found %i simulation(s) config for this profile, loading data for the 1st one" % len(results))
     jsdata, args = load_data_for(args)  # args is updated with data from the selected simulation
-    print(args.amap)
+    # print(args.amap)
 
     # Load float trajectory:
     df_float = argopy.utilities.get_coriolis_profile_id(wmo)
@@ -170,8 +171,6 @@ def results(wmo, cyc):
 
     if args.cyc == df_float['CYCLE_NUMBER'].max():
         template_data['url_next'] = url_for(".trigger", **{**opts, **{'cyc': args.cyc+1}})
-
-
 
     if jsdata is None:
         url_trigger = url_for(".trigger", **args.amap)
@@ -231,7 +230,7 @@ def predict(wmo, cyc):
     """
     # Parse request parameters:
     args = parse_args(wmo, cyc, default=False)
-    print("predict.args:", args.amap)
+    # print("predict.args:", args.amap)
     # print(request.args)
 
     # Load data for this set-up:
@@ -323,7 +322,7 @@ def trigger(wmo, cyc):
     wmo = wmo if wmo is not None else 0
     cyc = cyc if cyc is not None else 0
     args = parse_args(wmo, cyc, default=False)
-    print("trigger.args:", args.amap)
+    # print("trigger.args:", args.amap)
 
     opts = request_opts_for_data(request, args)
     opts.pop('cyc')
@@ -340,6 +339,8 @@ def trigger(wmo, cyc):
                      'CFG_PARKING_DEPTH': args.cfg_parking_depth,
                      'CFG_CYCLE_DURATION': args.cfg_cycle_duration,
                      'jsdata': url_for('.data', **request_opts_for_data(request, args)),
+                     'url_recap': url_for(".recap", **opts),
+                     'url_map': url_for(".map_error", **opts),
                      'url_previous': url_for(".results", **{**opts, **{'cyc': args.cyc-1}}) if args.cyc != 0 else None,
                      'url_next': url_for(".results", **{**opts, **{'cyc': args.cyc+1}}) if args.cyc != 0 else None,
                      }
@@ -369,9 +370,9 @@ def trigger(wmo, cyc):
         form_args.cfg_parking_depth = None if request.form['cfg_parking_depth'] == '' else int(request.form['cfg_parking_depth'])
         form_args.cfg_cycle_duration = None if request.form['cfg_cycle_duration'] == '' else int(request.form['cfg_cycle_duration'])
 
-        print("trigger.request.form", request.form)
+        # print("trigger.request.form", request.form)
         # print(args.amap)
-        print("trigger.processed.to_predict:", form_args.amap)
+        # print("trigger.processed.to_predict:", form_args.amap)
         # print(float_cfg)
 
         # Check if results are already available, otherwise, trigger prediction:
