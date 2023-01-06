@@ -325,6 +325,8 @@ def trigger(wmo, cyc):
     args = parse_args(wmo, cyc, default=False)
     print("trigger.args:", args.amap)
 
+    opts = request_opts_for_data(request, args)
+    opts.pop('cyc')
     template_data = {'css': url_for("static", filename="css"),
                      'js': url_for("static", filename="js"),
                      'dist': url_for("static", filename="dist"),
@@ -338,6 +340,8 @@ def trigger(wmo, cyc):
                      'CFG_PARKING_DEPTH': args.cfg_parking_depth,
                      'CFG_CYCLE_DURATION': args.cfg_cycle_duration,
                      'jsdata': url_for('.data', **request_opts_for_data(request, args)),
+                     'url_previous': url_for(".results", **{**opts, **{'cyc': args.cyc-1}}) if args.cyc != 0 else None,
+                     'url_next': url_for(".results", **{**opts, **{'cyc': args.cyc+1}}) if args.cyc != 0 else None,
                      }
 
     if request.method == 'POST':  # We arrive here when the form submit button is pressed
