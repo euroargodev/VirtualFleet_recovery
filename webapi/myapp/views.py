@@ -42,13 +42,14 @@ from geojson import Feature, Point, FeatureCollection, LineString
 
 from myapp import app
 APP_NAME = __name__.split('.')[0]
-print("myapp/views.py:", app.config)
-print(os.getcwd())
+# print("myapp/views.py:", app.config)
+# print(os.getcwd())
 
-from .utils.flask import Args, parse_args, get_sim_files, load_data_for, request_opts_for_data
-from .utils.flask import read_params_from_path, search_local_prediction_datafiles, search_local_prediction_figfiles
+from .utils.for_flask import Args, parse_args, get_sim_files, load_data_for, request_opts_for_data
+from .utils.for_flask import read_params_from_path, search_local_prediction_datafiles, search_local_prediction_figfiles
 from .utils.misc import strfdelta, get_traj
-from .utils.html import Bootstrap_Carousel, Bootstrap_Figure, Bootstrap_Accordion
+from .utils.bootstrap import Bootstrap_Figure, Bootstrap_Accordion
+from .utils.html import Bootstrap_Carousel_Recovery
 
 
 @app.route('/', defaults={'wmo': None, 'cyc': None}, methods=['GET'])
@@ -59,7 +60,7 @@ def index(wmo, cyc):
     # wmo = wmo if wmo is not None else 0
     # cyc = cyc if cyc is not None else 0
     args = parse_args(wmo, cyc)
-    print(args.amap)
+    # print(args.amap)
 
     if args.wmo is not None and args.cyc is not None:
         return redirect(url_for('.results', **request_opts_for_data(request, args)))
@@ -89,7 +90,7 @@ def recap(wmo):
 
     slist = search_local_prediction_figfiles(args, request)
 
-    carousel_html = Bootstrap_Carousel(slist, 'recapCarousel', args).html if len(slist) > 0 else None
+    carousel_html = Bootstrap_Carousel_Recovery(slist, 'recapCarousel').html if len(slist) > 0 else None
     template_data = {'css': url_for("static", filename="css"),
                      'js': url_for("static", filename="js"),
                      'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
@@ -120,8 +121,15 @@ def results(wmo, cyc):
     opts.pop('cyc')
     # print(args.amap)
 
+    # Load data for this set-up:
+    results = get_sim_files(args)
+    if len(results) > 1:
+        print("Found %i simulation(s) config for this profile, loading data for the 1st one" % len(results))
+    jsdata, args = load_data_for(args)  # args is updated with data from the selected simulation
+    # print(args.amap)
+
+    # Load float trajectory:
     df_float = argopy.utilities.get_coriolis_profile_id(wmo)
-    # if cyc not in df_float['CYCLE_NUMBER']:
 
     # Init some variables used in template
     template_data = {
@@ -164,19 +172,11 @@ def results(wmo, cyc):
     if args.cyc == df_float['CYCLE_NUMBER'].max():
         template_data['url_next'] = url_for(".trigger", **{**opts, **{'cyc': args.cyc+1}})
 
-    # Load data for this set-up:
-    # legacy = not 'cfg_parking_depth' in request.args
-    # print('legacy', legacy)
-    # jsdata = load_data_for(args, legacy=legacy)
-    results = get_sim_files(args)
-    print("Found %i simulations config for this profile" % len(results))
-    jsdata = load_data_for(args)
-    # print(jsdata)
-
     if jsdata is None:
         url_trigger = url_for(".trigger", **args.amap)
         return redirect(url_trigger)
     else:
+        # print(jsdata['meta']['figures'])
         data = [
         {'title': 'Prediction',
          'body': Bootstrap_Figure(src=jsdata['meta']['figures']['predictions_recap']).html},
@@ -187,7 +187,7 @@ def results(wmo, cyc):
         {'title': 'Velocity field domain',
          'body': Bootstrap_Figure(src=jsdata['meta']['figures']['velocity']).html},
             ]
-        template_data['figures'] = Bootstrap_Accordion(data=data, name='Figures').html
+        template_data['figures'] = Bootstrap_Accordion(data=data, id='Figures').html
 
         template_data['prediction_lon'] = "%0.3f" % jsdata['prediction_location']['longitude']['value']
         template_data['prediction_lon_unit'] = "%s" % jsdata['prediction_location']['longitude']['unit']#.replace("degree", "deg")
@@ -223,25 +223,23 @@ def results(wmo, cyc):
         return html
 
 
-
-
 @app.route('/predict/<int:wmo>/<int:cyc>', methods=['GET', 'POST'])
 def predict(wmo, cyc):
     """
     swagger_from_file: predict.yml
     """
     # Parse request parameters:
-    args = parse_args(wmo, cyc)
-    print(args.amap)
-    print(request.args)
+    args = parse_args(wmo, cyc, default=False)
+    # print("predict.args:", args.amap)
+    # print(request.args)
 
     # Load data for this set-up:
-    jsdata = load_data_for(args)
+    jsdata, _ = load_data_for(args)
 
     # If we didn't already use it, make a prediction:
     if jsdata is None:
         predictor(args)  # This can take a while...
-        jsdata = load_data_for(args)
+        jsdata, _ = load_data_for(args)
 
     if 'redirect' in request.args:
         return redirect(url_for('.results', **args.amap))
@@ -270,7 +268,7 @@ def data(wmo):
                 'cfg_parking_depth': int(params['PDPTH']),
                 'cfg_cycle_duration': int(params['CYCDUR'])}
         this_args = Args(this_wmo, this_cyc, **opts)
-        jsdata = load_data_for(this_args, legacy=False)
+        jsdata, this_args = load_data_for(this_args, legacy=False)
         f = Feature(geometry=Point(
             (jsdata['prediction_location']['longitude']['value'], jsdata['prediction_location']['latitude']['value'])),
                     properties=jsdata)
@@ -323,8 +321,11 @@ def trigger(wmo, cyc):
     # Parse request parameters:
     wmo = wmo if wmo is not None else 0
     cyc = cyc if cyc is not None else 0
-    args = parse_args(wmo, cyc)
+    args = parse_args(wmo, cyc, default=False)
+    # print("trigger.args:", args.amap)
 
+    opts = request_opts_for_data(request, args)
+    opts.pop('cyc')
     template_data = {'css': url_for("static", filename="css"),
                      'js': url_for("static", filename="js"),
                      'dist': url_for("static", filename="dist"),
@@ -338,6 +339,10 @@ def trigger(wmo, cyc):
                      'CFG_PARKING_DEPTH': args.cfg_parking_depth,
                      'CFG_CYCLE_DURATION': args.cfg_cycle_duration,
                      'jsdata': url_for('.data', **request_opts_for_data(request, args)),
+                     'url_recap': url_for(".recap", **opts),
+                     'url_map': url_for(".map_error", **opts),
+                     'url_previous': url_for(".results", **{**opts, **{'cyc': args.cyc-1}}) if args.cyc != 0 else None,
+                     'url_next': url_for(".results", **{**opts, **{'cyc': args.cyc+1}}) if args.cyc != 0 else None,
                      }
 
     if request.method == 'POST':  # We arrive here when the form submit button is pressed
@@ -362,17 +367,16 @@ def trigger(wmo, cyc):
         form_args = Args(WMO, CYC, json=True)
         form_args.nfloats = int(nfloats)
         form_args.velocity = velocity
-        # form_args.cfg_parking_depth = int(float_cfg['parking_depth'])
-        # form_args.cfg_cycle_duration = int(float_cfg['cycle_duration'])
+        form_args.cfg_parking_depth = None if request.form['cfg_parking_depth'] == '' else int(request.form['cfg_parking_depth'])
+        form_args.cfg_cycle_duration = None if request.form['cfg_cycle_duration'] == '' else int(request.form['cfg_cycle_duration'])
 
-        # print()
-        print("trigger.request.form", request.form)
+        # print("trigger.request.form", request.form)
         # print(args.amap)
-        print("trigger.POST:", form_args.amap)
+        # print("trigger.processed.to_predict:", form_args.amap)
         # print(float_cfg)
 
         # Check if results are already available, otherwise, trigger prediction:
-        if load_data_for(form_args) is not None:
+        if load_data_for(form_args)[0] is not None:
             print('Found results, redirect to results page')
             url_results = url_for('.results', **form_args.amap)
             return redirect(url_results)
@@ -380,7 +384,7 @@ def trigger(wmo, cyc):
             print('No results, trigger computation')
             url_predict = url_for(".predict", **form_args.amap, redirect=True)
             return redirect(url_predict)
-
+            # return jsonify(form_args.amap)
     else:
         html = render_template('trigger.html', **template_data)
         return html

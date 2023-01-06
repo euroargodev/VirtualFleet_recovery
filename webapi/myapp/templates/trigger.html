@@ -98,7 +98,13 @@
     {% if WMO is not none %}
 
     {% if CYC is not none %}
-    <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3 fs-6" href="#">Float {{WMO}} - Cycle {{CYC}}</a>
+
+    <span class="navbar-brand col-md-3 col-lg-2 me-0 px-3 fs-6">
+      <a href="{{url_previous|safe}}"><i class="bi bi-arrow-left-circle" style="color: white;"></i></a>
+      Float {{WMO}} - Cycle {{CYC}}
+      <a href="{{url_next|safe}}"><i class="bi bi-arrow-right-circle" style="color: white;"></i></a>
+    </span>
+
     {% else %}
     <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3 fs-6" href="#">Float {{WMO}}</a>
     {% endif %}
@@ -171,7 +177,7 @@
               </a>
             </li>
             <li class="nav-item">
-              <a class="nav-link disabled" href="#">
+              <a class="nav-link" href="{{url_map}}">
                 <span data-feather="map" class="align-text-bottom"></span>
                 See on a map
               </a>

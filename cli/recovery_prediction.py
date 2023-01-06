@@ -5,7 +5,6 @@
 # - the previous cycle
 # - the ARMORD3D or CMEMS GLORYS12 forecast at the time of the previous cycle
 #
-# This script is for testing the prediction system, and must be run on past float cycles.
 #
 # mprof run ../cli/recovery_prediction.py --output data 2903691 80
 # mprof plot
@@ -14,9 +13,9 @@
 # Capital variables are considered global and usable anywhere
 #
 # Created by gmaze on 06/10/2022
-import shutil
-
-import sys, os, glob
+import sys
+import os
+import glob
 import logging
 import shutil
 from pathlib import Path
@@ -1171,27 +1170,28 @@ def analyse_pairwise_distances(this_args, this_cfg,  data):
 
     # Trajectory file:
     workdir = this_args.output
-    ncfile = os.path.sep.join([workdir,
+    simufile = os.path.sep.join([workdir,
                                'trajectories_%s.zarr' % get_sim_suffix(this_args, this_cfg)])
-    if not os.path.exists(ncfile):
+    engine = "zarr"
+    if not os.path.exists(simufile):
         ncfile = os.path.sep.join([workdir,
                                    'trajectories_%s.nc' % get_sim_suffix(this_args, this_cfg)])
+        engine = "netcdf4"
         if not os.path.exists(ncfile):
-            puts('Cannot analyse pairwise distances because the trajectory file cannot be found at: %s' % ncfile,
+            puts('Cannot analyse pairwise distances because the trajectory file cannot be found at: %s' % simufile,
                  color=COLORS.red)
             return data  # Return results dict unchanged
 
     # Open trajectory file:
-    # print(ncfile)
-    ds = xr.open_dataset(ncfile)
+    ds = xr.open_dataset(simufile, engine=engine)
 
     # Compute trajectories relative to the single/only real float initial position:
     lon = ds['lon'].values
     lat = ds['lat'].values
     lon0 = data['previous_profile']['location']['longitude']['value']
     lat0 = data['previous_profile']['location']['latitude']['value']
-    ds['lonc'] = xr.DataArray(lon - np.broadcast_to(lon[:, 0][:, np.newaxis], lon.shape) + lon0, dims=['traj', 'obs'])
-    ds['latc'] = xr.DataArray(lat - np.broadcast_to(lat[:, 0][:, np.newaxis], lat.shape) + lat0, dims=['traj', 'obs'])
+    ds['lonc'] = xr.DataArray(lon - np.broadcast_to(lon[:, 0][:, np.newaxis], lon.shape) + lon0, dims=['trajectory', 'obs'])
+    ds['latc'] = xr.DataArray(lat - np.broadcast_to(lat[:, 0][:, np.newaxis], lat.shape) + lat0, dims=['trajectory', 'obs'])
 
     # Compute trajectory lengths:
     ds['length'] = np.sqrt(ds.diff(dim='obs')['lon'] ** 2 + ds.diff(dim='obs')['lat'] ** 2).sum(dim='obs')
@@ -1199,7 +1199,7 @@ def analyse_pairwise_distances(this_args, this_cfg,  data):
 
     # Compute initial points pairwise distances, PDF and nb of peaks:
     X = ds.isel(obs=0)
-    X = X.isel(traj=~np.isnan(X['lon']))
+    X = X.isel(trajectory=~np.isnan(X['lon']))
     X0 = np.array((X['lon'].values, X['lat'].values)).T
     d0 = pairwise_distances(X0, n_jobs=-1)
     d0 = np.triu(d0)
@@ -1215,7 +1215,7 @@ def analyse_pairwise_distances(this_args, this_cfg,  data):
 
     # Compute final points pairwise distances, PDF and nb of peaks:
     X = ds.isel(obs=-1)
-    X = X.isel(traj=~np.isnan(X['lon']))
+    X = X.isel(trajectory=~np.isnan(X['lon']))
     dsf = X
     X = np.array((X['lon'].values, X['lat'].values)).T
     d = pairwise_distances(X, n_jobs=-1)
@@ -1232,7 +1232,7 @@ def analyse_pairwise_distances(this_args, this_cfg,  data):
 
     # Compute final points pairwise distances (relative traj), PDF and nb of peaks:
     X1 = ds.isel(obs=-1)
-    X1 = X1.isel(traj=~np.isnan(X1['lonc']))
+    X1 = X1.isel(trajectory=~np.isnan(X1['lonc']))
     dsfc = X1
     X1 = np.array((X1['lonc'].values, X1['latc'].values)).T
     d1 = pairwise_distances(X1, n_jobs=-1)
@@ -1301,13 +1301,13 @@ def analyse_pairwise_distances(this_args, this_cfg,  data):
     ax[ix].plot(X0[:, 0], X0[:, 1], '.', markersize=3, color='grey', alpha=0.5, markeredgecolor=None, zorder=0)
     ax[ix].scatter(X[:, 0], X[:, 1], c=dd, zorder=10, s=3, cmap=cmap)
     ax[ix].grid()
-    this_traj = int(dsf.isel(traj=np.argmax(dd))['trajectory'].values[np.newaxis][0])
-    ax[ix].plot(ds.where(ds['trajectory'] == this_traj, drop=True).isel(traj=0)['lon'],
-                ds.where(ds['trajectory'] == this_traj, drop=True).isel(traj=0)['lat'], 'r',
+    this_traj = int(dsf.isel(trajectory=np.argmax(dd))['trajectory'].values[np.newaxis][0])
+    ax[ix].plot(ds.where(ds['trajectory'] == this_traj, drop=True).isel(trajectory=0)['lon'],
+                ds.where(ds['trajectory'] == this_traj, drop=True).isel(trajectory=0)['lat'], 'r',
                 zorder=13, label='Longest traj.')
-    this_traj = int(dsf.isel(traj=np.argmin(dd))['trajectory'].values[np.newaxis][0])
-    ax[ix].plot(ds.where(ds['trajectory'] == this_traj, drop=True).isel(traj=0)['lon'],
-                ds.where(ds['trajectory'] == this_traj, drop=True).isel(traj=0)['lat'], 'b',
+    this_traj = int(dsf.isel(trajectory=np.argmin(dd))['trajectory'].values[np.newaxis][0])
+    ax[ix].plot(ds.where(ds['trajectory'] == this_traj, drop=True).isel(trajectory=0)['lon'],
+                ds.where(ds['trajectory'] == this_traj, drop=True).isel(trajectory=0)['lat'], 'b',
                 zorder=13, label='Shortest traj.')
     ax[ix].legend()
     ax[ix].set_title('Trajectory lengths')
@@ -1345,7 +1345,7 @@ def analyse_pairwise_distances(this_args, this_cfg,  data):
 
 def setup_args():
     icons_help_string = """This script can be used to make prediction of a specific float cycle position.
-    This script is for testing the prediction system, and must be run on past float cycles.
+    This script can be used on past or unknown float cycles.
     Note that in order to download online velocity field from 'https://nrt.cmems-du.eu', you need to set the environment variables: MOTU_USERNAME and MOTU_PASSWORD.
         """
 
