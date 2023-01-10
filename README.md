@@ -1,5 +1,6 @@
 |<img src="https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/master/docs/img/logo-virtual-fleet-recovery.png" alt="VirtualFleet-Recovery logo" width="400"><br>``Virtual Fleet - Recovery`` is a CLI and webAPI to make predictions of Argo float positions|
 |:---------:|
+|[![DOI](https://zenodo.org/badge/543618989.svg)](https://zenodo.org/badge/latestdoi/543618989)|
 
 The goal of this repository is to provide a library to make Argo floats trajectory predictions easy, in order to facilitate recovery.  
 The library produces a prediction _patch_ or _cone_ that could be displayed on a map like here: https://floatrecovery.euro-argo.eu  
