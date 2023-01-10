@@ -55,16 +55,18 @@ git clone --branch gulf-stream git@github.com:euroargodev/VirtualFleet.git
 ## Command line instructions
 
 ### Usage
-The ``recovery_prediction`` script allows making predictions, i.e. at this point, to produce a few figures to get an idea of where the float will make surface contact.
+The ``recovery_prediction.py`` script allows making predictions, i.e. at this point to produce:
+- a json data files with predictions information for machine/machine applications,
+- and a few figures to indicate where the float will make surface contact and how the probability patch was created. 
 
 For a simple help, you can type:
 ```
-recovery_prediction -h
+recovery_prediction.py -h
 ```
 
 To make prediction of where the 99th cycle of the 6902919 float will be, just type: 
 ```
-recovery_prediction 6902919 99
+recovery_prediction.py 6902919 99
 ```
 
 A few options are available:
@@ -106,7 +108,7 @@ So, don't forget to:
 ### Example
 
 ```
-recovery_prediction 6902915 116
+recovery_prediction.py 6902915 116
 ```
 Below is an example of this prediction for the 99th cycle of the 6902919 float.  
 The really observed 99th cycle is shown at the tip of the arrow (red point) starting from the previous 98th cycle.  
