@@ -89,13 +89,13 @@ def recap(wmo):
     htmlopts = lambda x: opts[x] if opts[x] is not None else '<any>'
 
     slist = search_local_prediction_figfiles(args, request)
-
-    carousel_html = Bootstrap_Carousel_Recovery(slist, 'recapCarousel').html if len(slist) > 0 else None
+    html_sidebar = get_the_sidebar(args, opts, None, active="Swipe all cycles")
+    html_carousel = Bootstrap_Carousel_Recovery(slist, 'recapCarousel').html if len(slist) > 0 else None
     template_data = {'css': url_for("static", filename="css"),
                      'js': url_for("static", filename="js"),
                      'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
                      'cdn_prism': 'cdn.jsdelivr.net/npm/prismjs@1.29.0',
-                     'carousel_html': carousel_html,
+                     'carousel_html': html_carousel,
                      'WMO': opts['wmo'],
                      'CYC': opts['cyc'],
                      'VELOCITY': htmlopts('velocity'),
@@ -104,9 +104,7 @@ def recap(wmo):
                      'CFG_CYCLE_DURATION': htmlopts('cfg_cycle_duration'),
                      'file_number': len(slist),
                      'app_url': request.url_root,
-                     'url_recap': url_for(".recap", **opts),
-                     'url_map': url_for(".map_error", **opts),
-                     'ea_float': argopy.dashboard(argopy.utilities.check_wmo(args.wmo), url_only=True) if args.wmo is not None else None,
+                     'sidebar': html_sidebar,
                      }
 
     html = render_template('list2.html', **template_data)
@@ -281,18 +279,17 @@ def map_error(wmo):
     args = parse_args(wmo, 0)
     # print('call to /map', args.amap)
     # print(url_for('data', wmo=args.wmo if args.wmo != 0 else None, nfloats=args.nfloats, velocity=args.velocity))
-
+    opts = request_opts_for_data(request, args)
+    html_sidebar = get_the_sidebar(args, opts, None, active="See on a map")
     template_data = {'css': url_for("static", filename="css"),
                      'js': url_for("static", filename="js"),
                      'dist': url_for("static", filename="dist"),
                      'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
                      'cdn_prism': 'cdn.jsdelivr.net/npm/prismjs@1.29.0',
+                     'sidebar': html_sidebar,
                      'url_app': request.url_root,
-                     'url_recap': url_for(".recap", **request_opts_for_data(request, args)),
-                     'url_map': url_for(".map_error", **request_opts_for_data(request, args)),
-                     'url_wmomap': url_for(".map_error", **request_opts_for_data(request, args)),
-                     'url_form': url_for(".trigger", **request_opts_for_data(request, args)),
-                     'url_data': url_for('.data', **request_opts_for_data(request, args)),
+                     'url_wmomap': url_for(".map_error", **opts),
+                     'url_data': url_for('.data', **opts),
                      'WMO': args.wmo if args.wmo != 0 else None,
                      'CYC': args.cyc if args.wmo != 0 else None,
                      'VELOCITY': args.velocity,
