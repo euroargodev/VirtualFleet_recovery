@@ -379,6 +379,7 @@ def trigger(wmo, cyc):
         html = render_template('trigger.html', **template_data)
         return html
 
+
 # @app.route("/spec")
 # def spec():
 #     base_path = os.path.join(app.root_path, 'docs')
