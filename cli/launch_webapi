@@ -27,7 +27,7 @@ while [[ $# -gt 0 ]]; do
 done
 #echo $WHERETO
 
-IP=$(ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1')
+IP=$(ifconfig en12 | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1')
 #echo $IP
 case $WHERETO in
   "pacnet")
@@ -36,7 +36,6 @@ case $WHERETO in
 
 esac
 
-#echo $IP
 echo "Launching VirtualFleet-Recovery webapi with Flask on $WHERETO at $IP ..."
 
 export FLASK_DEBUG=True
