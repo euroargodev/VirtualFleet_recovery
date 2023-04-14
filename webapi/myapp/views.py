@@ -49,7 +49,7 @@ from .utils.for_flask import Args, parse_args, get_sim_files, load_data_for, req
 from .utils.for_flask import read_params_from_path, search_local_prediction_datafiles, search_local_prediction_figfiles
 from .utils.misc import strfdelta, get_traj
 from .utils.bootstrap import Bootstrap_Figure, Bootstrap_Accordion
-from .utils.html import Bootstrap_Carousel_Recovery
+from .utils.html import Bootstrap_Carousel_Recovery, get_the_sidebar
 
 
 @app.route('/', defaults={'wmo': None, 'cyc': None}, methods=['GET'])
@@ -89,13 +89,13 @@ def recap(wmo):
     htmlopts = lambda x: opts[x] if opts[x] is not None else '<any>'
 
     slist = search_local_prediction_figfiles(args, request)
-
-    carousel_html = Bootstrap_Carousel_Recovery(slist, 'recapCarousel').html if len(slist) > 0 else None
+    html_sidebar = get_the_sidebar(args, opts, None, active="Swipe all cycles")
+    html_carousel = Bootstrap_Carousel_Recovery(slist, 'recapCarousel').html if len(slist) > 0 else None
     template_data = {'css': url_for("static", filename="css"),
                      'js': url_for("static", filename="js"),
                      'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
                      'cdn_prism': 'cdn.jsdelivr.net/npm/prismjs@1.29.0',
-                     'carousel_html': carousel_html,
+                     'carousel_html': html_carousel,
                      'WMO': opts['wmo'],
                      'CYC': opts['cyc'],
                      'VELOCITY': htmlopts('velocity'),
@@ -104,9 +104,7 @@ def recap(wmo):
                      'CFG_CYCLE_DURATION': htmlopts('cfg_cycle_duration'),
                      'file_number': len(slist),
                      'app_url': request.url_root,
-                     'url_recap': url_for(".recap", **opts),
-                     'url_map': url_for(".map_error", **opts),
-                     'ea_float': argopy.dashboard(argopy.utilities.check_wmo(args.wmo), url_only=True) if args.wmo is not None else None,
+                     'sidebar': html_sidebar,
                      }
 
     html = render_template('list2.html', **template_data)
@@ -132,6 +130,8 @@ def results(wmo, cyc):
     df_float = argopy.utilities.get_coriolis_profile_id(wmo)
 
     # Init some variables used in template
+    html_sidebar = get_the_sidebar(args, opts, jsdata)
+
     template_data = {
         'css': url_for("static", filename="css"),
         'js': url_for("static", filename="js"),
@@ -144,11 +144,9 @@ def results(wmo, cyc):
         'CFG_PARKING_DEPTH': args.cfg_parking_depth,
         'CFG_CYCLE_DURATION': args.cfg_cycle_duration,
         'url': request.base_url,
-        'url_data': url_for(".data", **args.amap),
-        'url_predict': url_for(".predict", **args.amap),
-        'url_form': url_for(".trigger", **args.amap),
-        'url_recap': url_for(".recap", **opts),
-        'url_map': url_for(".map_error", **opts),
+        'sidebar': html_sidebar,
+        'url_previous': url_for(".results", **{**opts, **{'cyc': args.cyc-1}}),
+        'url_next': url_for(".results", **{**opts, **{'cyc': args.cyc+1}}),
         'prediction_src': None,
         'metric_src': None,
         'velocity_src': None,
@@ -160,9 +158,6 @@ def results(wmo, cyc):
         'error_transit': None,
         'error_bearing': None,
         'error_dist': None,
-        'url_previous': url_for(".results", **{**opts, **{'cyc': args.cyc-1}}),
-        'url_next': url_for(".results", **{**opts, **{'cyc': args.cyc+1}}),
-        'ea_profile': None,
         'vfloatcfg': None,
     }
 
@@ -209,15 +204,11 @@ def results(wmo, cyc):
             # template_data['error_time_unit'] = "%s" % jsdata['prediction_location_error']['time']['unit']
             template_data['error_transit'] = strfdelta(pd.Timedelta(float(jsdata['prediction_metrics']['transit']['value']), unit='h'))
 
-            template_data['ea_profile'] = jsdata['profile_to_predict']['url_profile']
-
         template_data['computation_walltime'] = strfdelta(pd.Timedelta(jsdata['meta']['Computation']['Wall-time']))
         template_data['computation_platform'] = "%s (%s)" % (jsdata['meta']['Computation']['system']['platform'],
                                                              jsdata['meta']['Computation']['system']['architecture'])
         if 'VFloats_config' in jsdata['meta']:
             template_data['vfloatcfg'] = jsdata['meta']['VFloats_config']
-
-        template_data['ea_float'] = argopy.dashboard(argopy.utilities.check_wmo(args.wmo), url_only=True)
 
         html = render_template('results4.html', **template_data)
         return html
@@ -288,18 +279,17 @@ def map_error(wmo):
     args = parse_args(wmo, 0)
     # print('call to /map', args.amap)
     # print(url_for('data', wmo=args.wmo if args.wmo != 0 else None, nfloats=args.nfloats, velocity=args.velocity))
-
+    opts = request_opts_for_data(request, args)
+    html_sidebar = get_the_sidebar(args, opts, None, active="See on a map")
     template_data = {'css': url_for("static", filename="css"),
                      'js': url_for("static", filename="js"),
                      'dist': url_for("static", filename="dist"),
                      'cdn_bootstrap': 'cdn.jsdelivr.net/npm/bootstrap@5.2.2',
                      'cdn_prism': 'cdn.jsdelivr.net/npm/prismjs@1.29.0',
+                     'sidebar': html_sidebar,
                      'url_app': request.url_root,
-                     'url_recap': url_for(".recap", **request_opts_for_data(request, args)),
-                     'url_map': url_for(".map_error", **request_opts_for_data(request, args)),
-                     'url_wmomap': url_for(".map_error", **request_opts_for_data(request, args)),
-                     'url_form': url_for(".trigger", **request_opts_for_data(request, args)),
-                     'url_data': url_for('.data', **request_opts_for_data(request, args)),
+                     'url_wmomap': url_for(".map_error", **opts),
+                     'url_data': url_for('.data', **opts),
                      'WMO': args.wmo if args.wmo != 0 else None,
                      'CYC': args.cyc if args.wmo != 0 else None,
                      'VELOCITY': args.velocity,
@@ -326,6 +316,7 @@ def trigger(wmo, cyc):
 
     opts = request_opts_for_data(request, args)
     opts.pop('cyc')
+    html_sidebar = get_the_sidebar(args, opts, None, active="Prediction form")
     template_data = {'css': url_for("static", filename="css"),
                      'js': url_for("static", filename="js"),
                      'dist': url_for("static", filename="dist"),
@@ -339,8 +330,7 @@ def trigger(wmo, cyc):
                      'CFG_PARKING_DEPTH': args.cfg_parking_depth,
                      'CFG_CYCLE_DURATION': args.cfg_cycle_duration,
                      'jsdata': url_for('.data', **request_opts_for_data(request, args)),
-                     'url_recap': url_for(".recap", **opts),
-                     'url_map': url_for(".map_error", **opts),
+                     'sidebar': html_sidebar,
                      'url_previous': url_for(".results", **{**opts, **{'cyc': args.cyc-1}}) if args.cyc != 0 else None,
                      'url_next': url_for(".results", **{**opts, **{'cyc': args.cyc+1}}) if args.cyc != 0 else None,
                      }
@@ -388,6 +378,7 @@ def trigger(wmo, cyc):
     else:
         html = render_template('trigger.html', **template_data)
         return html
+
 
 # @app.route("/spec")
 # def spec():
