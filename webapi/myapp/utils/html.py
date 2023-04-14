@@ -59,7 +59,7 @@ class Bootstrap_Carousel_Recovery(Bootstrap_Carousel):
         return description
 
 
-class MenuGroup():
+class MenuGroup:
     def __init__(self, header=None, items=None):
         self.header = header
         self.items = []
@@ -185,7 +185,6 @@ def get_the_sidebar(args, opts, data_js, active=None):
 
     m = MenuGroup()
     m.add_item({'txt': "VirtualFleet Recovery", 'icon': "home", 'href': "/"})
-    m.add_item({'txt': "Repository", 'icon': "github", 'href': "https://github.com/euroargodev/VirtualFleet_recovery"})
     m.add_item({'txt': "Prediction form", 'icon': "cpu", 'href': url_for(".trigger", **args.amap)})
     if active:
         m.activate(active)
@@ -215,7 +214,7 @@ def get_the_sidebar(args, opts, data_js, active=None):
         m.activate(active)
     grps.append(m)
 
-    m = MenuGroup(header='More')
+    m = MenuGroup(header='Extra')
     if args.wmo and args.wmo != 0:
         m.add_item({'txt': "Float dashboard", 'icon': 'table',
                     'href': argopy.dashboard(argopy.utilities.check_wmo(args.wmo), url_only=True)})
@@ -225,10 +224,16 @@ def get_the_sidebar(args, opts, data_js, active=None):
         m.add_item({'txt': "Profile page", 'icon': 'anchor', 'href': data_js['profile_to_predict']['url_profile']})
     else:
         m.add_item({'txt': "Profile page", 'icon': 'anchor', 'href': '#', 'disabled': True})
-    m.add_item({'txt': "Float Recovery @ Euro-Argo", 'icon': 'zap', 'href': 'https://floatrecovery.euro-argo.eu'})
-    m.add_item({'txt': "Recovery Forum", 'icon': 'zap', 'href': 'https://github.com/euroargodev/recovery/issues'})
     if active:
         m.activate(active)
     grps.append(m)
+
+    m = MenuGroup(header='Links')
+    m.add_item({'txt': "Float Recovery @ Euro-Argo", 'icon': 'zap', 'href': 'https://floatrecovery.euro-argo.eu'})
+    m.add_item({'txt': "Recovery Forum", 'icon': 'zap', 'href': 'https://github.com/euroargodev/recovery/issues'})
+    m.add_item({'txt': "Recovery source code", 'icon': "github", 'href': "https://github.com/euroargodev/VirtualFleet_recovery"})
+    m.add_item({'txt': "(c) Argo-France/LOPS/Ifremer", 'icon': "", 'href': "#", 'disabled': True})
+    grps.append(m)
+
 
     return Sidebar(grps).html
