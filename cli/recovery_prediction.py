@@ -1411,6 +1411,7 @@ def predictor(args):
     # Import the VirtualFleet library
     sys.path.insert(0, os.path.join(euroargodev, "VirtualFleet"))
     from virtualargofleet import Velocity, VirtualFleet, FloatConfiguration
+    # from virtualargofleet.app_parcels import ArgoParticle
 
     # Set up the working directory:
     if not args.output:
