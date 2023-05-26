@@ -1402,7 +1402,10 @@ def predictor(args):
 
     # Where do we find the VirtualFleet repository ?
     if not args.vf:
-        euroargodev = os.path.expanduser('~/git/github/euroargodev')
+        if os.uname()[1] == 'data-app-virtualfleet-recovery':
+            euroargodev = os.path.expanduser('/home/ubuntu')
+        else:
+            euroargodev = os.path.expanduser('~/git/github/euroargodev')
     else:
         euroargodev = os.path.abspath(args.vf)
         if not os.path.exists(os.path.join(euroargodev, "VirtualFleet")):
