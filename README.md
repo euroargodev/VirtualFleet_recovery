@@ -114,7 +114,7 @@ recovery_prediction.py 6902915 116
 Below is an example of this prediction for the 99th cycle of the 6902919 float.  
 The really observed 99th cycle is shown at the tip of the arrow (red point) starting from the previous 98th cycle.  
 The VirtualFleet Recovery prediction is in the probabilistic red shading: the most probable position predicted is in the redder region.
-![Figure](data/6902915/116/vfrecov_predictions.png)
+![Figure](docs/img/vfrecov_predictions_recap_VELARMOR3D_NF2000_CYCDUR240_PDPTH1000.png)
 
 ## web API (highly experimental)
 
@@ -152,7 +152,7 @@ http://<IP>:5000/predict/<WMO>/<CYC>
 ```
 This will return a json file with the prediction results. Predictions are saved in cache, so that if you send a request for a prediction already computed, you will have the json results right away. 
 
-Options available:
+Options available :
    - ``velocity``: to select the velocity field to use, it can be ``ARMOR3D`` (default) or ``GLORYS``
    - ``nfloats``: to set the number of virtual floats to use in the probabilistic prediction. The default value is 2000.
    - ``cfg_parking_depth``: to set the parking depth, in db, of virtual floats. The default values is that of the previous cycle.

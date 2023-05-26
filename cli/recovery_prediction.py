@@ -1410,10 +1410,9 @@ def predictor(args):
 
     # Import the VirtualFleet library
     sys.path.insert(0, os.path.join(euroargodev, "VirtualFleet"))
-    from virtualargofleet import VelocityField, VirtualFleet, FloatConfiguration
-    # from virtualargofleet.app_parcels import ArgoParticle
+    from virtualargofleet import Velocity, VirtualFleet, FloatConfiguration
 
-    # Set-up the working directory:
+    # Set up the working directory:
     if not args.output:
         WORKDIR = os.path.sep.join([get_package_dir(), "webapi", "myapp", "static", "data", str(WMO), str(CYC[1])])
     else:
@@ -1435,7 +1434,7 @@ def predictor(args):
         handlers=[logging.FileHandler(os.path.join(WORKDIR, "vfpred.log"), mode='a')]
     )
 
-    # Load these profiles information:
+    # Load these profiles' information:
     if not args.json:
         puts("\nYou can check this float dashboard while we prepare the prediction:")
         puts("\t%s" % argoplot.dashboard(WMO, url_only=True), color=COLORS.green)
@@ -1495,7 +1494,7 @@ def predictor(args):
                                            n_days=CYCLING_FREQUENCY+1,
                                            output=WORKDIR,
                                            dataset=VEL_NAME)
-    VEL = VelocityField(model='GLORYS12V1' if VEL_NAME == 'GLORYS' else VEL_NAME, src=ds_vel)
+    VEL = Velocity(model='GLORYS12V1' if VEL_NAME == 'GLORYS' else VEL_NAME, src=ds_vel)
     if not args.json:
         puts("\tLoaded velocity field from %s to %s" %
              (pd.to_datetime(ds_vel['time'][0].values).strftime("%Y-%m-%dT%H:%M:%S"),
