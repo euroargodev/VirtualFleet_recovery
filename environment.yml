@@ -4,9 +4,9 @@ channels:
 dependencies:
   - python=3.8
   - xarray>0.16.0
-  - parcels>=2.4.0
+  - parcels>=2.4.0  # *
   - dask
-  - distributed
+  - distributed  # *
   - dask-kubernetes
   - bottleneck
   - gcsfs
@@ -36,19 +36,19 @@ dependencies:
 #  - argopy
   - tqdm
   - py
-  - pydap
+  - pydap  # *
   - pip
   - pip:
     - jupyter-server-proxy
-    - git+https://github.com/euroargodev/argopy.git@master
+    - git+https://github.com/euroargodev/argopy.git@master  # *
     - netCDF4
     - erddapy
     - gitpython
-    - motuclient
+    - motuclient  # *
     - cmocean
     - progressbar
     - cgen
-    - pymbolic
+    - pymbolic  # *
     - memory-profiler
     - line-profiler
     - Flask
