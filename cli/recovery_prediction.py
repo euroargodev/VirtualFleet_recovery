@@ -29,7 +29,8 @@ from tqdm import tqdm
 import argparse
 from argopy.utilities import is_wmo, is_cyc
 import argopy.plot as argoplot
-from argopy.stores.argo_index_pd import indexstore_pandas as store
+# from argopy.stores.argo_index_pd import indexstore_pandas as store
+from argopy import ArgoIndex
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import cartopy.crs as ccrs
@@ -1445,7 +1446,7 @@ def predictor(args):
     host = "https://data-argo.ifremer.fr"
     # host = "/home/ref-argo/gdac" if os.uname()[0] == 'Darwin' else "https://data-argo.ifremer.fr"
     # host = "/home/ref-argo/gdac" if not os.uname()[0] == 'Darwin' else "~/data/ARGO"
-    THIS_PROFILE = store(host=host).search_wmo_cyc(WMO, CYC).to_dataframe()
+    THIS_PROFILE = ArgoIndex(host=host, cache=True).search_wmo_cyc(WMO, CYC).to_dataframe()
     THIS_DATE = pd.to_datetime(THIS_PROFILE['date'].values[0])
     CENTER = [THIS_PROFILE['longitude'].values[0], THIS_PROFILE['latitude'].values[0]]
     if not args.json:
