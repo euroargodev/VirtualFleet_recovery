@@ -212,7 +212,7 @@ def get_glorys_forecast_with_opendap(a_box, a_start_date, n_days=1):
 
     # 6-hourly fields:
     # serverset = opendap_nrt_server + '/global-analysis-forecast-phy-001-024-3dinst-uovo'
-    serverset = opendap_nrt_server + '/cmems_mod_glo_phy-cur_anfc_0.083deg_PT6H-i'
+    serverset = opendap_nrt_server + '/cmems_mod_glo_phy-cur_anfc_0.083deg_PT1D-m'
 
     # Daily fields:
     # serverset = opendap_nrt_server + '/global-analysis-forecast-phy-001-024'
