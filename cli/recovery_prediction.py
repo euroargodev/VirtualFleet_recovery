@@ -180,8 +180,17 @@ def getSystemInfo():
         logging.exception(e)
 
 
-def get_glorys_forecast_with_opendap(a_box, a_start_date, n_days=1):
-    """Load Global Ocean 1/12° Physics Analysis and Forecast updated Daily
+def first_time_step(a_start_date, freq='hourly'):
+    if freq == 'hourly':
+        steps, dt = np.array(np.arange(0, 24)), 1
+    if freq == '6-hourly':
+        steps, dt = np.array([0, 6, 12, 18]), 6
+    return "%0.4d-%0.2d-%0.2d %0.2d:00:00" % (a_start_date.year, a_start_date.month, a_start_date.day,
+                                              steps[np.argwhere(steps + dt > a_start_date.hour)[0][0]])
+
+
+def get_glorys_forecast_with_opendap_old(a_box, a_start_date, n_days=1):
+    """Load 6-hourly Global Ocean 1/12° Physics Analysis and Forecast updated Daily
 
     Fields: 6-hourly, from 2020-01-01T00:00 to 'now' + 2 days
     src:
@@ -212,7 +221,7 @@ def get_glorys_forecast_with_opendap(a_box, a_start_date, n_days=1):
 
     # 6-hourly fields:
     # serverset = opendap_nrt_server + '/global-analysis-forecast-phy-001-024-3dinst-uovo'
-    serverset = opendap_nrt_server + '/cmems_mod_glo_phy-cur_anfc_0.083deg_PT1D-m'
+    serverset = opendap_nrt_server + '/cmems_mod_glo_phy-cur_anfc_0.083deg_PT6H-i'
 
     # Daily fields:
     # serverset = opendap_nrt_server + '/global-analysis-forecast-phy-001-024'
@@ -223,9 +232,7 @@ def get_glorys_forecast_with_opendap(a_box, a_start_date, n_days=1):
     # puts("\t%s" % serverset, color=COLORS.green)
 
     # Get the starting date:
-    t = "%0.4d-%0.2d-%0.2d %0.2d:00:00" % (a_start_date.year, a_start_date.month, a_start_date.day,
-                                           np.array([0, 6, 12, 18])[
-                                               np.argwhere(np.array([0, 6, 12, 18]) + 6 > a_start_date.hour)[0][0]])
+    t = first_time_step(a_start_date, freq='6-hourly')
     t = np.datetime64(pd.to_datetime(t))
 
     if t < ds['time'][0]:
@@ -233,6 +240,127 @@ def get_glorys_forecast_with_opendap(a_box, a_start_date, n_days=1):
 
     nt = n_days * 4  # 4 snapshot a day (6 hourly), over n_days days
     itim = np.argwhere(ds['time'].values >= t)[0][0], np.argwhere(ds['time'].values >= t)[0][0] + nt
+    if itim[1] > len(ds['time']):
+        puts("Requested time frame out of max range (%s). Fall back on the longest time frame available." %
+                      pd.to_datetime(ds['time'][-1].values).strftime("%Y-%m-%dT%H:%M:%S"), color=COLORS.yellow)
+        itim = np.argwhere(ds['time'].values >= t)[0][0], len(ds['time'])
+
+    idpt = np.argwhere(ds['depth'].values > 2000)[0][0]
+    ilon = np.argwhere(ds['longitude'].values >= a_box[0])[0][0], np.argwhere(ds['longitude'].values >= a_box[1])[0][0]
+    ilat = np.argwhere(ds['latitude'].values >= a_box[2])[0][0], np.argwhere(ds['latitude'].values >= a_box[3])[0][0]
+    glorys = ds.isel({'time': range(itim[0], itim[1]),
+                      'depth': range(0, idpt),
+                      'longitude': range(ilon[0], ilon[1]),
+                      'latitude': range(ilat[0], ilat[1])})
+
+    #
+    return glorys.load()
+
+
+def get_glorys_forecast_with_opendap_surf(a_box, a_start_date, n_days=1):
+    """Load hourly surface Global Ocean 1/12° Physics Analysis and Forecast updated Daily
+
+    Fields: hourly, from 2020-01-01T00:00 to 'now' + 10 days
+    src:
+    - https://resources.marine.copernicus.eu/product-detail/GLOBAL_ANALYSISFORECAST_PHY_001_024
+
+    Parameters
+    ----------
+    a_box
+    a_start_date
+    n_days
+
+    Returns
+    -------
+    :class:xarray.dataset
+    """
+    MOTU_USERNAME, MOTU_PASSWORD = (
+        os.getenv("MOTU_USERNAME"),
+        os.getenv("MOTU_PASSWORD"),
+    )
+    if not MOTU_USERNAME:
+        raise ValueError("No MOTU_USERNAME in environment ! ")
+
+    session = requests.Session()
+    session.auth = (MOTU_USERNAME, MOTU_PASSWORD)
+
+    opendap_nrt_server = 'https://nrt.cmems-du.eu/thredds/dodsC'
+
+    # hourly fields:
+    serverset = opendap_nrt_server + '/cmems_mod_glo_phy_anfc_0.083deg_PT1H-m'
+
+    store = xr.backends.PydapDataStore.open(serverset, session=session)
+    ds = xr.open_dataset(store)
+    # puts(ds.__repr__())
+    # puts("\t%s" % serverset, color=COLORS.green)
+
+    # Get the starting date:
+    t = first_time_step(a_start_date, freq='hourly')
+    t = np.datetime64(pd.to_datetime(t))
+
+    if t < ds['time'][0]:
+        raise ValueError("This float cycle is too old for this velocity field.\n%s < %s" % (t, ds['time'][0].values))
+
+    nt = n_days * 4  # 4 snapshot a day (6 hourly), over n_days days
+    itim = np.argwhere(ds['time'].values >= t)[0][0], np.argwhere(ds['time'].values >= t)[0][0] + nt
+    if itim[1] > len(ds['time']):
+        puts("Requested time frame out of max range (%s). Fall back on the longest time frame available." %
+                      pd.to_datetime(ds['time'][-1].values).strftime("%Y-%m-%dT%H:%M:%S"), color=COLORS.yellow)
+        itim = np.argwhere(ds['time'].values >= t)[0][0], len(ds['time'])
+
+    ilon = np.argwhere(ds['longitude'].values >= a_box[0])[0][0], np.argwhere(ds['longitude'].values >= a_box[1])[0][0]
+    ilat = np.argwhere(ds['latitude'].values >= a_box[2])[0][0], np.argwhere(ds['latitude'].values >= a_box[3])[0][0]
+    glorys = ds.isel({'time': range(itim[0], itim[1]),
+                      'longitude': range(ilon[0], ilon[1]),
+                      'latitude': range(ilat[0], ilat[1])})
+
+    #
+    return glorys.load()
+
+
+def get_glorys_forecast_with_opendap(a_box, a_start_date, n_days=1):
+    """Load daily Global Ocean 1/12° Physics Analysis and Forecast updated Daily
+
+    Fields: daily, from 2020-01-01T00:00 to 'now' + 19 days
+    src:
+    - https://resources.marine.copernicus.eu/product-detail/GLOBAL_ANALYSISFORECAST_PHY_001_024
+
+    Parameters
+    ----------
+    a_box
+    a_start_date
+    n_days
+
+    Returns
+    -------
+    :class:xarray.dataset
+    """
+    MOTU_USERNAME, MOTU_PASSWORD = (
+        os.getenv("MOTU_USERNAME"),
+        os.getenv("MOTU_PASSWORD"),
+    )
+    if not MOTU_USERNAME:
+        raise ValueError("No MOTU_USERNAME in environment ! ")
+
+    session = requests.Session()
+    session.auth = (MOTU_USERNAME, MOTU_PASSWORD)
+
+    opendap_nrt_server = 'https://nrt.cmems-du.eu/thredds/dodsC'
+
+    # Daily fields:
+    serverset = opendap_nrt_server + '/cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m'
+
+    store = xr.backends.PydapDataStore.open(serverset, session=session)
+    ds = xr.open_dataset(store)
+    # puts(ds.__repr__())
+    # puts("\t%s" % serverset, color=COLORS.green)
+
+    #
+    t = a_start_date
+    if t < ds['time'][0]:
+        raise ValueError("This float cycle is too old for this velocity field.\n%s < %s" % (t, ds['time'][0].values))
+
+    itim = np.argwhere(ds['time'].values >= t)[0][0], np.argwhere(ds['time'].values >= t)[0][0] + n_days
     if itim[1] > len(ds['time']):
         puts("Requested time frame out of max range (%s). Fall back on the longest time frame available." %
                       pd.to_datetime(ds['time'][-1].values).strftime("%Y-%m-%dT%H:%M:%S"), color=COLORS.yellow)
@@ -353,6 +481,7 @@ def get_glorys_reanalysis_with_opendap(a_box, a_start_date, n_days=1):
 
     #
     return glorys.load()
+
 
 def get_glorys_with_opendap(a_box, a_start_date, n_days=1):
     """Load Global Ocean 1/12° Physics Re-Analysis and Forecast updated Daily
