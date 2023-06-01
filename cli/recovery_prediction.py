@@ -184,7 +184,9 @@ def get_glorys_forecast_with_opendap(a_box, a_start_date, n_days=1):
     """Load Global Ocean 1/12° Physics Analysis and Forecast updated Daily
 
     Fields: 6-hourly, from 2020-01-01T00:00 to 'now' + 2 days
-    Src: https://resources.marine.copernicus.eu/product-detail/GLOBAL_ANALYSIS_FORECAST_PHY_001_024
+    src:
+    - (deprec) https://resources.marine.copernicus.eu/product-detail/GLOBAL_ANALYSIS_FORECAST_PHY_001_024
+    - https://resources.marine.copernicus.eu/product-detail/GLOBAL_ANALYSISFORECAST_PHY_001_024
 
     Parameters
     ----------
@@ -205,10 +207,16 @@ def get_glorys_forecast_with_opendap(a_box, a_start_date, n_days=1):
 
     session = requests.Session()
     session.auth = (MOTU_USERNAME, MOTU_PASSWORD)
+
+    opendap_nrt_server = 'https://nrt.cmems-du.eu/thredds/dodsC'
+
     # 6-hourly fields:
-    serverset = 'https://nrt.cmems-du.eu/thredds/dodsC/global-analysis-forecast-phy-001-024-3dinst-uovo'
+    # serverset = opendap_nrt_server + '/global-analysis-forecast-phy-001-024-3dinst-uovo'
+    serverset = opendap_nrt_server + '/cmems_mod_glo_phy-cur_anfc_0.083deg_PT6H-i'
+
     # Daily fields:
-    # serverset = 'https://nrt.cmems-du.eu/thredds/dodsC/global-analysis-forecast-phy-001-024'
+    # serverset = opendap_nrt_server + '/global-analysis-forecast-phy-001-024'
+
     store = xr.backends.PydapDataStore.open(serverset, session=session)
     ds = xr.open_dataset(store)
     # puts(ds.__repr__())
@@ -242,11 +250,12 @@ def get_glorys_forecast_with_opendap(a_box, a_start_date, n_days=1):
     return glorys.load()
 
 
-def get_glorys_reanalysis_with_opendap(a_box, a_start_date, n_days=1):
-    """Load GLORYS Re-analysis
+def get_glorys_reanalysis_with_opendap_old(a_box, a_start_date, n_days=1):
+    """Load GLORYS Re-analysis, https://doi.org/10.48670/moi-00021
 
     Fields: daily, from 1993-01-01T12:00 to 2020-05-31T12:00
-    Src: https://resources.marine.copernicus.eu/product-detail/GLOBAL_MULTIYEAR_PHY_001_030
+    Src:
+    - https://resources.marine.copernicus.eu/product-detail/GLOBAL_MULTIYEAR_PHY_001_030
 
     Parameters
     ----------
@@ -263,8 +272,11 @@ def get_glorys_reanalysis_with_opendap(a_box, a_start_date, n_days=1):
 
     session = requests.Session()
     session.auth = (MOTU_USERNAME, MOTU_PASSWORD)
+    server = 'https://my.cmems-du.eu/thredds/dodsC'
+
     # Daily from 1993-01-01 to 2020-05-31:
-    serverset = 'https://my.cmems-du.eu/thredds/dodsC/cmems_mod_glo_phy_my_0.083_P1D-m'
+    serverset = server + '/cmems_mod_glo_phy_my_0.083_P1D-m'
+
     store = xr.backends.PydapDataStore.open(serverset, session=session)
     ds = xr.open_dataset(store)
     # puts(ds.__repr__())
@@ -289,6 +301,59 @@ def get_glorys_reanalysis_with_opendap(a_box, a_start_date, n_days=1):
     return glorys.load()
 
 
+def get_glorys_reanalysis_with_opendap(a_box, a_start_date, n_days=1):
+    """Load GLORYS Re-analysis, https://doi.org/10.48670/moi-00024
+
+    Fields: daily, from 1993-01-01T12:00 to 2020-05-31T12:00
+    Src:
+    - https://data.marine.copernicus.eu/product/GLOBAL_REANALYSIS_PHY_001_031
+
+    Parameters
+    ----------
+    a_box
+    a_start_date
+    n_days
+    """
+    MOTU_USERNAME, MOTU_PASSWORD = (
+        os.getenv("MOTU_USERNAME"),
+        os.getenv("MOTU_PASSWORD"),
+    )
+    if not MOTU_USERNAME:
+        raise ValueError("No MOTU_USERNAME in environment ! ")
+
+    session = requests.Session()
+    session.auth = (MOTU_USERNAME, MOTU_PASSWORD)
+    server = 'https://my.cmems-du.eu/thredds/dodsC'
+
+    # Daily from 1993-01-01 to 2020-05-31:
+    serverset = server + '/global-reanalysis-phy-001-031-grepv2-daily'
+
+    store = xr.backends.PydapDataStore.open(serverset, session=session)
+    ds = xr.open_dataset(store)
+    # puts(ds.__repr__())
+    # puts("\t%s" % serverset, color=COLORS.green)
+
+    if a_start_date > ds['time'][-1]:
+        raise ValueError("This float cycle is too young for this velocity field.\n%s > %s" % (a_start_date, ds['time'][-1].values))
+
+    itim = np.argwhere(ds['time'].values<a_start_date)[-1][0], np.argwhere(ds['time'].values<a_start_date+(n_days+1)*pd.Timedelta(1,'D'))[-1][0]+1
+    if itim[1] > len(ds['time']):
+        print("Requested time frame out of max range (%s). Fall back on the longest time frame available." %
+                      pd.to_datetime(ds['time'][-1].values).strftime("%Y-%m-%dT%H:%M:%S"))
+        itim = np.argwhere(ds['time'].values < a_start_date)[-1][0], len(ds['time'])
+    idpt = np.argwhere(ds['depth'].values>2000)[0][0]
+    ilon = np.argwhere(ds['longitude'].values>=a_box[0])[0][0], np.argwhere(ds['longitude'].values>=a_box[1])[0][0]
+    ilat = np.argwhere(ds['latitude'].values>=a_box[2])[0][0], np.argwhere(ds['latitude'].values>=a_box[3])[0][0]
+    glorys = ds.isel({'time': range(itim[0], itim[1]),
+                      'depth': range(0, idpt),
+                      'longitude': range(ilon[0], ilon[1]),
+                      'latitude': range(ilat[0], ilat[1])})
+    # Select GLORYS field:
+    glorys = glorys.rename({'uo_glor': 'uo', 'vo_glor': 'vo'})
+
+    #
+    return glorys.load()
+
 def get_glorys_with_opendap(a_box, a_start_date, n_days=1):
     """Load Global Ocean 1/12° Physics Re-Analysis and Forecast updated Daily
 
@@ -309,6 +374,12 @@ def get_glorys_with_opendap(a_box, a_start_date, n_days=1):
     Returns
     -------
     :class:xarray.dataset
+
+    Example
+    -------
+    get_glorys_with_opendap([-45.5, -44.5, 31.5, 32.5], pd.to_datetime('2020-01-01'), n_days=1)
+    get_glorys_with_opendap([-45.5, -44.5, 31.5, 32.5], pd.to_datetime('2022-01-01'), n_days=1)
+
     """
     if a_start_date + pd.Timedelta(n_days, 'D') <= pd.to_datetime('2020-05-31'):
         loader = get_glorys_reanalysis_with_opendap
@@ -1390,8 +1461,11 @@ def predictor(args):
 
     if is_wmo(args.wmo):
         WMO = args.wmo
-    if is_cyc(args.cyc) and args.cyc > 1:
-        CYC = [args.cyc-1, args.cyc]
+    if is_cyc(args.cyc):
+        if args.cyc > 1:
+            CYC = [args.cyc-1, args.cyc]
+        else:
+            raise ValueError("Cannot make prediction of the 1st cycle !")
     if args.velocity not in ['ARMOR3D', 'GLORYS']:
         raise ValueError("Velocity field must be one in: ['ARMOR3D', 'GLORYS']")
     else:
@@ -1453,9 +1527,9 @@ def predictor(args):
         puts("\nProfiles to work with:")
         puts(THIS_PROFILE.to_string(max_colwidth=15), color=COLORS.green)
         if THIS_PROFILE.shape[0] == 1:
-            puts('\nReal-case scenario: True position unknown !', color=COLORS.yellow)
+            puts('\nReal-case scenario: True position is NOT known !', color=COLORS.yellow)
         else:
-            puts('\nEvaluation scenario: historical position known', color=COLORS.yellow)
+            puts('\nEvaluation scenario: historical position is known', color=COLORS.yellow)
 
     # Load real float configuration at the previous cycle:
     if not args.json:
