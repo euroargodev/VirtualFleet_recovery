@@ -33,14 +33,13 @@ dependencies:
   - cartopy>=0.19.0
   - seaborn
   - xhistogram
-#  - argopy
+  - argopy>=0.1.14
   - tqdm
   - py
   - pydap
   - pip
   - pip:
     - jupyter-server-proxy
-    - git+https://github.com/euroargodev/argopy.git@master
     - netCDF4
     - erddapy
     - gitpython
