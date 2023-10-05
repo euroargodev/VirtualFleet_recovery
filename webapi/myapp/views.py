@@ -189,7 +189,7 @@ def results(wmo, cyc):
         template_data['prediction_lat'] = "%0.3f" % jsdata['prediction_location']['latitude']['value']
         template_data['prediction_lat_unit'] = "%s" % jsdata['prediction_location']['latitude']['unit']#.replace("degree", "deg")
         template_data['prediction_time'] = "%s UTC" % jsdata['prediction_location']['time']['value']
-        if 'score' in jsdata['prediction_metrics']['pairwise_distances']:
+        if 'pairwise_distances' in jsdata['prediction_metrics'] and 'score' in jsdata['prediction_metrics']['pairwise_distances']:
             template_data['prediction_score'] = "%0.0f%%" % (100*float(jsdata['prediction_metrics']['pairwise_distances']['score']['value']))
             # template_data['prediction_score'] = "%0.0f%%" % (100*float(jsdata['prediction_metrics']['pairwise_distances']['overlapping']['value']))
         else:
