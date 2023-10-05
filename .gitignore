@@ -142,4 +142,4 @@ cli/build-pypi
 *.nc
 *.npi*
 cli/vfrecov/
-webapi/static/data
+webapi/myapp/static/data
