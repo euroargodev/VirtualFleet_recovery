@@ -27,7 +27,7 @@ import json
 from datetime import timedelta
 from tqdm import tqdm
 import argparse
-from argopy.utilities import is_wmo, is_cyc
+from argopy.utils import is_wmo, is_cyc
 import argopy.plot as argoplot
 from argopy.stores.argo_index_pd import indexstore_pandas as store
 import matplotlib.pyplot as plt
@@ -179,11 +179,67 @@ def getSystemInfo():
         logging.exception(e)
 
 
-def get_glorys_forecast_with_opendap(a_box, a_start_date, n_days=1):
-    """Load Global Ocean 1/12° Physics Analysis and Forecast updated Daily
 
-    Fields: 6-hourly, from 2020-01-01T00:00 to 'now' + 2 days
-    Src: https://resources.marine.copernicus.eu/product-detail/GLOBAL_ANALYSIS_FORECAST_PHY_001_024
+def get_glorys_forecast_with_opendap_daily(a_box, a_start_date, n_days=1):
+    """Load daily Global Ocean 1/12° Physics Analysis and Forecast updated Daily
+
+    Fields: daily, from 2020-11-01T12:00:00 to 'now' + 10 days
+    Src: https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_PHY_001_024
+
+    Parameters
+    ----------
+    a_box
+    a_start_date
+    n_days
+
+    Returns
+    -------
+    :class:xarray.dataset
+    """
+    MOTU_USERNAME, MOTU_PASSWORD = (
+        os.getenv("MOTU_USERNAME"),
+        os.getenv("MOTU_PASSWORD"),
+    )
+    if not MOTU_USERNAME:
+        raise ValueError("No MOTU_USERNAME in environment ! ")
+
+    session = requests.Session()
+    session.auth = (MOTU_USERNAME, MOTU_PASSWORD)
+    # Daily fields:
+    # serverset = 'https://nrt.cmems-du.eu/thredds/dodsC/global-analysis-forecast-phy-001-024'  # Deprec
+    serverset = 'https://nrt.cmems-du.eu/thredds/dodsC/cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m'
+    store = xr.backends.PydapDataStore.open(serverset, session=session)
+    ds = xr.open_dataset(store)
+    # puts(ds.__repr__())
+    puts("\t%s" % serverset, color=COLORS.green)
+
+    # Get the starting date:
+    if a_start_date > ds['time'][-1]:
+        raise ValueError("This float cycle is too young for this velocity field.\n%s > %s" % (a_start_date, ds['time'][-1].values))
+
+    itim = np.argwhere(ds['time'].values<a_start_date)[-1][0], np.argwhere(ds['time'].values<a_start_date+(n_days+1)*pd.Timedelta(1,'D'))[-1][0]+1
+    if itim[1] > len(ds['time']):
+        print("Requested time frame out of max range (%s). Fall back on the longest time frame available." %
+                      pd.to_datetime(ds['time'][-1].values).strftime("%Y-%m-%dT%H:%M:%S"))
+        itim = np.argwhere(ds['time'].values < a_start_date)[-1][0], len(ds['time'])
+
+    idpt = np.argwhere(ds['depth'].values > 2000)[0][0]
+    ilon = np.argwhere(ds['longitude'].values >= a_box[0])[0][0], np.argwhere(ds['longitude'].values >= a_box[1])[0][0]
+    ilat = np.argwhere(ds['latitude'].values >= a_box[2])[0][0], np.argwhere(ds['latitude'].values >= a_box[3])[0][0]
+    glorys = ds.isel({'time': range(itim[0], itim[1]),
+                      'depth': range(0, idpt),
+                      'longitude': range(ilon[0], ilon[1]),
+                      'latitude': range(ilat[0], ilat[1])})
+
+    #
+    return glorys.load()
+
+
+def get_glorys_forecast_with_opendap_6hourly(a_box, a_start_date, n_days=1):
+    """Load 6-hourly Global Ocean 1/12° Physics Analysis and Forecast updated Daily
+
+    Fields: 6-hourly, from 2020-11-01T00:00 to 'now' + 2 days
+    Src: https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_PHY_001_024
 
     Parameters
     ----------
@@ -205,9 +261,8 @@ def get_glorys_forecast_with_opendap(a_box, a_start_date, n_days=1):
     session = requests.Session()
     session.auth = (MOTU_USERNAME, MOTU_PASSWORD)
     # 6-hourly fields:
-    serverset = 'https://nrt.cmems-du.eu/thredds/dodsC/global-analysis-forecast-phy-001-024-3dinst-uovo'
-    # Daily fields:
-    # serverset = 'https://nrt.cmems-du.eu/thredds/dodsC/global-analysis-forecast-phy-001-024'
+    # serverset = 'https://nrt.cmems-du.eu/thredds/dodsC/global-analysis-forecast-phy-001-024-3dinst-uovo' # Deprec
+    serverset = 'https://nrt.cmems-du.eu/thredds/dodsC/cmems_mod_glo_phy-cur_anfc_0.083deg_PT6H-i'
     store = xr.backends.PydapDataStore.open(serverset, session=session)
     ds = xr.open_dataset(store)
     # puts(ds.__repr__())
@@ -244,7 +299,7 @@ def get_glorys_forecast_with_opendap(a_box, a_start_date, n_days=1):
 def get_glorys_reanalysis_with_opendap(a_box, a_start_date, n_days=1):
     """Load GLORYS Re-analysis
 
-    Fields: daily, from 1993-01-01T12:00 to 2020-05-31T12:00
+    Fields: daily, from 1993-01-01T12:00 to 2020-12-31T12:00
     Src: https://resources.marine.copernicus.eu/product-detail/GLOBAL_MULTIYEAR_PHY_001_030
 
     Parameters
@@ -262,7 +317,7 @@ def get_glorys_reanalysis_with_opendap(a_box, a_start_date, n_days=1):
 
     session = requests.Session()
     session.auth = (MOTU_USERNAME, MOTU_PASSWORD)
-    # Daily from 1993-01-01 to 2020-05-31:
+    # Daily from 1993-01-01 to 2020-12-31:
     serverset = 'https://my.cmems-du.eu/thredds/dodsC/cmems_mod_glo_phy_my_0.083_P1D-m'
     store = xr.backends.PydapDataStore.open(serverset, session=session)
     ds = xr.open_dataset(store)
@@ -289,15 +344,15 @@ def get_glorys_reanalysis_with_opendap(a_box, a_start_date, n_days=1):
 
 
 def get_glorys_with_opendap(a_box, a_start_date, n_days=1):
-    """Load Global Ocean 1/12° Physics Re-Analysis and Forecast updated Daily
+    """Load Global Ocean 1/12° Physics Re-Analysis or Forecast
 
-    If ``a_start_date+n_days`` < 2020-05-31:
+    If ``a_start_date+n_days`` < 2020-11-01:
         delivers the multi-year reprocessed (REP) daily data
         https://resources.marine.copernicus.eu/product-detail/GLOBAL_MULTIYEAR_PHY_001_030
 
     otherwise:
         delivers near-real-time (NRT) Analysis and Forecast 6-hourly data
-        https://resources.marine.copernicus.eu/product-detail/GLOBAL_ANALYSIS_FORECAST_PHY_001_024
+        https://resources.marine.copernicus.eu/product-detail/GLOBAL_ANALYSISFORECAST_PHY_001_024
 
     Parameters
     ----------
@@ -309,10 +364,11 @@ def get_glorys_with_opendap(a_box, a_start_date, n_days=1):
     -------
     :class:xarray.dataset
     """
-    if a_start_date + pd.Timedelta(n_days, 'D') <= pd.to_datetime('2020-05-31'):
+    if a_start_date + pd.Timedelta(n_days, 'D') <= pd.to_datetime('2020-11-01'):
         loader = get_glorys_reanalysis_with_opendap
     else:
-        loader = get_glorys_forecast_with_opendap
+        # loader = get_glorys_forecast_with_opendap_6hourly  # 'now' + 2 days
+        loader = get_glorys_forecast_with_opendap_daily  # 'now' + 10 days
 
     return loader(a_box, a_start_date, n_days=n_days)
 
@@ -322,7 +378,7 @@ def get_glorys_forecast_from_datarmor(a_box, a_start_date, n_days=1):
 
     Fields: daily, from 2020-11-25T12:00 to 'now' + 5 days
     Src: /home/ref-ocean-model-public/multiparameter/physic/global/cmems/global-analysis-forecast-phy-001-024
-    Info: https://resources.marine.copernicus.eu/product-detail/GLOBAL_ANALYSIS_FORECAST_PHY_001_024/INFORMATION
+    Info: https://resources.marine.copernicus.eu/product-detail/GLOBAL_ANALYSISFORECAST_PHY_001_024/INFORMATION
 
     Parameters
     ----------
