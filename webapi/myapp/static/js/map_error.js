@@ -110,7 +110,10 @@ Spansst="<span id='ssttag'>"+htmlsst+"</span>"
 layerControl.addOverlay(wmsLayer0, Spansst, "SST");
 
 //SLA VIA CMEMS WMS
-var wmsLayer0 = L.tileLayer.wms('https://nrt.cmems-du.eu/thredds/wms/global-analysis-forecast-phy-001-024?', {
+// https://nrt.cmems-du.eu/thredds/wms/global-analysis-forecast-phy-001-024
+// https://nrt.cmems-du.eu/thredds/wms/dataset-duacs-nrt-global-merged-allsat-phy-l4?request=GetCapabilities&service=WMS
+// https://nrt.cmems-du.eu/thredds/wms/cmems_mod_glo_phy_anfc_0.083deg_PT1H-m?request=GetCapabilities&service=WMS
+var wmsLayer0 = L.tileLayer.wms('https://nrt.cmems-du.eu/thredds/wms/cmems_mod_glo_phy_anfc_0.083deg_P1D-m?', {
    layers: 'zos',
    opacity: 0.45,
    colorscalerange: '-1.0,1.0',
@@ -118,12 +121,16 @@ var wmsLayer0 = L.tileLayer.wms('https://nrt.cmems-du.eu/thredds/wms/global-anal
    belowmincolor: "extend",
    numcolorbands: 30,
    time: yyyy+'-'+mm+'-'+dd+'T12:00:00.000Z',
-   styles: 'boxfill/redblue'
+   styles: 'boxfill/redblue',
+//    format: 'image/png;base64',
 });
-// htmlsla='<font color="magenta">SLA '+yyyy+'-'+mm+'-'+dd+'</font> <a target="_blank" href="https://data.marine.copernicus.eu/product/GLOBAL_ANALYSIS_FORECAST_PHY_001_024"><img src="static/dist/info.png" height="15" width="15"></a>';
 htmlsla='<font color="magenta">SLA '+yyyy+'-'+mm+'-'+dd+'</font>';
 Spansla="<span id='slatag'>"+htmlsla+"</span>"
 layerControl.addOverlay(wmsLayer0, Spansla, "SLA");
+
+console.log(yyyy+'-'+mm+'-'+dd+'T12:00:00.000Z')
+// htmlsla='<font color="magenta">SLA '+yyyy+'-'+mm+'-'+dd+'</font> <a target="_blank" href="https://data.marine.copernicus.eu/product/GLOBAL_ANALYSIS_FORECAST_PHY_001_024"><img src="static/dist/info.png" height="15" width="15"></a>';
+
 
 //MDT VIA CMEMS WMS
 var wmsLayer0 = L.tileLayer.wms('https://my.cmems-du.eu/thredds/wms/cnes_obs-sl_glo_phy-mdt_my_0.125deg_P20Y?', {
@@ -134,7 +141,7 @@ var wmsLayer0 = L.tileLayer.wms('https://my.cmems-du.eu/thredds/wms/cnes_obs-sl_
    belowmincolor: "extend",
    numcolorbands: 30,
    time: '2003-01-01T00:00:00.000Z',
-   styles: 'boxfill/redblue'
+   styles: 'boxfill/redblue',
 });
 // htmlmdt='<font color="magenta">MDT CNES-CLS18_CMEMS2020</font> <a target="_blank" href="https://data.marine.copernicus.eu/product/SEALEVEL_GLO_PHY_MDT_008_063"><img src="static/dist/info.png" height="15" width="15"></a>';
 htmlmdt='<font color="magenta">MDT CNES-CLS18_CMEMS2020</font>';
