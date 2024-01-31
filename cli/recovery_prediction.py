@@ -1544,8 +1544,8 @@ def predictor(args):
     CYCLING_FREQUENCY = int(np.round(CFG.mission['cycle_duration'])/24)
 
     # Define domain to load velocity for, and get it:
-    width = 5 + np.abs(np.ceil(THIS_PROFILE['longitude'].values[-1] - CENTER[0]))
-    height = 5 + np.abs(np.ceil(THIS_PROFILE['latitude'].values[-1] - CENTER[1]))
+    width = 10 + np.abs(np.ceil(THIS_PROFILE['longitude'].values[-1] - CENTER[0]))
+    height = 10 + np.abs(np.ceil(THIS_PROFILE['latitude'].values[-1] - CENTER[1]))
     # lonc, latc = CENTER[0], CENTER[1],
     VBOX = [CENTER[0] - width / 2, CENTER[0] + width / 2, CENTER[1] - height / 2, CENTER[1] + height / 2]
     if not args.json:
