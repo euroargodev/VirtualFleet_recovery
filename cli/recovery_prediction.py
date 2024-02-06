@@ -5,10 +5,9 @@
 # - the previous cycle
 # - the ARMORD3D or CMEMS GLORYS12 forecast at the time of the previous cycle
 #
-#
-# mprof run ../cli/recovery_prediction.py --output data 2903691 80
+# mprof run recovery_prediction.py --output data 2903691 80
 # mprof plot
-# python -m line_profiler ../cli/recovery_prediction.py --output data 2903691 80
+# python -m line_profiler recovery_prediction.py --output data 2903691 80
 #
 # Capital variables are considered global and usable anywhere
 #
@@ -34,18 +33,19 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import cartopy.crs as ccrs
 import matplotlib
-# from parcels import ParticleSet, FieldSet, Field
-# from abc import ABC
 import time
-# from memory_profiler import profile
 import platform, socket, psutil
 from sklearn.metrics import pairwise_distances
+import copernicusmarine
+# from virtualargofleet import Velocity, VirtualFleet, FloatConfiguration
+
 
 logging.getLogger("matplotlib").setLevel(logging.ERROR)
 logging.getLogger("parso").setLevel(logging.ERROR)
 DEBUGFORMATTER = '%(asctime)s [%(levelname)s] [%(name)s] %(filename)s:%(lineno)d: %(message)s'
 
 log = logging.getLogger("virtualfleet.recovery")
+
 
 PREF = "\033["
 RESET = f"{PREF}0m"
@@ -179,200 +179,6 @@ def getSystemInfo():
         logging.exception(e)
 
 
-
-def get_glorys_forecast_with_opendap_daily(a_box, a_start_date, n_days=1):
-    """Load daily Global Ocean 1/12° Physics Analysis and Forecast updated Daily
-
-    Fields: daily, from 2020-11-01T12:00:00 to 'now' + 10 days
-    Src: https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_PHY_001_024
-
-    Parameters
-    ----------
-    a_box
-    a_start_date
-    n_days
-
-    Returns
-    -------
-    :class:xarray.dataset
-    """
-    MOTU_USERNAME, MOTU_PASSWORD = (
-        os.getenv("MOTU_USERNAME"),
-        os.getenv("MOTU_PASSWORD"),
-    )
-    if not MOTU_USERNAME:
-        raise ValueError("No MOTU_USERNAME in environment ! ")
-
-    session = requests.Session()
-    session.auth = (MOTU_USERNAME, MOTU_PASSWORD)
-    # Daily fields:
-    # serverset = 'https://nrt.cmems-du.eu/thredds/dodsC/global-analysis-forecast-phy-001-024'  # Deprec
-    serverset = 'https://nrt.cmems-du.eu/thredds/dodsC/cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m'
-    store = xr.backends.PydapDataStore.open(serverset, session=session)
-    ds = xr.open_dataset(store)
-    # puts(ds.__repr__())
-    puts("\t%s" % serverset, color=COLORS.green)
-
-    # Get the starting date:
-    if a_start_date > ds['time'][-1]:
-        raise ValueError("This float cycle is too young for this velocity field.\n%s > %s" % (a_start_date, ds['time'][-1].values))
-
-    itim = np.argwhere(ds['time'].values<a_start_date)[-1][0], np.argwhere(ds['time'].values<a_start_date+(n_days+1)*pd.Timedelta(1,'D'))[-1][0]+1
-    if itim[1] > len(ds['time']):
-        print("Requested time frame out of max range (%s). Fall back on the longest time frame available." %
-                      pd.to_datetime(ds['time'][-1].values).strftime("%Y-%m-%dT%H:%M:%S"))
-        itim = np.argwhere(ds['time'].values < a_start_date)[-1][0], len(ds['time'])
-
-    idpt = np.argwhere(ds['depth'].values > 2000)[0][0]
-    ilon = np.argwhere(ds['longitude'].values >= a_box[0])[0][0], np.argwhere(ds['longitude'].values >= a_box[1])[0][0]
-    ilat = np.argwhere(ds['latitude'].values >= a_box[2])[0][0], np.argwhere(ds['latitude'].values >= a_box[3])[0][0]
-    glorys = ds.isel({'time': range(itim[0], itim[1]),
-                      'depth': range(0, idpt),
-                      'longitude': range(ilon[0], ilon[1]),
-                      'latitude': range(ilat[0], ilat[1])})
-
-    #
-    return glorys.load()
-
-
-def get_glorys_forecast_with_opendap_6hourly(a_box, a_start_date, n_days=1):
-    """Load 6-hourly Global Ocean 1/12° Physics Analysis and Forecast updated Daily
-
-    Fields: 6-hourly, from 2020-11-01T00:00 to 'now' + 2 days
-    Src: https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_PHY_001_024
-
-    Parameters
-    ----------
-    a_box
-    a_start_date
-    n_days
-
-    Returns
-    -------
-    :class:xarray.dataset
-    """
-    MOTU_USERNAME, MOTU_PASSWORD = (
-        os.getenv("MOTU_USERNAME"),
-        os.getenv("MOTU_PASSWORD"),
-    )
-    if not MOTU_USERNAME:
-        raise ValueError("No MOTU_USERNAME in environment ! ")
-
-    session = requests.Session()
-    session.auth = (MOTU_USERNAME, MOTU_PASSWORD)
-    # 6-hourly fields:
-    # serverset = 'https://nrt.cmems-du.eu/thredds/dodsC/global-analysis-forecast-phy-001-024-3dinst-uovo' # Deprec
-    serverset = 'https://nrt.cmems-du.eu/thredds/dodsC/cmems_mod_glo_phy-cur_anfc_0.083deg_PT6H-i'
-    store = xr.backends.PydapDataStore.open(serverset, session=session)
-    ds = xr.open_dataset(store)
-    # puts(ds.__repr__())
-    # puts("\t%s" % serverset, color=COLORS.green)
-
-    # Get the starting date:
-    t = "%0.4d-%0.2d-%0.2d %0.2d:00:00" % (a_start_date.year, a_start_date.month, a_start_date.day,
-                                           np.array([0, 6, 12, 18])[
-                                               np.argwhere(np.array([0, 6, 12, 18]) + 6 > a_start_date.hour)[0][0]])
-    t = np.datetime64(pd.to_datetime(t))
-
-    if t < ds['time'][0]:
-        raise ValueError("This float cycle is too old for this velocity field.\n%s < %s" % (t, ds['time'][0].values))
-
-    nt = n_days * 4  # 4 snapshot a day (6 hourly), over n_days days
-    itim = np.argwhere(ds['time'].values >= t)[0][0], np.argwhere(ds['time'].values >= t)[0][0] + nt
-    if itim[1] > len(ds['time']):
-        puts("Requested time frame out of max range (%s). Fall back on the longest time frame available." %
-                      pd.to_datetime(ds['time'][-1].values).strftime("%Y-%m-%dT%H:%M:%S"), color=COLORS.yellow)
-        itim = np.argwhere(ds['time'].values >= t)[0][0], len(ds['time'])
-
-    idpt = np.argwhere(ds['depth'].values > 2000)[0][0]
-    ilon = np.argwhere(ds['longitude'].values >= a_box[0])[0][0], np.argwhere(ds['longitude'].values >= a_box[1])[0][0]
-    ilat = np.argwhere(ds['latitude'].values >= a_box[2])[0][0], np.argwhere(ds['latitude'].values >= a_box[3])[0][0]
-    glorys = ds.isel({'time': range(itim[0], itim[1]),
-                      'depth': range(0, idpt),
-                      'longitude': range(ilon[0], ilon[1]),
-                      'latitude': range(ilat[0], ilat[1])})
-
-    #
-    return glorys.load()
-
-
-def get_glorys_reanalysis_with_opendap(a_box, a_start_date, n_days=1):
-    """Load GLORYS Re-analysis
-
-    Fields: daily, from 1993-01-01T12:00 to 2020-12-31T12:00
-    Src: https://resources.marine.copernicus.eu/product-detail/GLOBAL_MULTIYEAR_PHY_001_030
-
-    Parameters
-    ----------
-    a_box
-    a_start_date
-    n_days
-    """
-    MOTU_USERNAME, MOTU_PASSWORD = (
-        os.getenv("MOTU_USERNAME"),
-        os.getenv("MOTU_PASSWORD"),
-    )
-    if not MOTU_USERNAME:
-        raise ValueError("No MOTU_USERNAME in environment ! ")
-
-    session = requests.Session()
-    session.auth = (MOTU_USERNAME, MOTU_PASSWORD)
-    # Daily from 1993-01-01 to 2020-12-31:
-    serverset = 'https://my.cmems-du.eu/thredds/dodsC/cmems_mod_glo_phy_my_0.083_P1D-m'
-    store = xr.backends.PydapDataStore.open(serverset, session=session)
-    ds = xr.open_dataset(store)
-    # puts(ds.__repr__())
-    # puts("\t%s" % serverset, color=COLORS.green)
-
-    if a_start_date > ds['time'][-1]:
-        raise ValueError("This float cycle is too young for this velocity field.\n%s > %s" % (a_start_date, ds['time'][-1].values))
-
-    itim = np.argwhere(ds['time'].values<a_start_date)[-1][0], np.argwhere(ds['time'].values<a_start_date+(n_days+1)*pd.Timedelta(1,'D'))[-1][0]+1
-    if itim[1] > len(ds['time']):
-        print("Requested time frame out of max range (%s). Fall back on the longest time frame available." %
-                      pd.to_datetime(ds['time'][-1].values).strftime("%Y-%m-%dT%H:%M:%S"))
-        itim = np.argwhere(ds['time'].values < a_start_date)[-1][0], len(ds['time'])
-    idpt = np.argwhere(ds['depth'].values>2000)[0][0]
-    ilon = np.argwhere(ds['longitude'].values>=a_box[0])[0][0], np.argwhere(ds['longitude'].values>=a_box[1])[0][0]
-    ilat = np.argwhere(ds['latitude'].values>=a_box[2])[0][0], np.argwhere(ds['latitude'].values>=a_box[3])[0][0]
-    glorys = ds.isel({'time': range(itim[0], itim[1]),
-                      'depth': range(0, idpt),
-                      'longitude': range(ilon[0], ilon[1]),
-                      'latitude': range(ilat[0], ilat[1])})
-    #
-    return glorys.load()
-
-
-def get_glorys_with_opendap(a_box, a_start_date, n_days=1):
-    """Load Global Ocean 1/12° Physics Re-Analysis or Forecast
-
-    If ``a_start_date+n_days`` < 2020-11-01:
-        delivers the multi-year reprocessed (REP) daily data
-        https://resources.marine.copernicus.eu/product-detail/GLOBAL_MULTIYEAR_PHY_001_030
-
-    otherwise:
-        delivers near-real-time (NRT) Analysis and Forecast 6-hourly data
-        https://resources.marine.copernicus.eu/product-detail/GLOBAL_ANALYSISFORECAST_PHY_001_024
-
-    Parameters
-    ----------
-    a_box
-    a_start_date
-    n_days
-
-    Returns
-    -------
-    :class:xarray.dataset
-    """
-    if a_start_date + pd.Timedelta(n_days, 'D') <= pd.to_datetime('2020-11-01'):
-        loader = get_glorys_reanalysis_with_opendap
-    else:
-        # loader = get_glorys_forecast_with_opendap_6hourly  # 'now' + 2 days
-        loader = get_glorys_forecast_with_opendap_daily  # 'now' + 10 days
-
-    return loader(a_box, a_start_date, n_days=n_days)
-
-
 def get_glorys_forecast_from_datarmor(a_box, a_start_date, n_days=1):
     """Load Datarmor Global Ocean 1/12° Physics Analysis and Forecast updated Daily
 
@@ -418,69 +224,162 @@ def get_glorys_forecast_from_datarmor(a_box, a_start_date, n_days=1):
     return glorys
 
 
-def get_armor3d_with_opendap(a_box, a_start_date, n_days=1):
-    """Load ARMOR3D Multi Observation Global Ocean 3D Temperature Salinity Height Geostrophic Current and MLD
+class Armor3d:
 
-    Fields: weekly, from 1993-01-06T12:00 to current week
-    Src: https://resources.marine.copernicus.eu/product-detail/MULTIOBS_GLO_PHY_TSUV_3D_MYNRT_015_012/INFORMATION
+    def __init__(self, a_box, a_start_date, n_days=1, max_depth=2500):
+        """Load Global Ocean 1/4° Multi Observation Product ARMOR3D
 
-    If ``a_start_date+n_days`` < 2020-12-30, delivers the multi-year reprocessed (REP) weekly data, otherwise delivers near-real-time (NRT) weekly data.
+        https://data.marine.copernicus.eu/product/MULTIOBS_GLO_PHY_TSUV_3D_MYNRT_015_012
 
-    Parameters
-    ----------
-    a_box
-    a_start_date
-    n_days
+        If ``a_start_date+n_days`` < 2022-12-28:
+            delivers the multi-year reprocessed (REP) weekly data
 
-    Returns
-    -------
-    :class:xarray.dataset
-    """
-    # Convert longitude to 0/360, because that's the ARMOR3D convention:
-    a_box[0] = fixLON(a_box[0])
-    a_box[1] = fixLON(a_box[1])
+        otherwise:
+            delivers near-real-time (NRT) weekly data
 
-    MOTU_USERNAME, MOTU_PASSWORD = (
-        os.getenv("MOTU_USERNAME"),
-        os.getenv("MOTU_PASSWORD"),
-    )
-    if not MOTU_USERNAME:
-        raise ValueError("No MOTU_USERNAME in environment ! ")
+        Parameters
+        ----------
+        a_box
+        a_start_date
+        n_days
+        """
+        self.box = a_box
+        self.start_date = a_start_date
+        self.n_days = n_days
+        self.max_depth = max_depth
 
-    if a_start_date + pd.Timedelta(n_days, 'D') <= pd.to_datetime('20201230'):
-        serverset = 'https://nrt.cmems-du.eu/thredds/dodsC/dataset-armor-3d-rep-weekly'  # 1993-01-06 to 2020-12-30
-    else:
-        serverset = 'https://nrt.cmems-du.eu/thredds/dodsC/dataset-armor-3d-nrt-weekly'  # 2019-01-02 to present
-    # puts("\t%s" % serverset, color=COLORS.green)
+        if a_start_date + pd.Timedelta(n_days, 'D') < pd.to_datetime('2022-12-28', utc=True):
+            self.loader = self._get_rep
+            self.time_axis = pd.Series(pd.date_range('19930106', '20221228', freq='7D').tz_localize("UTC"))
+        else:
+            self.loader = self._get_nrt  # 'now' + 10 days
+            self.time_axis = pd.Series(
+                pd.date_range('20190102', pd.to_datetime('now', utc=True).strftime("%Y%m%d"), freq='7D').tz_localize(
+                    "UTC")[0:-1])
 
-    session = requests.Session()
-    session.auth = (MOTU_USERNAME, MOTU_PASSWORD)
-    store = xr.backends.PydapDataStore.open(serverset, session=session)
-    ds = xr.open_dataset(store)
+        if a_start_date < self.time_axis.iloc[0]:
+            raise ValueError('Date out of bounds')
+        elif a_start_date + (self.n_days + 1) * pd.Timedelta(1, 'D') > self.time_axis.iloc[-1]:
+            raise ValueError('Date out of bounds, %s > %s' % (
+            a_start_date + (self.n_days + 1) * pd.Timedelta(1, 'D'), self.time_axis.iloc[-1]))
 
-    if a_start_date > ds['time'][-1]:
-        raise ValueError("This float cycle is too young for this velocity field.\nFloat starting date %s is after the ARMOR3D last available date %s.\nTry with the GLORYS forecast." % (a_start_date, ds['time'][-1].values))
+    def _get_this(self, dataset_id):
+        start_date = self.time_axis[self.time_axis <= self.start_date].iloc[-1]
+        end_date = self.time_axis[self.time_axis <= self.start_date + (self.n_days + 1) * pd.Timedelta(1, 'D')].iloc[-1]
 
-    nt = int(np.ceil(n_days / 7))
-    itim = np.argwhere(ds['time'].values<a_start_date)[-1][0], \
-           np.argwhere(ds['time'].values<a_start_date+(nt+1)*pd.Timedelta(7, 'D'))[-1][0]+1
-    if itim[1] > len(ds['time']):
-        print("Requested time frame out of max range (%s). Fall back on the longest time frame available." %
-              pd.to_datetime(ds['time'][-1].values).strftime("%Y-%m-%dT%H:%M:%S"))
-        itim = np.argwhere(ds['time'].values < a_start_date)[-1][0], len(ds['time'])
-    idpt = np.argwhere(ds['depth'].values > 2000)[0][0]
-    ilon = np.argwhere(ds['longitude'].values >= a_box[0])[0][0], np.argwhere(ds['longitude'].values >= a_box[1])[0][0]
-    ilat = np.argwhere(ds['latitude'].values >= a_box[2])[0][0], np.argwhere(ds['latitude'].values >= a_box[3])[0][0]
-    armor3d = ds.isel({'time': range(itim[0], itim[1]),
-                       'depth': range(0, idpt),
-                       'longitude': range(ilon[0], ilon[1]),
-                       'latitude': range(ilat[0], ilat[1])})
+        ds = copernicusmarine.open_dataset(
+            dataset_id=dataset_id,
+            minimum_longitude=self.box[0],
+            maximum_longitude=self.box[1],
+            minimum_latitude=self.box[2],
+            maximum_latitude=self.box[3],
+            maximum_depth=self.max_depth,
+            start_datetime=start_date.strftime("%Y-%m-%dT%H:%M:%S"),
+            end_datetime=end_date.strftime("%Y-%m-%dT%H:%M:%S"),
+            variables=['ugo', 'vgo']
+        )
+        return ds
 
-    # Move back to the Argo -180/180 longitude convention:
-    lon = armor3d['longitude'].values
-    lon[np.argwhere(lon>180)] = lon[np.argwhere(lon>180)] - 360
-    armor3d['longitude'] = lon
-    return armor3d
+    def _get_rep(self):
+        """multi-year reprocessed (REP) weekly data
+
+        Returns
+        -------
+        :class:xarray.dataset
+        """
+        return self._get_this("dataset-armor-3d-rep-weekly")
+
+    def _get_nrt(self):
+        """near-real-time (NRT) weekly data
+
+        Returns
+        -------
+        :class:xarray.dataset
+        """
+        return self._get_this("dataset-armor-3d-nrt-weekly")
+
+    def to_xarray(self):
+        """ Load and return data as a :class:xarray.dataset
+
+        Returns
+        -------
+        :class:xarray.dataset
+        """
+        return self.loader()
+
+
+class Glorys:
+
+    def __init__(self, a_box, a_start_date, n_days=1, max_depth=2500):
+        """Load Global Ocean 1/12° Physics Re-Analysis or Forecast
+
+        If ``a_start_date+n_days`` < 2023-10-24:
+            delivers the multi-year reprocessed (REP) daily data
+            https://resources.marine.copernicus.eu/product-detail/GLOBAL_MULTIYEAR_PHY_001_030
+
+        otherwise:
+            delivers near-real-time (NRT) Analysis and Forecast 6-hourly data
+            https://resources.marine.copernicus.eu/product-detail/GLOBAL_ANALYSISFORECAST_PHY_001_024
+
+        Parameters
+        ----------
+        a_box
+        a_start_date
+        n_days
+        """
+        self.box = a_box
+        self.start_date = a_start_date
+        self.n_days = n_days
+        self.max_depth = max_depth
+
+        if a_start_date + pd.Timedelta(n_days, 'D') <= pd.to_datetime('2023-10-24', utc=True):
+            self.loader = self._get_reanalysis
+        else:
+            self.loader = self._get_forecast  # 'now' + 10 days
+
+    def _get_this(self, dataset_id, dates):
+        ds = copernicusmarine.open_dataset(
+            dataset_id=dataset_id,
+            minimum_longitude=self.box[0],
+            maximum_longitude=self.box[1],
+            minimum_latitude=self.box[2],
+            maximum_latitude=self.box[3],
+            maximum_depth=self.max_depth,
+            start_datetime=dates[0].strftime("%Y-%m-%dT%H:%M:%S"),
+            end_datetime=dates[1].strftime("%Y-%m-%dT%H:%M:%S"),
+            variables=['uo', 'vo']
+        )
+        return ds
+
+
+    def _get_forecast(self):
+        """
+        Returns
+        -------
+        :class:xarray.dataset
+        """
+        start_date = self.start_date - pd.Timedelta(1, 'D')
+        end_date = self.start_date + (self.n_days + 1) * pd.Timedelta(1, 'D')
+        return self._get_this("cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m", [start_date, end_date])
+
+    def _get_reanalysis(self):
+        """
+        Returns
+        -------
+        :class:xarray.dataset
+        """
+        start_date = self.start_date
+        end_date = self.start_date + (self.n_days + 1) * pd.Timedelta(1, 'D')
+        return self._get_this("cmems_mod_glo_phy_my_0.083_P1D-m", [start_date, end_date])
+
+    def to_xarray(self):
+        """ Load and return data as a :class:xarray.dataset
+
+        Returns
+        -------
+        :class:xarray.dataset
+        """
+        return self.loader()
 
 
 def get_velocity_field(a_box, a_date, n_days=1, output='.', dataset='ARMOR3D'):
@@ -494,19 +393,25 @@ def get_velocity_field(a_box, a_date, n_days=1, output='.', dataset='ARMOR3D'):
     output
     dataset
     """
-    velocity_file = os.path.join(output, 'velocity_%s_%idays.nc' % (dataset, n_days))
+    def get_velocity_filename(dataset, n_days):
+        download_date = pd.to_datetime('now', utc='now').strftime("%Y%m%d")
+        fname = os.path.join(output, 'velocity_%s_%idays_%s.nc' % (dataset, n_days, download_date))
+        return fname
+
+    velocity_file = get_velocity_filename(dataset, n_days)
     if not os.path.exists(velocity_file):
         # Load
         if dataset == 'ARMOR3D':
-            ds = get_armor3d_with_opendap(a_box, a_date, n_days=n_days)
+            ds = Armor3d(a_box, a_date, n_days=n_days).to_xarray()
         elif dataset == 'GLORYS':
-            ds = get_glorys_with_opendap(a_box, a_date, n_days=n_days)
+            ds = Glorys(a_box, a_date, n_days=n_days).to_xarray()
 
         # Save on file for later re-used:
         ds.to_netcdf(velocity_file)
     else:
         ds = xr.open_dataset(velocity_file)
-    # print(ds)
+
+    print(ds)
     return ds, velocity_file
 
 
@@ -641,6 +546,7 @@ def map_add_cyc_nb(this_ax, this_df, lon='lon', lat='lat', cyc='cyc', pos='bt', 
         this_t = this_ax.text(row[lon], row[lat], label(int(row[cyc])), ha=ha, va=va, fontsize=fs, color=color)
         t.append(this_t)
     return t
+
 
 def figure_velocity(box,
                        vel, vel_name, this_profile, wmo, cyc,
@@ -990,12 +896,13 @@ def setup_deployment_plan(a_profile, a_date, nfloats=15000):
     # tim = np.sort(np.concatenate([tim2, tim1]))
 
     # Round time to the o(5mins), same as step=timedelta(minutes=5) in the simulation params
-    tim = tim.round(freq='5T')
+    tim = tim.round(freq='5min')
 
     #
     df = pd.DataFrame(
         [tim, lat, lon, np.arange(0, nfloats) + 9000000, np.full_like(lon, 0), ['VF' for l in lon], ['?' for l in lon]],
         index=['date', 'latitude', 'longitude', 'wmo', 'cycle_number', 'institution_code', 'file']).T
+    df['date'] = pd.to_datetime(df['date'])
 
     return df
 
@@ -1399,15 +1306,25 @@ def analyse_pairwise_distances(this_args, this_cfg,  data):
     return data
 
 
+def get_ea_profile_page_url(wmo, cyc):
+    try:
+        url = argoplot.dashboard(wmo, cyc, url_only=True)
+    except:
+        log.info("EA dashboard page not available for this profile: %i/%i" % (wmo, cyc))
+        url = "404"
+    return url
+
+
 def setup_args():
     icons_help_string = """This script can be used to make prediction of a specific float cycle position.
     This script can be used on past or unknown float cycles.
-    Note that in order to download online velocity field from 'https://nrt.cmems-du.eu', you need to set the environment variables: MOTU_USERNAME and MOTU_PASSWORD.
+    Note that in order to download online velocity fields from the Copernicus Marine Data Store, you need to have the 
+    appropriate credentials file setup.
         """
 
     parser = argparse.ArgumentParser(description='VirtualFleet recovery predictor',
                                      formatter_class=argparse.RawTextHelpFormatter,
-                                     epilog="%s\n(c) Argo-France/Ifremer/LOPS, 2022" % icons_help_string)
+                                     epilog="%s\n(c) Argo-France/Ifremer/LOPS, 2022-2024" % icons_help_string)
 
     # Add long and short arguments
     parser.add_argument('wmo', help="Float WMO number", type=int)
@@ -1502,7 +1419,7 @@ def predictor(args):
     # host = "/home/ref-argo/gdac" if os.uname()[0] == 'Darwin' else "https://data-argo.ifremer.fr"
     # host = "/home/ref-argo/gdac" if not os.uname()[0] == 'Darwin' else "~/data/ARGO"
     THIS_PROFILE = store(host=host).search_wmo_cyc(WMO, CYC).to_dataframe()
-    THIS_DATE = pd.to_datetime(THIS_PROFILE['date'].values[0])
+    THIS_DATE = pd.to_datetime(THIS_PROFILE['date'].values[0], utc=True)
     CENTER = [THIS_PROFILE['longitude'].values[0], THIS_PROFILE['latitude'].values[0]]
     if not args.json:
         puts("\nProfiles to work with:")
@@ -1539,14 +1456,11 @@ def predictor(args):
         puts("\n".join(["\t%s" % line for line in CFG.__repr__().split("\n")]), color=COLORS.green)
 
     # Get the cycling frequency (in days):
-    # dt = pd.to_datetime(THIS_PROFILE['date'].values[1]) - pd.to_datetime(THIS_PROFILE['date'].values[0])
-    # CYCLING_FREQUENCY = int(np.round(dt.days + dt.seconds / 86400))
     CYCLING_FREQUENCY = int(np.round(CFG.mission['cycle_duration'])/24)
 
     # Define domain to load velocity for, and get it:
     width = 10 + np.abs(np.ceil(THIS_PROFILE['longitude'].values[-1] - CENTER[0]))
     height = 10 + np.abs(np.ceil(THIS_PROFILE['latitude'].values[-1] - CENTER[1]))
-    # lonc, latc = CENTER[0], CENTER[1],
     VBOX = [CENTER[0] - width / 2, CENTER[0] + width / 2, CENTER[1] - height / 2, CENTER[1] + height / 2]
     if not args.json:
         puts("\nLoading %s velocity field to cover %i days..." % (VEL_NAME, CYCLING_FREQUENCY+1))
@@ -1572,7 +1486,7 @@ def predictor(args):
     if not args.json:
         puts("\t%i virtual floats to deploy" % DF_PLAN.shape[0], color=COLORS.green)
 
-    # VirtualFleet, set-up the fleet:
+    # Set up VirtualFleet:
     if not args.json:
         puts("\nVirtualFleet, set-up the fleet...")
     VFleet = VirtualFleet(plan=PLAN,
@@ -1628,7 +1542,7 @@ def predictor(args):
                                        'time': {'value': None}}
                                      }
     if THIS_PROFILE.shape[0] > 1:
-        results['profile_to_predict']['url_profile'] = argoplot.dashboard(WMO, CYC[-1], url_only=True)
+        results['profile_to_predict']['url_profile'] = get_ea_profile_page_url(WMO, CYC[-1])
         results['profile_to_predict']['location']['longitude']['value'] = THIS_PROFILE['longitude'].values[-1]
         results['profile_to_predict']['location']['latitude']['value'] = THIS_PROFILE['latitude'].values[-1]
         results['profile_to_predict']['location']['time']['value'] = THIS_PROFILE['date'].values[-1]
@@ -1636,7 +1550,7 @@ def predictor(args):
     results['previous_profile'] = {'wmo': WMO,
                           'cycle_number': CYC[0],
                           'url_float': argoplot.dashboard(WMO, url_only=True),
-                          'url_profile': argoplot.dashboard(WMO, CYC[0], url_only=True),
+                          'url_profile': get_ea_profile_page_url(WMO, CYC[0]),
                           'location': {'longitude': {'value': CENTER[0],
                                                      'unit': 'degree East'},
                                        'latitude': {'value': CENTER[1],
@@ -1676,10 +1590,12 @@ def predictor(args):
         puts("\t%s" % WORKDIR, color=COLORS.green)
 
     if args.save_figure:
+        plt.close('all')
         # Restore Matplotlib backend
         matplotlib.use(mplbackend)
 
     return results_js
+
 
 if __name__ == '__main__':
     # Read mandatory arguments from the command line

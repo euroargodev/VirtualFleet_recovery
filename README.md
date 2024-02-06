@@ -44,9 +44,9 @@ git clone git@github.com:euroargodev/VirtualFleet_recovery.git
 ```bash
 export PATH="/Users/gmaze/git/github/euroargodev/VirtualFleet_recovery/cli:$PATH"
 ```
-- Make sure to get the appropriate Python 3.8 environment ([using this conda file](environment.yml)):
+- Make sure to get the appropriate Python 3.9 environment ([using this conda file](environment.yml)):
 ```bash
-conda env create -f environment.yml
+mamba env create -f environment.yml
 ```
 - Install the experimental VirtualFleet "GulfStream" branch:
 ```bash
@@ -97,7 +97,7 @@ optional arguments:
 
 This script can be used to make prediction of a specific float cycle position.
     This script is for testing the prediction system.
-    Note that in order to download online velocity field from 'https://nrt.cmems-du.eu', you need to set the environment variables: MOTU_USERNAME and MOTU_PASSWORD.
+    Note that in order to download online velocity fields from 'https://nrt.cmems-du.eu', you need to set the environment variables: MOTU_USERNAME and MOTU_PASSWORD.
 
 (c) Argo-France/Ifremer/LOPS, 2022
 ```
