@@ -26,7 +26,7 @@ import json
 from datetime import timedelta
 from tqdm import tqdm
 import argparse
-from argopy.utils import is_wmo, is_cyc
+from argopy.utils import is_wmo, is_cyc, check_cyc
 import argopy.plot as argoplot
 from argopy.stores.argo_index_pd import indexstore_pandas as store
 import matplotlib.pyplot as plt
@@ -265,9 +265,11 @@ class Armor3d:
         dt = pd.Timedelta(n_days, 'D') if n_days > 1 else pd.Timedelta(0, 'D')
         if start_date + dt <= pd.to_datetime('2022-12-28', utc=True):
             self._loader = self._get_rep
+            self.dataset_id = "dataset-armor-3d-rep-weekly"
             self.time_axis = pd.Series(pd.date_range('19930106', '20221228', freq='7D').tz_localize("UTC"))
         else:
             self._loader = self._get_nrt
+            self.dataset_id = "dataset-armor-3d-nrt-weekly"
             self.time_axis = pd.Series(
                 pd.date_range('20190102', pd.to_datetime('now', utc=True).strftime("%Y%m%d"), freq='7D').tz_localize(
                     "UTC")[0:-1])
@@ -275,8 +277,6 @@ class Armor3d:
         if start_date < self.time_axis.iloc[0]:
             raise ValueError('Date out of bounds')
         elif start_date + dt > self.time_axis.iloc[-1]:
-            # target delivery  time: Near Real Time: Tuesday at 16:00
-            # Eg: on Tuesday Feb. 6th is published the last 7 days nrt analysis, dated Wed. Jan. 31st
             raise ValueError('Date out of bounds, %s > %s' % (
                 start_date + dt, self.time_axis.iloc[-1]))
 
@@ -308,7 +308,7 @@ class Armor3d:
         -------
         :class:xarray.dataset
         """
-        return self._get_this("dataset-armor-3d-rep-weekly")
+        return self._get_this(self.dataset_id)
 
     def _get_nrt(self):
         """near-real-time (NRT) weekly data
@@ -317,7 +317,7 @@ class Armor3d:
         -------
         :class:xarray.dataset
         """
-        return self._get_this("dataset-armor-3d-nrt-weekly")
+        return self._get_this(self.dataset_id)
 
     def to_xarray(self):
         """Load and return data as a :class:`xarray.dataset`
@@ -328,6 +328,14 @@ class Armor3d:
         """
         return self._loader()
 
+    def __repr__(self):
+        summary = ["<CopernicusMarineData.Loader><Armor3D>"]
+        summary.append("dataset_id: %s" % self.dataset_id)
+        summary.append("First day: %s" % self.start_date)
+        summary.append("N days: %s" % self.n_days)
+        summary.append("Domain: %s" % self.box)
+        summary.append("Max depth (m): %s" % self.max_depth)
+        return "\n".join(summary)
 
 class Glorys:
     """Global Ocean 1/12° Physics Re-Analysis or Forecast
@@ -368,8 +376,10 @@ class Glorys:
         dt = pd.Timedelta(n_days, 'D') if n_days > 1 else pd.Timedelta(0, 'D')
         if start_date + dt <= pd.to_datetime('2021-01-09', utc=True):
             self._loader = self._get_reanalysis
+            self.dataset_id = "cmems_mod_glo_phy_my_0.083_P1D-m"
         else:
-            self._loader = self._get_forecast  # 'now' + 10 days
+            self._loader = self._get_forecast
+            self.dataset_id = "cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m"
 
     def _get_this(self, dataset_id, dates):
         ds = copernicusmarine.open_dataset(
@@ -396,7 +406,7 @@ class Glorys:
             end_date = start_date
         else:
             end_date = start_date + pd.Timedelta(self.n_days - 1, 'D')
-        return self._get_this("cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m", [start_date, end_date])
+        return self._get_this(self.dataset_id, [start_date, end_date])
 
     def _get_reanalysis(self):
         """
@@ -409,7 +419,7 @@ class Glorys:
             end_date = start_date
         else:
             end_date = self.start_date + pd.Timedelta(self.n_days - 1, 'D')
-        return self._get_this("cmems_mod_glo_phy_my_0.083_P1D-m", [start_date, end_date])
+        return self._get_this(self.dataset_id, [start_date, end_date])
 
     def to_xarray(self):
         """ Load and return data as a :class:`xarray.dataset`
@@ -418,6 +428,15 @@ class Glorys:
         :class:`xarray.dataset`
         """
         return self._loader()
+
+    def __repr__(self):
+        summary = ["<CopernicusMarineData.Loader><Glorys>"]
+        summary.append("dataset_id: %s" % self.dataset_id)
+        summary.append("First day: %s" % self.start_date)
+        summary.append("N days: %s" % self.n_days)
+        summary.append("Domain: %s" % self.box)
+        summary.append("Max depth (m): %s" % self.max_depth)
+        return "\n".join(summary)
 
 
 def get_velocity_field(a_box, a_date, n_days=1, output='.', dataset='ARMOR3D'):
@@ -438,18 +457,19 @@ def get_velocity_field(a_box, a_date, n_days=1, output='.', dataset='ARMOR3D'):
 
     velocity_file = get_velocity_filename(dataset, n_days)
     if not os.path.exists(velocity_file):
-        # Load
-        if dataset == 'ARMOR3D':
-            ds = Armor3d(a_box, a_date, n_days=n_days).to_xarray()
-        elif dataset == 'GLORYS':
-            ds = Glorys(a_box, a_date, n_days=n_days).to_xarray()
+        # Define Data loader:
+        loader = Armor3d if dataset == 'ARMOR3D' else Glorys
+        loader = loader(a_box, a_date, n_days=n_days)
+        puts(str(loader), color=COLORS.magenta)
+
+        # Load data from Copernicus Marine Data store:
+        ds = loader.to_xarray()
 
         # Save on file for later re-used:
         ds.to_netcdf(velocity_file)
     else:
         ds = xr.open_dataset(velocity_file)
 
-    print(ds)
     return ds, velocity_file
 
 
@@ -646,25 +666,28 @@ def figure_positions(this_args, vel, df_sim, df_plan, this_profile, cfg, wmo, cy
                                                                                    alpha=0.5,
                                                                                    add_guide=False)
 
-        ax[ix].plot(df_sim['deploy_lon'], df_sim['deploy_lat'], '.', markersize=3, color='grey', alpha=0.1, markeredgecolor=None, zorder=0)
+        ax[ix].plot(df_sim['deploy_lon'], df_sim['deploy_lat'], '.',
+                    markersize=3, color='grey', alpha=0.1, markeredgecolor=None, zorder=0)
         if ix == 0:
             title = 'Velocity field at %0.2fm and deployment plan' % cfg.mission['parking_depth']
             v.set_alpha(1)
             # v.set_color('black')
         elif ix == 1:
-            x, y = df_sim['longitude'], df_sim['latitude']
+            x, y, c = df_sim['longitude'], df_sim['latitude'], df_sim['cyc']
             title = 'Final float positions'
-            sc = ax[ix].plot(x, y, '.', markersize=3, color='cyan', alpha=0.9, markeredgecolor=None)
+            # sc = ax[ix].plot(x, y, '.', markersize=3, color='cyan', alpha=0.9, markeredgecolor=None)
+            sc = ax[ix].scatter(x, y, c=c, s=3, alpha=0.9, edgecolors=None)
         elif ix == 2:
-            x, y = df_sim['rel_lon'], df_sim['rel_lat']
+            x, y, c = df_sim['rel_lon'], df_sim['rel_lat'], df_sim['cyc']
             title = 'Final floats position relative to last float position'
-            sc = ax[ix].plot(x, y, '.', markersize=3, color='cyan', alpha=0.9, markeredgecolor=None)
+            # sc = ax[ix].plot(x, y, '.', markersize=3, color='cyan', alpha=0.9, markeredgecolor=None)
+            sc = ax[ix].scatter(x, y, c=c, s=3, alpha=0.9, edgecolors=None)
 
         ax[ix] = map_add_profiles(ax[ix], this_profile)
         ax[ix].set_title(title)
 
-    fig.suptitle("VirtualFleet recovery prediction for WMO %i: starting from cycle %i, predicting cycle %i\n%s" %
-                 (wmo, cyc[0], cyc[1], get_cfg_str(cfg)), fontsize=15)
+    fig.suptitle("VirtualFleet recovery prediction for WMO %i: starting from cycle %i, predicting cycle %s\n%s" %
+                 (wmo, cyc[0], cyc[1:], get_cfg_str(cfg)), fontsize=15)
     plt.tight_layout()
     if save_figure:
         save_figurefile(fig, "vfrecov_positions_%s" % get_sim_suffix(this_args, cfg), workdir)
@@ -977,18 +1000,31 @@ def simu2index_legacy(df_plan, this_ds):
 
 
 def ds_simu2index(this_ds):
-    # Instead of really looking at the cycle phase and structure, we just pick the last trajectory point from output file !
-    # This is way much faster and a good approximation IF the simulation length is the cycling frequency.
-    data = {
-        'date': this_ds.isel(obs=-1)['time'],
-        'latitude': this_ds.isel(obs=-1)['lat'],
-        'longitude': this_ds.isel(obs=-1)['lon'],
-        'wmo': 9000000 + this_ds['traj'].values,
-        'deploy_lon': this_ds.isel(obs=0)['lon'],
-        'deploy_lat': this_ds.isel(obs=0)['lat']
-    }
-    df = pd.DataFrame(data)
+    # Instead of really looking at the cycle phase and structure, we just pick the last trajectory point
+    # of given cycle number, only if cycle phase is 3 or 4
+    cycles = np.unique(this_ds['cycle_number'])
+    rows = []
+    for cyc in cycles:
+        mask = np.logical_and((this_ds['cycle_number']==cyc).compute(),
+                              (this_ds['cycle_phase']>=3).compute())
+        this_cyc = this_ds.where(mask, drop=True)
+        if len(this_cyc['time']) > 0:
+            this_cyc = this_cyc.isel(obs=-1)
+            data = {
+                'date': this_cyc['time'].values,
+                'latitude': this_cyc['lat'].values,
+                'longitude': this_cyc['lon'].values,
+                'wmo': 9000000 + this_cyc['trajectory'].values,
+                'cyc': cyc,
+                # 'cycle_phase': this_cyc['cycle_phase'].values,
+                'deploy_lon': this_ds.isel(obs=0)['lon'].values,
+                'deploy_lat': this_ds.isel(obs=0)['lat'].values,
+            }
+            rows.append(pd.DataFrame(data))
+    df = pd.concat(rows).reset_index()
     df['wmo'] = df['wmo'].astype(int)
+    df['cyc'] = df['cyc'].astype(int)
+    # df['cycle_phase'] = df['cycle_phase'].astype(int)
     return df
 
 
@@ -1366,7 +1402,7 @@ def setup_args():
 
     # Add long and short arguments
     parser.add_argument('wmo', help="Float WMO number", type=int)
-    parser.add_argument("cyc", help="Cycle number to predict", type=int)
+    parser.add_argument("cyc", help="Cycle number to predict", type=int, nargs="+")
     parser.add_argument("--nfloats", help="Number of virtual floats used to make the prediction, default: 2000",
                         type=int, default=2000)
     parser.add_argument("--output", help="Output folder, default: webAPI internal folder", default=None)
@@ -1400,12 +1436,16 @@ def predictor(args):
 
     if is_wmo(args.wmo):
         WMO = args.wmo
-    if is_cyc(args.cyc) and args.cyc > 1:
-        CYC = [args.cyc-1, args.cyc]
+    if is_cyc(args.cyc):
+        CYC = [check_cyc(args.cyc)[0]-1]
+        [CYC.append(c) for c in check_cyc(args.cyc)]
     if args.velocity not in ['ARMOR3D', 'GLORYS']:
         raise ValueError("Velocity field must be one in: ['ARMOR3D', 'GLORYS']")
     else:
         VEL_NAME = args.velocity.upper()
+
+    puts('CYC = %s' % CYC, color=COLORS.magenta)
+    # raise ValueError('stophere')
 
     if args.save_figure:
         mplbackend = matplotlib.get_backend()
@@ -1453,6 +1493,7 @@ def predictor(args):
     if not args.json:
         puts("\nYou can check this float dashboard while we prepare the prediction:")
         puts("\t%s" % argoplot.dashboard(WMO, url_only=True), color=COLORS.green)
+        puts("\nLoading float profiles index ...")
     host = "https://data-argo.ifremer.fr"
     # host = "/home/ref-argo/gdac" if os.uname()[0] == 'Darwin' else "https://data-argo.ifremer.fr"
     # host = "/home/ref-argo/gdac" if not os.uname()[0] == 'Darwin' else "~/data/ARGO"
@@ -1493,25 +1534,29 @@ def predictor(args):
     if not args.json:
         puts("\n".join(["\t%s" % line for line in CFG.__repr__().split("\n")]), color=COLORS.green)
 
-    # Get the cycling frequency (in days):
+    # Get the cycling frequency (in days, this is more a period then...):
     CYCLING_FREQUENCY = int(np.round(CFG.mission['cycle_duration'])/24)
 
     # Define domain to load velocity for, and get it:
     width = 10 + np.abs(np.ceil(THIS_PROFILE['longitude'].values[-1] - CENTER[0]))
     height = 10 + np.abs(np.ceil(THIS_PROFILE['latitude'].values[-1] - CENTER[1]))
     VBOX = [CENTER[0] - width / 2, CENTER[0] + width / 2, CENTER[1] - height / 2, CENTER[1] + height / 2]
+    N_DAYS = (len(CYC)-1)*CYCLING_FREQUENCY+1
     if not args.json:
-        puts("\nLoading %s velocity field to cover %i days..." % (VEL_NAME, CYCLING_FREQUENCY+1))
+        puts("\nLoading %s velocity field to cover %i days..." % (VEL_NAME, N_DAYS))
     ds_vel, velocity_file = get_velocity_field(VBOX, THIS_DATE,
-                                           n_days=CYCLING_FREQUENCY+1,
+                                           n_days=N_DAYS,
                                            output=WORKDIR,
                                            dataset=VEL_NAME)
     VEL = Velocity(model='GLORYS12V1' if VEL_NAME == 'GLORYS' else VEL_NAME, src=ds_vel)
     if not args.json:
-        puts("\tLoaded velocity field from %s to %s" %
+        puts("\n\t%s" % str(ds_vel), color=COLORS.green)
+        puts("\n\tLoaded velocity field from %s to %s" %
              (pd.to_datetime(ds_vel['time'][0].values).strftime("%Y-%m-%dT%H:%M:%S"),
               pd.to_datetime(ds_vel['time'][-1].values).strftime("%Y-%m-%dT%H:%M:%S")), color=COLORS.green)
-    fig, ax = figure_velocity(VBOX, VEL, VEL_NAME, THIS_PROFILE, WMO, CYC, save_figure=args.save_figure, workdir=WORKDIR)
+    figure_velocity(VBOX, VEL, VEL_NAME, THIS_PROFILE, WMO, CYC, save_figure=args.save_figure, workdir=WORKDIR)
+
+    # raise ValueError('stophere')
 
     # VirtualFleet, get a deployment plan:
     if not args.json:
@@ -1540,7 +1585,7 @@ def predictor(args):
     if args.save_sim and os.path.exists(output_path):
         shutil.rmtree(output_path)
 
-    VFleet.simulate(duration=timedelta(hours=CYCLING_FREQUENCY*24+1),
+    VFleet.simulate(duration=timedelta(hours=N_DAYS*24+1),
                     step=timedelta(minutes=5),
                     record=timedelta(minutes=30),
                     output=args.save_sim,
@@ -1552,19 +1597,19 @@ def predictor(args):
     # VirtualFleet, get simulated profiles index:
     if not args.json:
         puts("\nVirtualFleet, extract simulated profiles index...")
-    # ds_traj = xr.open_dataset(VFleet.output)
-    # DF_SIM = simu2index_legacy(DF_PLAN, ds_traj)
-    # DF_SIM = ds_simu2index(ds_traj)
-    try:
-        DF_SIM = get_index(VFleet, VEL, DF_PLAN)
-    except ValueError:
-        ds_traj = xr.open_zarr(VFleet.output)
-        DF_SIM = ds_simu2index(ds_traj)
+    # try:
+    #     DF_SIM = get_index(VFleet, VEL, DF_PLAN)
+    # except ValueError:
+    #     ds_traj = xr.open_zarr(VFleet.output)
+    #     DF_SIM = ds_simu2index(ds_traj)
+    DF_SIM = ds_simu2index(xr.open_zarr(VFleet.output))
     DF_SIM = postprocess_index(DF_SIM, THIS_PROFILE)
     if not args.json:
         puts(DF_SIM.head().to_string(), color=COLORS.green)
-    fig, ax = figure_positions(args, VEL, DF_SIM, DF_PLAN, THIS_PROFILE, CFG, WMO, CYC, VEL_NAME,
-                               dd=1, save_figure=args.save_figure, workdir=WORKDIR)
+    figure_positions(args, VEL, DF_SIM, DF_PLAN, THIS_PROFILE, CFG, WMO, CYC, VEL_NAME,
+                     dd=1, save_figure=args.save_figure, workdir=WORKDIR)
+
+    raise ValueError('stophere')
 
     # Recovery, make predictions based on simulated profile density:
     results = predict_position(args, WORKDIR, WMO, CYC, CFG, VEL, VEL_NAME, DF_SIM, DF_PLAN, THIS_PROFILE,
