@@ -2,9 +2,9 @@ name: virtualfleet-recovery
 channels:
   - conda-forge
 dependencies:
-  - python=3.8
-  - xarray>0.16.0
-  - parcels>=2.4.0<3.0.0
+  - python=3.9
+  - xarray
+  - parcels>=3.0.0
   - dask
   - distributed
   - dask-kubernetes
@@ -16,7 +16,7 @@ dependencies:
   - python-blosc
   - lz4
   - nomkl
-  - nbserverproxy
+#  - nbserverproxy
   - jupyter
   - jupyterlab>=0.35
   - jupyterlab_launcher
@@ -43,7 +43,7 @@ dependencies:
     - netCDF4
     - erddapy
     - gitpython
-    - motuclient
+#    - motuclient
     - cmocean
     - progressbar
     - cgen
@@ -54,4 +54,7 @@ dependencies:
     - flask-swagger
     - geojson
     - dominate
+    - copernicusmarine>=1.0<=2.0
+    - git+https://github.com/euroargodev/VirtualFleet.git@master
+
 
