@@ -225,47 +225,68 @@ def get_glorys_forecast_from_datarmor(a_box, a_start_date, n_days=1):
 
 
 class Armor3d:
+    """Global Ocean 1/4° Multi Observation Product ARMOR3D
 
-    def __init__(self, a_box, a_start_date, n_days=1, max_depth=2500):
-        """Load Global Ocean 1/4° Multi Observation Product ARMOR3D
+    Product description:
+    https://data.marine.copernicus.eu/product/MULTIOBS_GLO_PHY_TSUV_3D_MYNRT_015_012
 
-        https://data.marine.copernicus.eu/product/MULTIOBS_GLO_PHY_TSUV_3D_MYNRT_015_012
+    If start_date + n_days <= 2022-12-28:
+        Delivers the multi-year reprocessed (REP) weekly data
 
-        If ``a_start_date+n_days`` < 2022-12-28:
-            delivers the multi-year reprocessed (REP) weekly data
+    otherwise:
+        Delivers the near-real-time (NRT) weekly data
 
-        otherwise:
-            delivers near-real-time (NRT) weekly data
+    Examples
+    --------
+    >>> Armor3d([-25, -13, 6.5, 13], pd.to_datetime('20091130', utc=True)).to_xarray()
+    >>> Armor3d([-25, -13, 6.5, 13], pd.to_datetime('20231121', utc=True), n_days=10).to_xarray()
 
+    """
+
+    def __init__(self, box, start_date, n_days=1, max_depth=2500):
+        """
         Parameters
         ----------
-        a_box
-        a_start_date
-        n_days
+        box: list(float)
+            Define domain to load: [lon_min, lon_max, lat_min, lat_max]
+        start_date: :class:`pandas.Timestamp`
+            Starting date of the time series to load. Since ARMOR3D is weekly, the effective starting
+            date will be the first weekly period including the user-defined ``start_date``
+        n_days: int (default=1)
+            Number of days to load data for.
+        max_depth: float (default=2500)
+            Maximum depth levels to load data for.
         """
-        self.box = a_box
-        self.start_date = a_start_date
+        self.box = box
+        self.start_date = start_date
         self.n_days = n_days
         self.max_depth = max_depth
 
-        if a_start_date + pd.Timedelta(n_days, 'D') < pd.to_datetime('2022-12-28', utc=True):
-            self.loader = self._get_rep
+        dt = pd.Timedelta(n_days, 'D') if n_days > 1 else pd.Timedelta(0, 'D')
+        if start_date + dt <= pd.to_datetime('2022-12-28', utc=True):
+            self._loader = self._get_rep
             self.time_axis = pd.Series(pd.date_range('19930106', '20221228', freq='7D').tz_localize("UTC"))
         else:
-            self.loader = self._get_nrt  # 'now' + 10 days
+            self._loader = self._get_nrt
             self.time_axis = pd.Series(
                 pd.date_range('20190102', pd.to_datetime('now', utc=True).strftime("%Y%m%d"), freq='7D').tz_localize(
                     "UTC")[0:-1])
 
-        if a_start_date < self.time_axis.iloc[0]:
+        if start_date < self.time_axis.iloc[0]:
             raise ValueError('Date out of bounds')
-        elif a_start_date + (self.n_days + 1) * pd.Timedelta(1, 'D') > self.time_axis.iloc[-1]:
+        elif start_date + dt > self.time_axis.iloc[-1]:
+            # target delivery  time: Near Real Time: Tuesday at 16:00
+            # Eg: on Tuesday Feb. 6th is published the last 7 days nrt analysis, dated Wed. Jan. 31st
             raise ValueError('Date out of bounds, %s > %s' % (
-            a_start_date + (self.n_days + 1) * pd.Timedelta(1, 'D'), self.time_axis.iloc[-1]))
+                start_date + dt, self.time_axis.iloc[-1]))
 
     def _get_this(self, dataset_id):
         start_date = self.time_axis[self.time_axis <= self.start_date].iloc[-1]
-        end_date = self.time_axis[self.time_axis <= self.start_date + (self.n_days + 1) * pd.Timedelta(1, 'D')].iloc[-1]
+        if self.n_days == 1:
+            end_date = start_date
+        else:
+            end_date = \
+            self.time_axis[self.time_axis <= self.start_date + (self.n_days + 1) * pd.Timedelta(1, 'D')].iloc[-1]
 
         ds = copernicusmarine.open_dataset(
             dataset_id=dataset_id,
@@ -299,43 +320,56 @@ class Armor3d:
         return self._get_this("dataset-armor-3d-nrt-weekly")
 
     def to_xarray(self):
-        """ Load and return data as a :class:xarray.dataset
+        """Load and return data as a :class:`xarray.dataset`
 
         Returns
         -------
         :class:xarray.dataset
         """
-        return self.loader()
+        return self._loader()
 
 
 class Glorys:
+    """Global Ocean 1/12° Physics Re-Analysis or Forecast
 
-    def __init__(self, a_box, a_start_date, n_days=1, max_depth=2500):
-        """Load Global Ocean 1/12° Physics Re-Analysis or Forecast
+    If start_date + n_days <= 2021-01-09:
+        Delivers the multi-year reprocessed (REP) daily data
+        https://resources.marine.copernicus.eu/product-detail/GLOBAL_MULTIYEAR_PHY_001_030
 
-        If ``a_start_date+n_days`` < 2023-10-24:
-            delivers the multi-year reprocessed (REP) daily data
-            https://resources.marine.copernicus.eu/product-detail/GLOBAL_MULTIYEAR_PHY_001_030
+    otherwise:
+        Delivers the near-real-time (NRT) Analysis and Forecast daily data
+        https://resources.marine.copernicus.eu/product-detail/GLOBAL_ANALYSISFORECAST_PHY_001_024
 
-        otherwise:
-            delivers near-real-time (NRT) Analysis and Forecast 6-hourly data
-            https://resources.marine.copernicus.eu/product-detail/GLOBAL_ANALYSISFORECAST_PHY_001_024
+    Examples
+    --------
+    >>> Glorys([-25, -13, 6.5, 13], pd.to_datetime('20091130', utc=True)).to_xarray()
+    >>> Glorys([-25, -13, 6.5, 13], pd.to_datetime('20231121', utc=True), n_days=10).to_xarray()
 
+    """
+
+    def __init__(self, box, start_date, n_days=1, max_depth=2500):
+        """
         Parameters
         ----------
-        a_box
-        a_start_date
-        n_days
+        box: list(float)
+            Define domain to load: [lon_min, lon_max, lat_min, lat_max]
+        start_date: :class:`pandas.Timestamp`
+            Starting date of the time series to load.
+        n_days: int (default=1)
+            Number of days to load data for.
+        max_depth: float (default=2500)
+            Maximum depth levels to load data for.
         """
-        self.box = a_box
-        self.start_date = a_start_date
+        self.box = box
+        self.start_date = start_date
         self.n_days = n_days
         self.max_depth = max_depth
 
-        if a_start_date + pd.Timedelta(n_days, 'D') <= pd.to_datetime('2023-10-24', utc=True):
-            self.loader = self._get_reanalysis
+        dt = pd.Timedelta(n_days, 'D') if n_days > 1 else pd.Timedelta(0, 'D')
+        if start_date + dt <= pd.to_datetime('2021-01-09', utc=True):
+            self._loader = self._get_reanalysis
         else:
-            self.loader = self._get_forecast  # 'now' + 10 days
+            self._loader = self._get_forecast  # 'now' + 10 days
 
     def _get_this(self, dataset_id, dates):
         ds = copernicusmarine.open_dataset(
@@ -351,35 +385,39 @@ class Glorys:
         )
         return ds
 
-
     def _get_forecast(self):
         """
         Returns
         -------
-        :class:xarray.dataset
+        :class:`xarray.dataset`
         """
-        start_date = self.start_date - pd.Timedelta(1, 'D')
-        end_date = self.start_date + (self.n_days + 1) * pd.Timedelta(1, 'D')
+        start_date = self.start_date
+        if self.n_days == 1:
+            end_date = start_date
+        else:
+            end_date = start_date + pd.Timedelta(self.n_days - 1, 'D')
         return self._get_this("cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m", [start_date, end_date])
 
     def _get_reanalysis(self):
         """
         Returns
         -------
-        :class:xarray.dataset
+        :class:`xarray.dataset`
         """
         start_date = self.start_date
-        end_date = self.start_date + (self.n_days + 1) * pd.Timedelta(1, 'D')
+        if self.n_days == 1:
+            end_date = start_date
+        else:
+            end_date = self.start_date + pd.Timedelta(self.n_days - 1, 'D')
         return self._get_this("cmems_mod_glo_phy_my_0.083_P1D-m", [start_date, end_date])
 
     def to_xarray(self):
-        """ Load and return data as a :class:xarray.dataset
-
+        """ Load and return data as a :class:`xarray.dataset`
         Returns
         -------
-        :class:xarray.dataset
+        :class:`xarray.dataset`
         """
-        return self.loader()
+        return self._loader()
 
 
 def get_velocity_field(a_box, a_date, n_days=1, output='.', dataset='ARMOR3D'):
