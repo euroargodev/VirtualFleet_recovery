@@ -1,24 +1,14 @@
-|<img src="https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/master/docs/img/logo-virtual-fleet-recovery.png" alt="VirtualFleet-Recovery logo" width="400"><br>``Virtual Fleet - Recovery`` is a CLI and webAPI to make predictions of Argo float positions|
-|:---------:|
-|[![DOI](https://zenodo.org/badge/543618989.svg)](https://zenodo.org/badge/latestdoi/543618989)|
+|<img src="https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/master/docs/img/logo-virtual-fleet-recovery.png" alt="VirtualFleet-Recovery logo" width="400"><br>``Virtual Fleet - Recovery`` is a CLI to make predictions of Argo float positions|
+|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------:|
+|                                                                                 [![DOI](https://zenodo.org/badge/543618989.svg)](https://zenodo.org/badge/latestdoi/543618989)                                                                                  |
 
 The goal of this repository is to provide a library to make Argo floats trajectory predictions easy, in order to facilitate recovery.  
 The library produces a prediction _patch_ or _cone_ that could be displayed on a map like here: https://floatrecovery.euro-argo.eu  
 More about Argo floats recovery in here: https://github.com/euroargodev/recovery/issues
 
-- [POC #1](#poc--1)
-  * [Working design of the procedure](#working-design-of-the-procedure)
-  * [Installation](#installation)
-  * [Command line instructions](#command-line-instructions)
-    + [Usage](#usage)
-    + [Example](#example)
-  * [web API](#web-api)
-    + [Server set-up](#server-set-up)
-    + [Usage](#usage-1)
-      - [Make a prediction](#make-a-prediction)
-      - [Visualise prediction results](#visualise-prediction-results)
+New version compatible with [VirtualFleet 0.4.0](https://virtualfleet.readthedocs.io/en/latest/whats-new.html#v0-4-0-2-feb-2024) and using the [Copernicus Marine Toolbox](https://help.marine.copernicus.eu/en/collections/5821001-python-library-api) to retrieve GLORYS or ARMOR3D velocity fields.
 
-# POC #1
+# Documentation (preliminary)
 
 ## Working design of the procedure
 1. Given a specific float cycle to predict ``C``, we extract:
