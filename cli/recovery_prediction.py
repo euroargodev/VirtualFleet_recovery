@@ -1062,7 +1062,7 @@ def postprocess_index(this_df, this_profile):
     for isim, sim_row in this_df.iterrows():
         # Profile coordinates:
         x0, y0 = sim_row['deploy_lon'], sim_row['deploy_lat']  # virtual float initial position
-        x1, y1 = sim_row['longitude'], sim_row['latitude']  # virtual float final position
+        x1, y1 = sim_row['longitude'], sim_row['latitude']  # virtual float position
 
         # Distance between each pair of cycles of virtual floats:
         dist = np.sqrt((y1 - y0) ** 2 + (x1 - x0) ** 2)
@@ -1076,7 +1076,6 @@ def postprocess_index(this_df, this_profile):
 
         # Distance between the predicted profile and the observed initial profile
         dist = np.sqrt((y2 - y0) ** 2 + (x2 - x0) ** 2)
-        # dinit.append(dist)
         this_df.loc[isim, 'distance_origin'] = dist
 
     return this_df
@@ -1084,7 +1083,7 @@ def postprocess_index(this_df, this_profile):
 
 def predict_position(this_args, workdir, wmo, cyc, cfg, vel, vel_name, df_sim, df_plan, this_profile,
                      save_figure=False, quiet=False):
-    """ Compute the position of the next profile for recovery
+    """ Compute the position of the next profile(s) for recovery
 
     Prediction is based on weighted statistics from the last position of virtual floats
 
@@ -1538,8 +1537,8 @@ def predictor(args):
     CYCLING_FREQUENCY = int(np.round(CFG.mission['cycle_duration'])/24)
 
     # Define domain to load velocity for, and get it:
-    width = 10 + np.abs(np.ceil(THIS_PROFILE['longitude'].values[-1] - CENTER[0]))
-    height = 10 + np.abs(np.ceil(THIS_PROFILE['latitude'].values[-1] - CENTER[1]))
+    width = 15 + np.abs(np.ceil(THIS_PROFILE['longitude'].values[-1] - CENTER[0]))
+    height = 15 + np.abs(np.ceil(THIS_PROFILE['latitude'].values[-1] - CENTER[1]))
     VBOX = [CENTER[0] - width / 2, CENTER[0] + width / 2, CENTER[1] - height / 2, CENTER[1] + height / 2]
     N_DAYS = (len(CYC)-1)*CYCLING_FREQUENCY+1
     if not args.json:
@@ -1597,12 +1596,8 @@ def predictor(args):
     # VirtualFleet, get simulated profiles index:
     if not args.json:
         puts("\nVirtualFleet, extract simulated profiles index...")
-    # try:
-    #     DF_SIM = get_index(VFleet, VEL, DF_PLAN)
-    # except ValueError:
-    #     ds_traj = xr.open_zarr(VFleet.output)
-    #     DF_SIM = ds_simu2index(ds_traj)
-    DF_SIM = ds_simu2index(xr.open_zarr(VFleet.output))
+    # DF_SIM = ds_simu2index(xr.open_zarr(VFleet.output))
+    DF_SIM = ds_simu2index(xr.open_zarr(WORKDIR + "/" + 'trajectories_%s.zarr' % get_sim_suffix(args, CFG)))
     DF_SIM = postprocess_index(DF_SIM, THIS_PROFILE)
     if not args.json:
         puts(DF_SIM.head().to_string(), color=COLORS.green)
