@@ -968,117 +968,186 @@ def setup_deployment_plan(a_profile, a_date, nfloats=15000):
     return df
 
 
-def simu2index_legacy(df_plan, this_ds):
-    # Specific method for the recovery simulations
-    # This is very slow but could be optimized
-    ds_list = []
-    for irow_plan, row_plan in tqdm(df_plan.iterrows()):
-        ii = np.argwhere(((this_ds['lon'].isel(obs=0) - row_plan['longitude']) ** 2 + (
-                    this_ds['lat'].isel(obs=0) - row_plan['latitude']) ** 2).values == 0)
-        if ii:
-            wmo = row_plan['wmo']
-            deploy_lon, deploy_lat = row_plan['longitude'], row_plan['latitude']
-            itraj = ii[0][0]
-            for cyc, grp in this_ds.isel(traj=itraj).groupby(group='cycle_number'):
-                ds_cyc = grp.isel(obs=-1)
-                if cyc == 1:
-                    if ds_cyc['cycle_phase'] in [3, 4]:
-                        ds_cyc['wmo'] = xr.DataArray(np.full_like((1,), fill_value=wmo), dims='obs')
-                        ds_cyc['deploy_lon'] = xr.DataArray(np.full_like((1,), fill_value=deploy_lon, dtype=float),
-                                                            dims='obs')
-                        ds_cyc['deploy_lat'] = xr.DataArray(np.full_like((1,), fill_value=deploy_lat, dtype=float),
-                                                            dims='obs')
-                        ds_list.append(ds_cyc)
+class Trajectories:
+    """Trajectory file manager for VFrecovery
 
-    ds_profiles = xr.concat(ds_list, dim='obs')
-    df = ds_profiles.to_dataframe()
-    df = df.rename({'time': 'date', 'lat': 'latitude', 'lon': 'longitude', 'z': 'min_depth'}, axis='columns')
-    df = df[['date', 'latitude', 'longitude', 'wmo', 'cycle_number', 'deploy_lon', 'deploy_lat']]
-    df['wmo'] = df['wmo'].astype('int')
-    df = df.reset_index(drop=True)
-    return df
+    Examples:
+    ---------
+    T = Trajectories(traj_zarr_file)
+    df = T.to_index()
+    df = T.get_index().add_distances()
+    """
 
+    def __init__(self, zfile):
+        self.zarr_file = zfile
+        self.obj = xr.open_zarr(zfile)
+        self._index = None
 
-def ds_simu2index(this_ds):
-    # Instead of really looking at the cycle phase and structure, we just pick the last trajectory point
-    # of given cycle number, only if cycle phase is 3 or 4
-    cycles = np.unique(this_ds['cycle_number'])
-    rows = []
-    for cyc in cycles:
-        mask = np.logical_and((this_ds['cycle_number']==cyc).compute(),
-                              (this_ds['cycle_phase']>=3).compute())
-        this_cyc = this_ds.where(mask, drop=True)
-        if len(this_cyc['time']) > 0:
-            this_cyc = this_cyc.isel(obs=-1)
-            data = {
-                'date': this_cyc['time'].values,
-                'latitude': this_cyc['lat'].values,
-                'longitude': this_cyc['lon'].values,
-                'wmo': 9000000 + this_cyc['trajectory'].values,
-                'cyc': cyc,
-                # 'cycle_phase': this_cyc['cycle_phase'].values,
-                'deploy_lon': this_ds.isel(obs=0)['lon'].values,
-                'deploy_lat': this_ds.isel(obs=0)['lat'].values,
+    def to_index_par(self) -> pd.DataFrame:
+        # Deployment loc:
+        deploy_lon, deploy_lat = self.obj.isel(obs=0)['lon'].values, self.obj.isel(obs=0)['lat'].values
+
+        def worker(ds, cyc, x0, y0):
+            mask = np.logical_and((ds['cycle_number'] == cyc).compute(),
+                                  (ds['cycle_phase'] >= 3).compute())
+            this_cyc = ds.where(mask, drop=True)
+            if len(this_cyc['time']) > 0:
+                data = {
+                    'date': this_cyc.isel(obs=-1)['time'].values,
+                    'latitude': this_cyc.isel(obs=-1)['lat'].values,
+                    'longitude': this_cyc.isel(obs=-1)['lon'].values,
+                    'wmo': 9000000 + this_cyc.isel(obs=-1)['trajectory'].values,
+                    'cyc': cyc,
+                    # 'cycle_phase': this_cyc.isel(obs=-1)['cycle_phase'].values,
+                    'deploy_lon': x0,
+                    'deploy_lat': y0,
+                }
+                return pd.DataFrame(data)
+            else:
+                return None
+
+        cycles = np.unique(self.obj['cycle_number'])
+        rows = []
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future_to_url = {
+                executor.submit(
+                    worker,
+                    self.obj,
+                    cyc,
+                    deploy_lon,
+                    deploy_lat
+                ): cyc
+                for cyc in cycles
             }
-            rows.append(pd.DataFrame(data))
-    df = pd.concat(rows).reset_index()
-    df['wmo'] = df['wmo'].astype(int)
-    df['cyc'] = df['cyc'].astype(int)
-    # df['cycle_phase'] = df['cycle_phase'].astype(int)
-    return df
+            futures = concurrent.futures.as_completed(future_to_url)
+            for future in futures:
+                data = None
+                try:
+                    data = future.result()
+                except Exception:
+                    raise
+                finally:
+                    rows.append(data)
 
+        rows = [r for r in rows if r is not None]
+        df = pd.concat(rows).reset_index()
+        df['wmo'] = df['wmo'].astype(int)
+        df['cyc'] = df['cyc'].astype(int)
+        # df['cycle_phase'] = df['cycle_phase'].astype(int)
+        self._index = df
 
-def get_index(vf, vel, df_plan):
-    # Instead of really looking at the cycle phase and structure, we just pick the last trajectory point in memory !
-    # This is way much faster and a good approximation IF the simulation length is the cycling frequency.
-    data = {
-        'date': [vel.field['time'][0].values + pd.Timedelta(dt, 's') for dt in vf.ParticleSet.time],
-        'latitude': vf.ParticleSet.lat,
-        'longitude': vf.ParticleSet.lon,
-        'wmo': 9000000 + np.arange(0, vf.ParticleSet.lon.shape[0]),
-        'deploy_lon': df_plan['longitude'],
-        'deploy_lat': df_plan['latitude']
-    }
-    if len(data['latitude']) != len(data['deploy_lat']):
-        raise ValueError('Virtual floats have been lost during the simulation ! %i simulated vs %i deployed' % (len(data['latitude']), len(data['deploy_lat'])))
-    df = pd.DataFrame(data)
-    df['wmo'] = df['wmo'].astype(int)
-    return df
+        return self._index
 
+    def to_index(self) -> pd.DataFrame:
+        """Compute and return index (profile dataframe from trajectory dataset)
 
-def postprocess_index(this_df, this_profile):
-    # Compute some distances
+        Create a Profile index :class:`pandas.dataframe` with columns: [data, latitude ,longitude, wmo, cyc, deploy_lon, deploy_lat]
+        from a trajectory :class:`xarray.dataset`.
 
-    # Compute distance between the predicted profile and the initial profile location from the deployment plan
-    # We assume that virtual floats are sequentially taken from the deployment plan
-    # Since distances are very short, we compute a simple rectangular distance
+        There is one dataframe row for each dataset trajectory cycle.
 
-    x2, y2 = this_profile['longitude'].values[0], this_profile['latitude'].values[0]  # real float initial position
-    this_df['distance'] = np.nan
-    this_df['rel_lon'] = np.nan
-    this_df['rel_lat'] = np.nan
-    this_df['distance_origin'] = np.nan
+        We use the last trajectory point of given cycle number (with cycle phase >= 3) to identify a profile location.
 
-    for isim, sim_row in this_df.iterrows():
-        # Profile coordinates:
-        x0, y0 = sim_row['deploy_lon'], sim_row['deploy_lat']  # virtual float initial position
-        x1, y1 = sim_row['longitude'], sim_row['latitude']  # virtual float position
+        If they are N trajectories simulating C cycles, there will be about a maximum of N*C rows in the dataframe.
 
-        # Distance between each pair of cycles of virtual floats:
-        dist = np.sqrt((y1 - y0) ** 2 + (x1 - x0) ** 2)
-        this_df.loc[isim, 'distance'] = dist
+        Returns
+        -------
+        :class:`pandas.dataframe`
+        """
+        if self._index is None:
 
-        # Shift between each pair of cycles:
-        dx, dy = x1 - x0, y1 - y0
-        # Get a relative displacement from real float initial position:
-        this_df.loc[isim, 'rel_lon'] = x2 + dx
-        this_df.loc[isim, 'rel_lat'] = y2 + dy
+            # Deployment loc:
+            deploy_lon, deploy_lat = self.obj.isel(obs=0)['lon'].values, self.obj.isel(obs=0)['lat'].values
 
-        # Distance between the predicted profile and the observed initial profile
-        dist = np.sqrt((y2 - y0) ** 2 + (x2 - x0) ** 2)
-        this_df.loc[isim, 'distance_origin'] = dist
+            def worker(ds, cyc, x0, y0):
+                mask = np.logical_and((ds['cycle_number'] == cyc).compute(),
+                                      (ds['cycle_phase'] >= 3).compute())
+                this_cyc = ds.where(mask, drop=True)
+                if len(this_cyc['time']) > 0:
+                    data = {
+                        'date': this_cyc.isel(obs=-1)['time'].values,
+                        'latitude': this_cyc.isel(obs=-1)['lat'].values,
+                        'longitude': this_cyc.isel(obs=-1)['lon'].values,
+                        'wmo': 9000000 + this_cyc.isel(obs=-1)['trajectory'].values,
+                        'cyc': cyc,
+                        # 'cycle_phase': this_cyc.isel(obs=-1)['cycle_phase'].values,
+                        'deploy_lon': x0,
+                        'deploy_lat': y0,
+                    }
+                    return pd.DataFrame(data)
+                else:
+                    return None
 
-    return this_df
+            cycles = np.unique(self.obj['cycle_number'])
+            rows = []
+            for cyc in cycles:
+                df = worker(self.obj, cyc, deploy_lon, deploy_lat)
+                rows.append(df)
+            rows = [r for r in rows if r is not None]
+            df = pd.concat(rows).reset_index()
+            df['wmo'] = df['wmo'].astype(int)
+            df['cyc'] = df['cyc'].astype(int)
+            # df['cycle_phase'] = df['cycle_phase'].astype(int)
+            self._index = df
+
+        return self._index
+
+    def get_index(self):
+        """Compute index and return self"""
+        self.to_index()
+        return self
+
+    def add_distances(self, origin: None) -> pd.DataFrame:
+        """Compute profiles distance to some origin
+
+        Returns
+        -------
+        :class:`pandas.dataframe`
+        """
+
+        # Compute distance between the predicted profile and the initial profile location from the deployment plan
+        # We assume that virtual floats are sequentially taken from the deployment plan
+        # Since distances are very short, we compute a simple rectangular distance
+
+        # Observed cycles:
+        # obs_cyc = np.unique(this_profile['cyc'])
+
+        # Simulated cycles:
+        # sim_cyc = np.unique(this_df['cyc'])
+
+        df = self._index
+
+        x2, y2 = origin  # real float initial position
+        df['distance'] = np.nan
+        df['rel_lon'] = np.nan
+        df['rel_lat'] = np.nan
+        df['distance_origin'] = np.nan
+
+        def worker(row):
+            # Simulation profile coordinates:
+            x0, y0 = row['deploy_lon'], row['deploy_lat']  # virtual float initial position
+            x1, y1 = row['longitude'], row['latitude']  # virtual float position
+
+            # Distance between each pair of cycles of virtual floats:
+            dist = np.sqrt((y1 - y0) ** 2 + (x1 - x0) ** 2)
+            row['distance'] = dist
+
+            # Shift between each pair of cycles:
+            dx, dy = x1 - x0, y1 - y0
+            # Get a relative displacement from real float initial position:
+            row['rel_lon'] = x2 + dx
+            row['rel_lat'] = y2 + dy
+
+            # Distance between the predicted profile and the observed initial profile
+            dist = np.sqrt((y2 - y0) ** 2 + (x2 - x0) ** 2)
+            row['distance_origin'] = dist
+
+            return row
+
+        df = df.apply(worker, axis=1)
+        self._index = df
+
+        return self._index
 
 
 def predict_position(this_args, workdir, wmo, cyc, cfg, vel, vel_name, df_sim, df_plan, this_profile,
@@ -1596,9 +1665,9 @@ def predictor(args):
     # VirtualFleet, get simulated profiles index:
     if not args.json:
         puts("\nVirtualFleet, extract simulated profiles index...")
-    # DF_SIM = ds_simu2index(xr.open_zarr(VFleet.output))
-    DF_SIM = ds_simu2index(xr.open_zarr(WORKDIR + "/" + 'trajectories_%s.zarr' % get_sim_suffix(args, CFG)))
-    DF_SIM = postprocess_index(DF_SIM, THIS_PROFILE)
+
+    T = Trajectories(WORKDIR + "/" + 'trajectories_%s.zarr' % get_sim_suffix(args, CFG))
+    DF_SIM = T.get_index().add_distances(origin=[THIS_PROFILE['longitude'].values[0], THIS_PROFILE['latitude'].values[0]])
     if not args.json:
         puts(DF_SIM.head().to_string(), color=COLORS.green)
     figure_positions(args, VEL, DF_SIM, DF_PLAN, THIS_PROFILE, CFG, WMO, CYC, VEL_NAME,
