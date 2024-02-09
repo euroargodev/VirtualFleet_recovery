@@ -983,6 +983,12 @@ class Trajectories:
         self.obj = xr.open_zarr(zfile)
         self._index = None
 
+    def __repr__(self):
+        summary = ["<VRecovery.Trajectories>"]
+        summary.append("Swarm size: %i floats" % len(self.obj['trajectory']))
+        summary.append("Simulation length: %s to %s" % (pd.to_datetime(self.obj['time'].isel(trajectory=0, obs=0).values).strftime("%Y/%m/%d"), pd.to_datetime(self.obj['time'].isel(trajectory=0, obs=-1).values).strftime("%Y/%m/%d")))
+        return "\n".join(summary)
+
     def to_index_par(self) -> pd.DataFrame:
         # Deployment loc:
         deploy_lon, deploy_lat = self.obj.isel(obs=0)['lon'].values, self.obj.isel(obs=0)['lat'].values
@@ -1148,6 +1154,298 @@ class Trajectories:
         self._index = df
 
         return self._index
+
+
+def haversine(lon1, lat1, lon2, lat2):
+    """
+    Calculate the great circle distance between two points
+    on the earth (specified in decimal degrees)
+
+    see: https://stackoverflow.com/questions/4913349/haversine-formula-in-python-bearing-and-distance-between-two-gps-points
+
+    Parameters
+    ----------
+    lon1
+    lat1
+    lon2
+    lat2
+    """
+    from math import radians, cos, sin, asin, sqrt
+    # convert decimal degrees to radians
+    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+
+    # haversine formula
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+    c = 2 * asin(sqrt(a))
+    r = 6371  # Radius of earth in kilometers.
+    return c * r
+
+
+def bearing(lon1, lat1, lon2, lat2):
+    """
+
+    Parameters
+    ----------
+    lon1
+    lat1
+    lon2
+    lat2
+
+    Returns
+    -------
+
+    """
+    # from math import cos, sin, atan2, degrees
+    # b = atan2(cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(lon2 - lon1), sin(lon2 - lon1) * cos(lat2))
+    # b = degrees(b)
+    # return b
+
+    import pyproj
+    geodesic = pyproj.Geod(ellps='WGS84')
+    fwd_azimuth, back_azimuth, distance = geodesic.inv(lon1, lat1, lon2, lat2)
+    return fwd_azimuth
+
+
+class SimPredictor:
+    """
+
+    Examples
+    --------
+    T = Trajectories(traj_zarr_file)
+    df = T.get_index().add_distances()
+
+    SP = SimPredictor(df)
+    SP.predict()
+    SP.label()
+    SP.add_metrics(VFvelocity)
+    SP.bbox()
+    SP.plan
+    """
+
+    def __init__(self, df_sim: pd.DataFrame, df_obs: pd.DataFrame):
+        self.swarm = df_sim
+        self.obs = df_obs
+        self._json = None
+
+    def __repr__(self):
+        summary = ["<VFRecovery.Predictor>"]
+        summary.append("Simulation swarm size: %i floats" % len(np.unique(self.swarm['wmo'])))
+        summary.append("Number of simulated cycles: %i" % len(np.unique(self.swarm['cyc'])))
+        summary.append("Observed reference: %i profile(s), cycle number(s): [%s]" % (
+        self.obs.shape[0], ",".join([str(c) for c in list(np.unique(self.obs['cyc']))])))
+        return "\n".join(summary)
+
+    def bbox(self, s: float = 1) -> list:
+        """Get a box for maps
+
+        Parameters
+        ----------
+        s: float, default:1
+
+        Returns
+        -------
+        list
+        """
+        df_sim = self.swarm
+
+        box = [np.min([df_sim['deploy_lon'].min(), df_sim['longitude'].min(), df_sim['rel_lon'].min(),
+                       self.obs['longitude'].min()]),
+               np.max([df_sim['deploy_lon'].max(), df_sim['longitude'].max(), df_sim['rel_lon'].max(),
+                       self.obs['longitude'].max()]),
+               np.min([df_sim['deploy_lat'].min(), df_sim['latitude'].min(), df_sim['rel_lat'].min(),
+                       self.obs['latitude'].min()]),
+               np.max([df_sim['deploy_lat'].max(), df_sim['latitude'].max(), df_sim['rel_lat'].max(),
+                       self.obs['latitude'].max()])]
+        rx, ry = box[1] - box[0], box[3] - box[2]
+        r = np.min([rx, ry])
+        ebox = [box[0] - s * r, box[1] + s * r, box[2] - s * r, box[3] + s * r]
+
+        return box
+
+    @property
+    def plan(self) -> pd.DataFrame:
+        if not hasattr(self, '_plan'):
+            df_plan = self.swarm[self.swarm['cyc'] == 1][['date', 'deploy_lon', 'deploy_lat']]
+            df_plan = df_plan.rename(columns={'deploy_lon': 'longitude', 'deploy_lat': 'latitude'})
+            self._plan = df_plan
+        return self._plan
+
+    def set_weights(self, scale: float = 20):
+        """Add weights column to swarm :class:`pandas.DataFrame` as a gaussian distance with a std based on the size of the deployment domain"""
+        rx, ry = self.plan['longitude'].max() - self.plan['longitude'].min(), \
+                 self.plan['latitude'].max() - self.plan['latitude'].min()
+        r = np.min([rx, ry])  # Minimal size of the deployment domain
+        weights = np.exp(-(self.swarm['distance_origin'] ** 2) / (r / scale))
+        weights[np.isnan(weights)] = 0
+        self.swarm['weights'] = weights
+        return self
+
+    def predict(self, bin_res: float = 1 / 12 / 4, weights_scale: float = 20) -> dict:
+        """Predict all profile positions from simulated float swarm
+
+        Returns
+        -------
+        dict
+        """
+
+        def blank_prediction() -> dict:
+            return {'prediction_location': {
+                'longitude': {'value': None, 'unit': 'degree East'},
+                'latitude': {'value': None, 'unit': 'degree North'},
+                'time': {'value': None},
+            }}
+
+        # Compute a weighted histogram of the swarm float profiles locations, for each predicted cycles
+        hbox = self.bbox()
+        bin_x, bin_y = np.arange(hbox[0], hbox[1], bin_res), np.arange(hbox[2], hbox[3], bin_res)
+        self.set_weights(scale=weights_scale)
+
+        cycles = np.unique(self.swarm['cyc'])  # 1, 2, ...
+        recovery_predictions = {}
+        for icyc, this_sim_cyc in enumerate(cycles):
+            this_cyc_df = self.swarm[self.swarm['cyc'] == this_sim_cyc]
+            Hrel, xedges, yedges = np.histogram2d(this_cyc_df['rel_lon'],
+                                                  this_cyc_df['rel_lat'],
+                                                  bins=[bin_x, bin_y],
+                                                  weights=this_cyc_df['weights'],
+                                                  density=True)
+
+            # Get coordinates of the most probable location (max of the histogram):
+            ixmax, iymax = np.unravel_index(Hrel.argmax(), Hrel.shape)
+            xpred, ypred = (bin_x[0:-1] + bin_res / 2)[ixmax], (bin_y[0:-1] + bin_res / 2)[iymax]
+            tpred = this_cyc_df['date'].mean()
+
+            # Store results
+            recovery = blank_prediction()
+            recovery['prediction_location']['longitude']['value'] = xpred
+            recovery['prediction_location']['latitude']['value'] = ypred
+            recovery['prediction_location']['time']['value'] = tpred
+            recovery_predictions.update({this_sim_cyc: recovery})
+
+            # Nicer histogram
+            # Hrel[Hrel == 0] = np.NaN
+
+        self._json = recovery_predictions
+        return recovery_predictions
+
+    def label(self) -> dict:
+        """Compute error metrics of the predicted position
+
+        This is for past cycles, for which we have observed positions of the predicted profiles
+
+        Returns
+        -------
+        dict
+        """
+
+        def blank_error():
+            return {'distance': {'value': None,
+                                 'unit': 'km'},
+                    'bearing': {'value': None,
+                                'unit': 'degree'},
+                    'time': {'value': None,
+                             'unit': 'hour'}
+                    }
+
+        obs_cycles = np.unique(self.obs['cyc'])
+        cyc0 = obs_cycles[0]
+        if self._json is None:
+            raise ValueError("Please call `predict` first")
+        recovery_predictions = self._json
+
+        for sim_c in recovery_predictions.keys():
+            this_predictions = recovery_predictions[sim_c]
+            if sim_c + cyc0 in obs_cycles:
+                error = blank_error()
+
+                this_obs_profile = self.obs[self.obs['cyc'] == sim_c + cyc0]
+                prev_obs_profile = self.obs[self.obs['cyc'] == sim_c + cyc0 - 1]
+                xobs = this_obs_profile['longitude'].iloc[0]
+                yobs = this_obs_profile['latitude'].iloc[0]
+                tobs = this_obs_profile['date'].iloc[0]
+                xobs0 = prev_obs_profile['longitude'].iloc[0]
+                yobs0 = prev_obs_profile['latitude'].iloc[0]
+
+                xpred = this_predictions['prediction_location']['longitude']['value']
+                ypred = this_predictions['prediction_location']['latitude']['value']
+                tpred = this_predictions['prediction_location']['time']['value']
+
+                dd = haversine(xobs, yobs, xpred, ypred)
+                dt = pd.Timedelta(tpred - tobs).seconds / 3600.
+                error['distance']['value'] = dd
+
+                observed_bearing = bearing(xobs0, yobs0, xobs, yobs)
+                sim_bearing = bearing(xobs0, yobs0, xpred, ypred)
+                error['bearing']['value'] = sim_bearing - observed_bearing
+
+                error['time']['value'] = dt
+
+                this_predictions['prediction_location_error'] = error
+                recovery_predictions.update({sim_c: this_predictions})
+
+        self._json = recovery_predictions
+        return recovery_predictions
+
+    def add_metrics(self, VFvel=None):
+        """Compute more metrics to understand the prediction error
+
+        1. Compute a transit time to cover the distance error
+        (assume a 12 kts boat speed with 1 kt = 1.852 km/h)
+
+        1. Compute the possible drift due to the time lag between the predicted profile timing and the expected one
+
+        """
+        obs_cycles = np.unique(self.obs['cyc'])
+        cyc0 = obs_cycles[0]
+        recovery_predictions = self._json
+
+        for sim_c in recovery_predictions.keys():
+            this_predictions = recovery_predictions[sim_c]
+            if sim_c + cyc0 in obs_cycles and 'prediction_location_error' in this_predictions.keys():
+
+                error = this_predictions['prediction_location_error']
+                metrics = {}
+
+                # Compute a transit time to cover the distance error:
+                metrics['transit'] = {'value': None,
+                                      'unit': 'hour',
+                                      'comment': 'Boat transit time to cover the distance error '
+                                                 '(assume a 12 kts boat speed with 1 kt = 1.852 km/h)'}
+
+                if error['distance']['value'] is not None:
+                    metrics['transit']['value'] = pd.Timedelta(error['distance']['value'] / (12 * 1.852), 'h').seconds / 3600.
+
+                # Compute the possible drift due to the time lag between the predicted profile timing and the expected one:
+                if VFvel is not None:
+                    xpred = this_predictions['prediction_location']['longitude']['value']
+                    ypred = this_predictions['prediction_location']['latitude']['value']
+                    tpred = this_predictions['prediction_location']['time']['value']
+                    dsc = VFvel.field.interp(
+                        {VFvel.dim['lon']: xpred,
+                         VFvel.dim['lat']: ypred,
+                         VFvel.dim['time']: tpred,
+                         VFvel.dim['depth']:
+                             VFvel.field[{VFvel.dim['depth']: 0}][VFvel.dim['depth']].values[np.newaxis][0]}
+                    )
+                    velc = np.sqrt(dsc[VFvel.var['U']] ** 2 + dsc[VFvel.var['V']] ** 2).values[np.newaxis][0]
+                    metrics['surface_drift'] = {'value': None,
+                                                'unit': 'km',
+                                                'surface_currents_speed': None,
+                                                'surface_currents_speed_unit': 'm/s',
+                                                'comment': 'Drift by surface currents due to the float ascent time error '
+                                                           '(difference between simulated profile time and the observed one).'}
+                    if error['time']['value'] is not None:
+                        metrics['surface_drift']['value'] = (error['time']['value'] * 3600 * velc / 1e3)
+                        metrics['surface_drift']['surface_currents_speed'] = velc
+
+                #
+                this_predictions['prediction_metrics'] = metrics
+                recovery_predictions.update({sim_c: this_predictions})
+
+        self._json = recovery_predictions
+        return recovery_predictions
 
 
 def predict_position(this_args, workdir, wmo, cyc, cfg, vel, vel_name, df_sim, df_plan, this_profile,
@@ -1669,9 +1967,18 @@ def predictor(args):
     T = Trajectories(WORKDIR + "/" + 'trajectories_%s.zarr' % get_sim_suffix(args, CFG))
     DF_SIM = T.get_index().add_distances(origin=[THIS_PROFILE['longitude'].values[0], THIS_PROFILE['latitude'].values[0]])
     if not args.json:
+        puts(str(T), color=COLORS.magenta)
         puts(DF_SIM.head().to_string(), color=COLORS.green)
     figure_positions(args, VEL, DF_SIM, DF_PLAN, THIS_PROFILE, CFG, WMO, CYC, VEL_NAME,
                      dd=1, save_figure=args.save_figure, workdir=WORKDIR)
+
+
+    SP = SimPredictor(DF_SIM, THIS_PROFILE)
+    if not args.json:
+        puts(str(SP), color=COLORS.magenta)
+    SP.predict()
+    SP.label()
+    SP.add_metrics(VEL)
 
     raise ValueError('stophere')
 
