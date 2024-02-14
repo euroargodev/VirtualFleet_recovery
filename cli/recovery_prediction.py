@@ -36,9 +36,10 @@ import matplotlib
 import time
 import platform, socket, psutil
 from sklearn.metrics import pairwise_distances
+from sklearn.neighbors import KernelDensity
+
 import copernicusmarine
 # from virtualargofleet import Velocity, VirtualFleet, FloatConfiguration
-
 
 logging.getLogger("matplotlib").setLevel(logging.ERROR)
 logging.getLogger("parso").setLevel(logging.ERROR)
@@ -336,6 +337,7 @@ class Armor3d:
         summary.append("Domain: %s" % self.box)
         summary.append("Max depth (m): %s" % self.max_depth)
         return "\n".join(summary)
+
 
 class Glorys:
     """Global Ocean 1/12° Physics Re-Analysis or Forecast
@@ -1156,61 +1158,6 @@ class Trajectories:
         return self._index
 
 
-def haversine(lon1, lat1, lon2, lat2):
-    """
-    Calculate the great circle distance between two points
-    on the earth (specified in decimal degrees)
-
-    see: https://stackoverflow.com/questions/4913349/haversine-formula-in-python-bearing-and-distance-between-two-gps-points
-
-    Parameters
-    ----------
-    lon1
-    lat1
-    lon2
-    lat2
-    """
-    from math import radians, cos, sin, asin, sqrt
-    # convert decimal degrees to radians
-    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
-
-    # haversine formula
-    dlon = lon2 - lon1
-    dlat = lat2 - lat1
-    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
-    c = 2 * asin(sqrt(a))
-    r = 6371  # Radius of earth in kilometers.
-    return c * r
-
-
-def bearing(lon1, lat1, lon2, lat2):
-    """
-
-    Parameters
-    ----------
-    lon1
-    lat1
-    lon2
-    lat2
-
-    Returns
-    -------
-
-    """
-    # from math import cos, sin, atan2, degrees
-    # b = atan2(cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(lon2 - lon1), sin(lon2 - lon1) * cos(lat2))
-    # b = degrees(b)
-    # return b
-
-    import pyproj
-    geodesic = pyproj.Geod(ellps='WGS84')
-    fwd_azimuth, back_azimuth, distance = geodesic.inv(lon1, lat1, lon2, lat2)
-    return fwd_azimuth
-
-
-from sklearn.neighbors import KernelDensity
-
-
 class SimPredictor:
     """
 
@@ -1220,33 +1167,48 @@ class SimPredictor:
     df = T.get_index().add_distances()
 
     SP = SimPredictor(df)
-    SP.predict()
-    SP.label()
+    SP.fit_predict()
     SP.add_metrics(VFvelocity)
     SP.bbox()
+    SP.plot_predictions(VFvelocity)
     SP.plan
+    SP.n_cycles
+    SP.trajectory
+    SP.prediction
     """
 
     def __init__(self, df_sim: pd.DataFrame, df_obs: pd.DataFrame):
         self.swarm = df_sim
         self.obs = df_obs
         # self.set_weights()
+        self.WMO = np.unique(df_obs['wmo'])[0]
         self._json = None
 
     def __repr__(self):
-        obs_cycles = np.unique(self.obs['cyc'])
-        sim_cycles = obs_cycles[0] + 1 + range(self.n_cycles)
         summary = ["<VFRecovery.Predictor>"]
+        summary.append("Target float WMO/CYCLE_NUMBER: %i / %i" % (self.WMO, self.sim_cycles[0]))
         summary.append("Swarm size: %i floats" % len(np.unique(self.swarm['wmo'])))
         summary.append("Number of simulated cycles: %i profile(s) for cycle number(s): [%s]" % (
-        self.n_cycles, ",".join([str(c) for c in sim_cycles])))
+        self.n_cycles, ",".join([str(c) for c in self.sim_cycles])))
         summary.append("Observed reference: %i profile(s) for cycle number(s): [%s]" % (
-        self.obs.shape[0], ",".join([str(c) for c in obs_cycles])))
+        self.obs.shape[0], ",".join([str(c) for c in self.obs_cycles])))
         return "\n".join(summary)
 
     @property
     def n_cycles(self):
+        """Number of simulated cycles"""
         return len(np.unique(self.swarm['cyc']))
+        # return len(self.sim_cycles)
+
+    @property
+    def obs_cycles(self):
+        """Observed cycle numbers"""
+        return np.unique(self.obs['cyc'])
+
+    @property
+    def sim_cycles(self):
+        """Simulated cycle numbers"""
+        return self.obs_cycles[0] + 1 + range(self.n_cycles)
 
     @property
     def plan(self) -> pd.DataFrame:
@@ -1274,19 +1236,32 @@ class SimPredictor:
                                     self.obs['date'].values[0]])[
             np.newaxis]  # Starting point where swarm was deployed
         for cyc in self._json.keys():
-            xpred = self._json[cyc]['prediction_location']['longitude']['value']
-            ypred = self._json[cyc]['prediction_location']['latitude']['value']
-            tpred = self._json[cyc]['prediction_location']['time']['value']
+            xpred = self._json[cyc]['location']['longitude']['value']
+            ypred = self._json[cyc]['location']['latitude']['value']
+            tpred = self._json[cyc]['location']['time']['value']
             traj_prediction = np.concatenate((traj_prediction,
                                               np.array([xpred, ypred, tpred])[np.newaxis]),
                                              axis=0)
         return traj_prediction
 
     @property
-    def prediction(self):
+    def predictions(self):
         if self._json is None:
             raise ValueError("Please call `fit_predict` first")
         return self._json
+
+    def to_json(self):
+        js = self.predictions.copy()
+        keys = js.copy().keys()
+        for key in keys:
+            js.update({str(key): js[key]})
+            js.pop(key, None)
+
+        # results = {}
+        # results['predictions'] = js
+
+        results_js = json.dumps(js, indent=4, sort_keys=True, default=str)
+        return results_js
 
     def bbox(self, s: float = 1) -> list:
         """Get a bounding box for maps
@@ -1476,11 +1451,13 @@ class SimPredictor:
         """
 
         def blank_prediction() -> dict:
-            return {'prediction_location': {
-                'longitude': {'value': None, 'unit': 'degree East'},
-                'latitude': {'value': None, 'unit': 'degree North'},
-                'time': {'value': None},
-            }}
+            return {'location': {
+                        'longitude': {'value': None, 'unit': 'degree East'},
+                        'latitude': {'value': None, 'unit': 'degree North'},
+                        'time': {'value': None}},
+                    'cycle_number': None,
+                    'wmo': self.WMO,
+                    }
 
         # Compute weights of the swarm float profiles locations
         self.set_weights(scale=weights_scale)
@@ -1509,19 +1486,23 @@ class SimPredictor:
 
             # Store results
             recovery = blank_prediction()
-            recovery['prediction_location']['longitude']['value'] = xpred
-            recovery['prediction_location']['latitude']['value'] = ypred
-            recovery['prediction_location']['time']['value'] = tpred
+            recovery['location']['longitude']['value'] = xpred
+            recovery['location']['latitude']['value'] = ypred
+            recovery['location']['time']['value'] = tpred
+            recovery['cycle_number'] = self.sim_cycles[icyc]
             recovery_predictions.update({this_sim_cyc: recovery})
 
-            # Nicer histogram
+            #
             self._prediction_data['cyc'].update({this_sim_cyc: {'weights': this_cyc_df['weights']}})
 
+        # Store results internally
         self._json = recovery_predictions
 
-        recovery_predictions = self.predict_errors()
+        # Add more stuff:
+        self.predict_errors()
 
-        return recovery_predictions
+        # Returns
+        return self.predictions
 
     def predict_errors(self) -> dict:
         """Compute error metrics of the predicted position
@@ -1549,7 +1530,7 @@ class SimPredictor:
         recovery_predictions = self._json
 
         for sim_c in recovery_predictions.keys():
-            this_predictions = recovery_predictions[sim_c]
+            this_prediction = recovery_predictions[sim_c]
             if sim_c + cyc0 in obs_cycles:
                 error = blank_error()
 
@@ -1561,9 +1542,9 @@ class SimPredictor:
                 xobs0 = prev_obs_profile['longitude'].iloc[0]
                 yobs0 = prev_obs_profile['latitude'].iloc[0]
 
-                xpred = this_predictions['prediction_location']['longitude']['value']
-                ypred = this_predictions['prediction_location']['latitude']['value']
-                tpred = this_predictions['prediction_location']['time']['value']
+                xpred = this_prediction['location']['longitude']['value']
+                ypred = this_prediction['location']['latitude']['value']
+                tpred = this_prediction['location']['time']['value']
 
                 dd = haversine(xobs, yobs, xpred, ypred)
                 dt = pd.Timedelta(tpred - tobs).seconds / 3600.
@@ -1575,8 +1556,8 @@ class SimPredictor:
 
                 error['time']['value'] = dt
 
-                this_predictions['prediction_location_error'] = error
-                recovery_predictions.update({sim_c: this_predictions})
+                this_prediction['location_error'] = error
+                recovery_predictions.update({sim_c: this_prediction})
 
         self._json = recovery_predictions
         return recovery_predictions
@@ -1590,17 +1571,16 @@ class SimPredictor:
         1. Compute the possible drift due to the time lag between the predicted profile timing and the expected one
 
         """
-        obs_cycles = np.unique(self.obs['cyc'])
-        cyc0 = obs_cycles[0]
+        cyc0 = self.obs_cycles[0]
         if self._json is None:
             raise ValueError("Please call `predict` first")
         recovery_predictions = self._json
 
         for sim_c in recovery_predictions.keys():
-            this_predictions = recovery_predictions[sim_c]
-            if sim_c + cyc0 in obs_cycles and 'prediction_location_error' in this_predictions.keys():
+            this_prediction = recovery_predictions[sim_c]
+            if sim_c + cyc0 in self.obs_cycles and 'location_error' in this_prediction.keys():
 
-                error = this_predictions['prediction_location_error']
+                error = this_prediction['location_error']
                 metrics = {}
 
                 # Compute a transit time to cover the distance error:
@@ -1615,9 +1595,9 @@ class SimPredictor:
 
                 # Compute the possible drift due to the time lag between the predicted profile timing and the expected one:
                 if VFvel is not None:
-                    xpred = this_predictions['prediction_location']['longitude']['value']
-                    ypred = this_predictions['prediction_location']['latitude']['value']
-                    tpred = this_predictions['prediction_location']['time']['value']
+                    xpred = this_prediction['location']['longitude']['value']
+                    ypred = this_prediction['location']['latitude']['value']
+                    tpred = this_prediction['location']['time']['value']
                     dsc = VFvel.field.interp(
                         {VFvel.dim['lon']: xpred,
                          VFvel.dim['lat']: ypred,
@@ -1637,8 +1617,52 @@ class SimPredictor:
                         metrics['surface_drift']['surface_currents_speed'] = velc
 
                 #
-                this_predictions['prediction_metrics'] = metrics
-                recovery_predictions.update({sim_c: this_predictions})
+                this_prediction['metrics'] = metrics
+                recovery_predictions.update({sim_c: this_prediction})
+
+        self._json = recovery_predictions
+        return recovery_predictions
+
+    def add_ref(self):
+        if self._json is None:
+            raise ValueError("Please call `predict` first")
+        recovery_predictions = self._json
+
+        profiles_to_predict = []
+
+        for cyc in self.sim_cycles:
+            this = {'wmo': self.WMO,
+                    'cycle_number': cyc,
+                    'url_float': argoplot.dashboard(self.WMO, url_only=True),
+                    'url_profile': None,
+                    'location': {'longitude': {'value': None,
+                                               'unit': 'degree East'},
+                                 'latitude': {'value': None,
+                                              'unit': 'degree North'},
+                                 'time': {'value': None}}
+                    }
+            if cyc in self.obs['cyc']:
+                this['url_profile'] = get_ea_profile_page_url(self.WMO, cyc)
+                this_df = self.obs[self.obs['cyc'] == cyc]
+                this['location']['longitude']['value'] = this_df['longitude'].iloc[0]
+                this['location']['latitude']['value'] = this_df['latitude'].iloc[0]
+                this['location']['time']['value'] = this_df['date'].iloc[0]
+            profiles_to_predict.append(this)
+
+        recovery_predictions['observations'] = profiles_to_predict
+
+        cyc = self.obs_cycles[0]
+        this_df = self.obs[self.obs['cyc'] == cyc]
+        recovery_predictions['initial_profile'] = {'wmo': self.WMO,
+                                      'cycle_number': cyc,
+                                      'url_float': argoplot.dashboard(self.WMO, url_only=True),
+                                      'url_profile': get_ea_profile_page_url(self.WMO, cyc),
+                                      'location': {'longitude': {'value': this_df['longitude'].iloc[0],
+                                                                 'unit': 'degree East'},
+                                                   'latitude': {'value': this_df['latitude'].iloc[0],
+                                                                'unit': 'degree North'},
+                                                   'time': {'value': this_df['data'].iloc[0]}}
+                                      }
 
         self._json = recovery_predictions
         return recovery_predictions
@@ -1655,8 +1679,8 @@ class SimPredictor:
                          dpi=120,
                          orient='portrait'):
         ebox = self.bbox(s=s)
-        obs_cycles = np.unique(self.obs['cyc'])
-        sim_cycles = obs_cycles[0] + 1 + range(self.n_cycles)
+        # obs_cycles = np.unique(self.obs['cyc'])
+        # sim_cycles = obs_cycles[0] + 1 + range(self.n_cycles)
         pred_traj = self.trajectory
 
         if orient == 'portrait':
@@ -1677,13 +1701,13 @@ class SimPredictor:
         def plot_this(this_ax, i_cycle, ip):
             df_sim = self.swarm[self.swarm['cyc'] == i_cycle + 1]
             weights = self._prediction_data['cyc'][i_cycle + 1]['weights'].values
-            if sim_cycles[i_cycle] in self.obs['cyc']:
-                this_profile = self.obs[self.obs['cyc'] == obs_cycles[i_cycle]]
+            if self.sim_cycles[i_cycle] in self.obs_cycles:
+                this_profile = self.obs[self.obs['cyc'] == self.obs_cycles[i_cycle]]
             else:
                 this_profile = None
 
-            xpred = self.prediction[i_cycle + 1]['prediction_location']['longitude']['value']
-            ypred = self.prediction[i_cycle + 1]['prediction_location']['latitude']['value']
+            xpred = self.predictions[i_cycle + 1]['location']['longitude']['value']
+            ypred = self.predictions[i_cycle + 1]['location']['latitude']['value']
 
             this_ax.set_extent(ebox)
             this_ax = map_add_features(ax[ix])
@@ -1779,7 +1803,7 @@ class SimPredictor:
 
         # log.debug("Start to write metrics string")
         #
-        # xpred = SP.prediction[i_cycle + 1]['prediction_location']['longitude']['value']
+        # xpred = SP.prediction[i_cycle + 1]['location']['longitude']['value']
         #
         # err = recovery['prediction_location_error']
         # met = recovery['prediction_metrics']
@@ -2230,11 +2254,12 @@ def predictor(args):
                      dd=1, save_figure=args.save_figure, workdir=WORKDIR)
 
 
+    # Recovery, make predictions based on simulated profile density:
     SP = SimPredictor(DF_SIM, THIS_PROFILE)
     if not args.json:
         puts(str(SP), color=COLORS.magenta)
     SP.fit_predict()
-    SP.add_metrics(VEL)
+    results = SP.add_metrics(VEL)
     SP.plot_predictions(VEL,
                          CFG,
                          sim_suffix=get_sim_suffix(args, CFG),
@@ -2242,13 +2267,14 @@ def predictor(args):
                          workdir=WORKDIR,
                          orient='portrait')
 
-    raise ValueError('stophere')
+    # raise ValueError('stophere')
 
-    # Recovery, make predictions based on simulated profile density:
-    results = predict_position(args, WORKDIR, WMO, CYC, CFG, VEL, VEL_NAME, DF_SIM, DF_PLAN, THIS_PROFILE,
-                               save_figure=args.save_figure, quiet=~args.json)
-    results['profile_to_predict'] = {'wmo': WMO,
-                          'cycle_number': CYC[-1],
+    # results = predict_position(args, WORKDIR, WMO, CYC, CFG, VEL, VEL_NAME, DF_SIM, DF_PLAN, THIS_PROFILE,
+    #                            save_figure=args.save_figure, quiet=~args.json)
+    profiles_to_predict = []
+    for cyc in CYC[1:]:
+        this = {'wmo': WMO,
+                          'cycle_number': cyc,
                           'url_float': argoplot.dashboard(WMO, url_only=True),
                           'url_profile': None,
                           'location': {'longitude': {'value': None,
@@ -2257,13 +2283,16 @@ def predictor(args):
                                                     'unit': 'degree North'},
                                        'time': {'value': None}}
                                      }
-    if THIS_PROFILE.shape[0] > 1:
-        results['profile_to_predict']['url_profile'] = get_ea_profile_page_url(WMO, CYC[-1])
-        results['profile_to_predict']['location']['longitude']['value'] = THIS_PROFILE['longitude'].values[-1]
-        results['profile_to_predict']['location']['latitude']['value'] = THIS_PROFILE['latitude'].values[-1]
-        results['profile_to_predict']['location']['time']['value'] = THIS_PROFILE['date'].values[-1]
+        if cyc in THIS_PROFILE['cyc']:
+            this['url_profile'] = get_ea_profile_page_url(WMO, cyc)
+            this_df = THIS_PROFILE[THIS_PROFILE['cyc'] == cyc]
+            this['location']['longitude']['value'] = this_df['longitude'].iloc[0]
+            this['location']['latitude']['value'] = this_df['latitude'].iloc[0]
+            this['location']['time']['value'] = this_df['date'].iloc[0]
+        profiles_to_predict.append(this)
+    results['profiles_to_predict'] = profiles_to_predict
 
-    results['previous_profile'] = {'wmo': WMO,
+    results['initial_profile'] = {'wmo': WMO,
                           'cycle_number': CYC[0],
                           'url_float': argoplot.dashboard(WMO, url_only=True),
                           'url_profile': get_ea_profile_page_url(WMO, CYC[0]),
@@ -2273,6 +2302,10 @@ def predictor(args):
                                                     'unit': 'degree North'},
                                        'time': {'value': THIS_DATE}}
                                    }
+
+    results_js = json.dumps(results, indent=4, sort_keys=True, default=str)
+    raise ValueError('stophere')
+
     results = analyse_pairwise_distances(args, CFG, results)
 
     execution_end = time.time()
