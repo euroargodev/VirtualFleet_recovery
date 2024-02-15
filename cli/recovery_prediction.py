@@ -37,6 +37,7 @@ import time
 import platform, socket, psutil
 from sklearn.metrics import pairwise_distances
 from sklearn.neighbors import KernelDensity
+from scipy.signal import find_peaks
 
 import copernicusmarine
 # from virtualargofleet import Velocity, VirtualFleet, FloatConfiguration
@@ -72,9 +73,9 @@ def puts(text, color=None, bold=False, file=sys.stdout):
     Parameters
     ----------
     text
-    color
-    bold
-    file
+    color=None
+    bold=False
+    file=sys.stdout
     """
     if color is None:
         txt = f'{PREF}{1 if bold else 0}m' + text + RESET
@@ -521,9 +522,10 @@ def get_EBOX(df_sim, df_plan, this_profile, s=1):
 
 
 def get_cfg_str(a_cfg):
-    txt = "VFloat configuration: (Parking depth: %i [db], Cycle duration: %i [hours])" % (
+    txt = "VFloat configuration: (Parking depth: %i [db], Cycle duration: %i [hours], Profile depth: %i [db])" % (
         a_cfg.mission['parking_depth'],
-        a_cfg.mission['cycle_duration']
+        a_cfg.mission['cycle_duration'],
+        a_cfg.mission['profile_depth'],
     )
     return txt
 
@@ -976,8 +978,11 @@ class Trajectories:
     Examples:
     ---------
     T = Trajectories(traj_zarr_file)
+    T.n_floats
+    T.sim_cycles
     df = T.to_index()
     df = T.get_index().add_distances()
+    jsdata, fig, ax = T.analyse_pairwise_distances(cycle=1, show_plot=True)
     """
 
     def __init__(self, zfile):
@@ -985,10 +990,29 @@ class Trajectories:
         self.obj = xr.open_zarr(zfile)
         self._index = None
 
+    @property
+    def n_floats(self):
+        # len(self.obj['trajectory'])
+        return self.obj['trajectory'].shape[0]
+
+    @property
+    def sim_cycles(self):
+        """Return list of cycles simulated"""
+        cycs = np.unique(self.obj['cycle_number'])
+        last_obs_phase = \
+        self.obj.where(self.obj['cycle_number'] == cycs[-1])['cycle_phase'].isel(trajectory=0).isel(obs=-1).values[
+            np.newaxis][0]
+        if last_obs_phase < 3:
+            cycs = cycs[0:-1]
+        return cycs
+
     def __repr__(self):
         summary = ["<VRecovery.Trajectories>"]
-        summary.append("Swarm size: %i floats" % len(self.obj['trajectory']))
-        summary.append("Simulation length: %s to %s" % (pd.to_datetime(self.obj['time'].isel(trajectory=0, obs=0).values).strftime("%Y/%m/%d"), pd.to_datetime(self.obj['time'].isel(trajectory=0, obs=-1).values).strftime("%Y/%m/%d")))
+        summary.append("Swarm size: %i floats" % self.n_floats)
+        start_date = pd.to_datetime(self.obj['time'].isel(trajectory=0, obs=0).values)
+        end_date = pd.to_datetime(self.obj['time'].isel(trajectory=0, obs=-1).values)
+        summary.append("Simulation length: %s, from %s to %s" % (
+        pd.Timedelta(end_date - start_date, 'd'), start_date.strftime("%Y/%m/%d"), end_date.strftime("%Y/%m/%d")))
         return "\n".join(summary)
 
     def to_index_par(self) -> pd.DataFrame:
@@ -1157,8 +1181,193 @@ class Trajectories:
 
         return self._index
 
+    def analyse_pairwise_distances(self,
+                                   cycle: int = 1,
+                                   show_plot: bool = True,
+                                   save_figure: bool = False,
+                                   workdir: str = '.',
+                                   sim_suffix = None,
+                                   this_cfg = None,
+                                   this_args: dict = None):
 
-class SimPredictor:
+        def get_hist_and_peaks(this_d):
+            x = this_d.flatten()
+            x = x[~np.isnan(x)]
+            x = x[:, np.newaxis]
+            hist, bin_edges = np.histogram(x, bins=100, density=1)
+            # dh = np.diff(bin_edges[0:2])
+            peaks, _ = find_peaks(hist / np.max(hist), height=.4, distance=20)
+            return {'pdf': hist, 'bins': bin_edges[0:-1], 'Npeaks': len(peaks)}
+
+        # Squeeze traj file to the first predicted cycle (sim can have more than 1 cycle)
+        ds = self.obj.where((self.obj['cycle_number'] == cycle).compute(), drop=True)
+        ds = ds.compute()
+
+        # Compute trajectories relative to the single/only real float initial position:
+        lon0, lat0 = self.obj.isel(obs=0)['lon'].values[0], self.obj.isel(obs=0)['lat'].values[0]
+        lon, lat = ds['lon'].values, ds['lat'].values
+        ds['lonc'] = xr.DataArray(lon - np.broadcast_to(lon[:, 0][:, np.newaxis], lon.shape) + lon0,
+                                  dims=['trajectory', 'obs'])
+        ds['latc'] = xr.DataArray(lat - np.broadcast_to(lat[:, 0][:, np.newaxis], lat.shape) + lat0,
+                                  dims=['trajectory', 'obs'])
+
+        # Compute trajectory lengths:
+        ds['length'] = np.sqrt(ds.diff(dim='obs')['lon'] ** 2 + ds.diff(dim='obs')['lat'] ** 2).sum(dim='obs')
+        ds['lengthc'] = np.sqrt(ds.diff(dim='obs')['lonc'] ** 2 + ds.diff(dim='obs')['latc'] ** 2).sum(dim='obs')
+
+        # Compute initial points pairwise distances, PDF and nb of peaks:
+        X = ds.isel(obs=0)
+        X = X.isel(trajectory=~np.isnan(X['lon']))
+        X0 = np.array((X['lon'].values, X['lat'].values)).T
+        d0 = pairwise_distances(X0, n_jobs=-1)
+        d0 = np.triu(d0)
+        d0[d0 == 0] = np.nan
+
+        x0 = d0.flatten()
+        x0 = x0[~np.isnan(x0)]
+        x0 = x0[:, np.newaxis]
+
+        hist0, bin_edges0 = np.histogram(x0, bins=100, density=1)
+        dh0 = np.diff(bin_edges0[0:2])
+        peaks0, _ = find_peaks(hist0 / np.max(hist0), height=.4, distance=20)
+
+        # Compute final points pairwise distances, PDF and nb of peaks:
+        X = ds.isel(obs=-1)
+        X = X.isel(trajectory=~np.isnan(X['lon']))
+        dsf = X
+        X = np.array((X['lon'].values, X['lat'].values)).T
+        d = pairwise_distances(X, n_jobs=-1)
+        d = np.triu(d)
+        d[d == 0] = np.nan
+
+        x = d.flatten()
+        x = x[~np.isnan(x)]
+        x = x[:, np.newaxis]
+
+        hist, bin_edges = np.histogram(x, bins=100, density=1)
+        dh = np.diff(bin_edges[0:2])
+        peaks, _ = find_peaks(hist / np.max(hist), height=.4, distance=20)
+
+        # Compute final points pairwise distances (relative traj), PDF and nb of peaks:
+        X1 = ds.isel(obs=-1)
+        X1 = X1.isel(trajectory=~np.isnan(X1['lonc']))
+        dsfc = X1
+        X1 = np.array((X1['lonc'].values, X1['latc'].values)).T
+        d1 = pairwise_distances(X1, n_jobs=-1)
+        d1 = np.triu(d1)
+        d1[d1 == 0] = np.nan
+
+        x1 = d1.flatten()
+        x1 = x1[~np.isnan(x1)]
+        x1 = x1[:, np.newaxis]
+
+        hist1, bin_edges1 = np.histogram(x1, bins=100, density=1)
+        dh1 = np.diff(bin_edges1[0:2])
+        peaks1, _ = find_peaks(hist1 / np.max(hist1), height=.4, distance=20)
+
+        # Compute the overlapping between the initial and relative state PDFs:
+        bin_unif = np.arange(0, np.max([bin_edges0, bin_edges1]), np.min([dh0, dh1]))
+        dh_unif = np.diff(bin_unif[0:2])
+        hist0_unif = np.interp(bin_unif, bin_edges0[0:-1], hist0)
+        hist_unif = np.interp(bin_unif, bin_edges[0:-1], hist)
+        hist1_unif = np.interp(bin_unif, bin_edges1[0:-1], hist1)
+
+        # Area under hist1 AND hist0:
+        # overlapping = np.sum(hist1_unif[hist0_unif >= hist1_unif]*dh_unif)
+        overlapping = np.sum(hist_unif[hist0_unif >= hist_unif] * dh_unif)
+
+        # Ratio of the max PDF ranges:
+        # staggering = np.max(bin_edges1)/np.max(bin_edges0)
+        staggering = np.max(bin_edges) / np.max(bin_edges0)
+
+        # Store metrics in a dict:
+        prediction_metrics = {}
+
+        prediction_metrics['trajectory_lengths'] = {'median': np.nanmedian(ds['length'].values),
+                                                    'std': np.nanstd(ds['length'].values)}
+
+        prediction_metrics['pairwise_distances'] = {
+            'initial_state': {'median': np.nanmedian(d0), 'std': np.nanstd(d0), 'nPDFpeaks': len(peaks0)},
+            'final_state': {'median': np.nanmedian(d), 'std': np.nanstd(d), 'nPDFpeaks': len(peaks)},
+            'relative_state': {'median': np.nanmedian(d1), 'std': np.nanstd(d1), 'nPDFpeaks': len(peaks1)},
+            'overlapping': {'value': overlapping,
+                            'comment': 'Overlapping area between PDF(initial_state) and PDF(final_state)'},
+            'staggering': {'value': staggering, 'comment': 'Ratio of PDF(initial_state) vs PDF(final_state) ranges'},
+            'score': {'value': overlapping / len(peaks), 'comment': 'overlapping/nPDFpeaks(final_state)'}}
+
+        if np.isinf(overlapping / len(peaks)):
+            raise ValueError("Can't compute the prediction score, infinity !")
+
+        ratio = prediction_metrics['pairwise_distances']['final_state']['std'] / \
+                prediction_metrics['pairwise_distances']['initial_state']['std']
+        prediction_metrics['pairwise_distances']['std_ratio'] = ratio
+
+        # Figure:
+        if show_plot:
+            backend = matplotlib.get_backend()
+            if this_args is not None and this_args.json:
+                matplotlib.use('Agg')
+
+            fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(18, 10), dpi=90)
+            ax, ix = ax.flatten(), -1
+            cmap = plt.cm.coolwarm
+
+            ix += 1
+            dd = dsf['length'].values
+            ax[ix].plot(X0[:, 0], X0[:, 1], '.', markersize=3, color='grey', alpha=0.5, markeredgecolor=None, zorder=0)
+            ax[ix].scatter(X[:, 0], X[:, 1], c=dd, zorder=10, s=3, cmap=cmap)
+            ax[ix].grid()
+            this_traj = int(dsf.isel(trajectory=np.argmax(dd))['trajectory'].values[np.newaxis][0])
+            ax[ix].plot(ds.where(ds['trajectory'] == this_traj, drop=True).isel(trajectory=0)['lon'],
+                        ds.where(ds['trajectory'] == this_traj, drop=True).isel(trajectory=0)['lat'], 'r',
+                        zorder=13, label='Longest traj.')
+            this_traj = int(dsf.isel(trajectory=np.argmin(dd))['trajectory'].values[np.newaxis][0])
+            ax[ix].plot(ds.where(ds['trajectory'] == this_traj, drop=True).isel(trajectory=0)['lon'],
+                        ds.where(ds['trajectory'] == this_traj, drop=True).isel(trajectory=0)['lat'], 'b',
+                        zorder=13, label='Shortest traj.')
+            ax[ix].legend()
+            ax[ix].set_title('Trajectory lengths')
+
+            ix += 1
+            ax[ix].plot(bin_edges0[0:-1], hist0, label='Initial (%i peak)' % len(peaks0), color='gray')
+            ax[ix].plot(bin_edges[0:-1], hist, label='Final (%i peak)' % len(peaks), color='lightblue')
+            ax[ix].plot(bin_edges[peaks], hist[peaks], "x", label='Peaks')
+            ax[ix].legend()
+            ax[ix].grid()
+            ax[ix].set_xlabel('Pairwise distance [degree]')
+            line1 = "Staggering: %0.4f" % staggering
+            line2 = "Overlapping: %0.4f" % overlapping
+            line3 = "Score: %0.4f" % (overlapping / len(peaks))
+            ax[ix].set_title("Pairwise distances PDF: [%s / %s / %s]" % (line1, line2, line3))
+
+            if this_args is not None:
+                line0 = "VirtualFleet recovery swarm simulation for WMO %i, starting from cycle %i, predicting cycle %i\n%s" % \
+                        (this_args.wmo, this_args.cyc[0] - 1, this_args.cyc[0], get_cfg_str(this_cfg))
+                line1 = "Simulation made with %s and %i virtual floats" % (this_args.velocity, this_args.nfloats)
+            else:
+                line0 = "VirtualFleet recovery swarm simulation for cycle %i" % cycle
+                line1 = "Simulation made with %i virtual floats" % (self.n_floats)
+
+            fig.suptitle("%s\n%s" % (line0, line1), fontsize=15)
+            plt.tight_layout()
+
+            if save_figure:
+                if sim_suffix is not None:
+                    filename = 'vfrecov_metrics01_%s_cyc%i' % (sim_suffix, cycle)
+                else:
+                    filename = 'vfrecov_metrics01_cyc%i' % (cycle)
+                save_figurefile(fig, filename, workdir)
+
+            if this_args is not None and this_args.json:
+                matplotlib.use(backend)
+
+        if show_plot:
+            return prediction_metrics, fig, ax
+        else:
+            return prediction_metrics
+
+
+class SimPredictor_0:
     """
 
     Examples
@@ -1186,7 +1395,7 @@ class SimPredictor:
 
     def __repr__(self):
         summary = ["<VFRecovery.Predictor>"]
-        summary.append("Target float WMO/CYCLE_NUMBER: %i / %i" % (self.WMO, self.sim_cycles[0]))
+        summary.append("Simulation target: %i / %i" % (self.WMO, self.sim_cycles[0]))
         summary.append("Swarm size: %i floats" % len(np.unique(self.swarm['wmo'])))
         summary.append("Number of simulated cycles: %i profile(s) for cycle number(s): [%s]" % (
         self.n_cycles, ",".join([str(c) for c in self.sim_cycles])))
@@ -1235,10 +1444,10 @@ class SimPredictor:
                                     self.obs['latitude'].values[0],
                                     self.obs['date'].values[0]])[
             np.newaxis]  # Starting point where swarm was deployed
-        for cyc in self._json.keys():
-            xpred = self._json[cyc]['location']['longitude']['value']
-            ypred = self._json[cyc]['location']['latitude']['value']
-            tpred = self._json[cyc]['location']['time']['value']
+        for cyc in self._json['predictions'].keys():
+            xpred = self._json['predictions'][cyc]['location']['longitude']['value']
+            ypred = self._json['predictions'][cyc]['location']['latitude']['value']
+            tpred = self._json['predictions'][cyc]['location']['time']['value']
             traj_prediction = np.concatenate((traj_prediction,
                                               np.array([xpred, ypred, tpred])[np.newaxis]),
                                              axis=0)
@@ -1249,19 +1458,6 @@ class SimPredictor:
         if self._json is None:
             raise ValueError("Please call `fit_predict` first")
         return self._json
-
-    def to_json(self):
-        js = self.predictions.copy()
-        keys = js.copy().keys()
-        for key in keys:
-            js.update({str(key): js[key]})
-            js.pop(key, None)
-
-        # results = {}
-        # results['predictions'] = js
-
-        results_js = json.dumps(js, indent=4, sort_keys=True, default=str)
-        return results_js
 
     def bbox(self, s: float = 1) -> list:
         """Get a bounding box for maps
@@ -1298,6 +1494,8 @@ class SimPredictor:
         ebox = [box[0] - s * r, box[1] + s * r, box[2] - s * r, box[3] + s * r]
 
         return ebox
+
+class SimPredictor_1(SimPredictor_0):
 
     def set_weights(self, scale: float = 20):
         """Compute weights for predictions
@@ -1375,8 +1573,10 @@ class SimPredictor:
             Hrel[Hrel == 0] = np.NaN
             self._prediction_data['cyc'].update({this_sim_cyc: {'weights': this_cyc_df['weights'], 'Hrel': Hrel}})
 
-        self._json = recovery_predictions
-        return recovery_predictions
+        self._json = {'predictions': recovery_predictions}
+
+        #
+        return self
 
     def fit_predict_average(self, weights_scale: float = 20) -> dict:
         """Predict profile positions from simulated float swarm
@@ -1431,8 +1631,10 @@ class SimPredictor:
             # Nicer histogram
             self._prediction_data['cyc'].update({this_sim_cyc: {'weights': this_cyc_df['weights']}})
 
-        self._json = recovery_predictions
-        return recovery_predictions
+        self._json = {'predictions': recovery_predictions}
+
+        #
+        return self
 
     def fit_predict(self, weights_scale: float = 20.) -> dict:
         """Predict profile positions from simulated float swarm
@@ -1464,7 +1666,7 @@ class SimPredictor:
 
         self._prediction_data = {'weights_scale': weights_scale, 'cyc': {}}
 
-        cycles = np.unique(self.swarm['cyc'])  # 1, 2, ...
+        cycles = np.unique(self.swarm['cyc']).astype(int)  # 1, 2, ...
         recovery_predictions = {}
         for icyc, this_sim_cyc in enumerate(cycles):
             this_cyc_df = self.swarm[self.swarm['cyc'] == this_sim_cyc]
@@ -1490,24 +1692,31 @@ class SimPredictor:
             recovery['location']['latitude']['value'] = ypred
             recovery['location']['time']['value'] = tpred
             recovery['cycle_number'] = self.sim_cycles[icyc]
-            recovery_predictions.update({this_sim_cyc: recovery})
+            recovery_predictions.update({int(this_sim_cyc): recovery})
 
             #
             self._prediction_data['cyc'].update({this_sim_cyc: {'weights': this_cyc_df['weights']}})
 
         # Store results internally
-        self._json = recovery_predictions
+        self._json = {'predictions': recovery_predictions}
 
-        # Add more stuff:
-        self.predict_errors()
+        # Add more stuff to internal storage:
+        self._predict_errors()
+        self._add_ref()
+        self.add_metrics()
 
-        # Returns
-        return self.predictions
+        #
+        return self
 
-    def predict_errors(self) -> dict:
-        """Compute error metrics of the predicted position
+
+class SimPredictor_2(SimPredictor_1):
+
+    def _predict_errors(self) -> dict:
+        """Compute error metrics for the predicted positions
 
         This is for past cycles, for which we have observed positions of the predicted profiles
+
+        This adds more keys to self._json['predictions'] created by the fit_predict method
 
         Returns
         -------
@@ -1523,22 +1732,22 @@ class SimPredictor:
                              'unit': 'hour'}
                     }
 
-        obs_cycles = np.unique(self.obs['cyc'])
-        cyc0 = obs_cycles[0]
+        cyc0 = self.obs_cycles[0]
         if self._json is None:
-            raise ValueError("Please call `predict` first")
-        recovery_predictions = self._json
+            raise ValueError("Please call `fit_predict` first")
+        recovery_predictions = self._json['predictions']
 
         for sim_c in recovery_predictions.keys():
             this_prediction = recovery_predictions[sim_c]
-            if sim_c + cyc0 in obs_cycles:
+            if sim_c + cyc0 in self.obs_cycles:
                 error = blank_error()
 
                 this_obs_profile = self.obs[self.obs['cyc'] == sim_c + cyc0]
-                prev_obs_profile = self.obs[self.obs['cyc'] == sim_c + cyc0 - 1]
                 xobs = this_obs_profile['longitude'].iloc[0]
                 yobs = this_obs_profile['latitude'].iloc[0]
                 tobs = this_obs_profile['date'].iloc[0]
+
+                prev_obs_profile = self.obs[self.obs['cyc'] == sim_c + cyc0 - 1]
                 xobs0 = prev_obs_profile['longitude'].iloc[0]
                 yobs0 = prev_obs_profile['latitude'].iloc[0]
 
@@ -1547,20 +1756,70 @@ class SimPredictor:
                 tpred = this_prediction['location']['time']['value']
 
                 dd = haversine(xobs, yobs, xpred, ypred)
-                dt = pd.Timedelta(tpred - tobs).seconds / 3600.
                 error['distance']['value'] = dd
 
                 observed_bearing = bearing(xobs0, yobs0, xobs, yobs)
                 sim_bearing = bearing(xobs0, yobs0, xpred, ypred)
                 error['bearing']['value'] = sim_bearing - observed_bearing
 
-                error['time']['value'] = dt
+                dt = pd.Timedelta(tpred - tobs) / np.timedelta64(1, 's')
+                # print(tpred, tobs, pd.Timedelta(tpred - tobs))
+                error['time']['value'] = dt / 3600  # From seconds to hours
 
                 this_prediction['location_error'] = error
                 recovery_predictions.update({sim_c: this_prediction})
 
-        self._json = recovery_predictions
-        return recovery_predictions
+        self._json.update({'predictions': recovery_predictions})
+        return self
+
+    def _add_ref(self):
+        """Add observations data to internal data structure
+
+        This adds more keys to self._json['predictions'] created by the fit_predict method
+
+        """
+        if self._json is None:
+            raise ValueError("Please call `predict` first")
+
+        # Observed profiles that were simulated:
+        profiles_to_predict = []
+        for cyc in self.sim_cycles:
+            this = {'wmo': self.WMO,
+                    'cycle_number': cyc,
+                    'url_float': argoplot.dashboard(self.WMO, url_only=True),
+                    'url_profile': None,
+                    'location': {'longitude': {'value': None,
+                                               'unit': 'degree East'},
+                                 'latitude': {'value': None,
+                                              'unit': 'degree North'},
+                                 'time': {'value': None}}
+                    }
+            if cyc in self.obs_cycles:
+                this['url_profile'] = get_ea_profile_page_url(self.WMO, cyc)
+                this_df = self.obs[self.obs['cyc'] == cyc]
+                this['location']['longitude']['value'] = this_df['longitude'].iloc[0]
+                this['location']['latitude']['value'] = this_df['latitude'].iloc[0]
+                this['location']['time']['value'] = this_df['date'].iloc[0]
+            profiles_to_predict.append(this)
+
+        self._json.update({'observations': profiles_to_predict})
+
+        # Observed profile used as initial conditions to the simulation:
+        cyc = self.obs_cycles[0]
+        this_df = self.obs[self.obs['cyc'] == cyc]
+        self._json.update({'initial_profile': {'wmo': self.WMO,
+                                               'cycle_number': cyc,
+                                               'url_float': argoplot.dashboard(self.WMO, url_only=True),
+                                               'url_profile': get_ea_profile_page_url(self.WMO, cyc),
+                                               'location': {'longitude': {'value': this_df['longitude'].iloc[0],
+                                                                          'unit': 'degree East'},
+                                                            'latitude': {'value': this_df['latitude'].iloc[0],
+                                                                         'unit': 'degree North'},
+                                                            'time': {'value': this_df['date'].iloc[0]}}
+                                               }})
+
+        #
+        return self
 
     def add_metrics(self, VFvel=None):
         """Compute more metrics to understand the prediction error
@@ -1570,11 +1829,13 @@ class SimPredictor:
 
         1. Compute the possible drift due to the time lag between the predicted profile timing and the expected one
 
+        This adds more keys to self._json['predictions'] created by the fit_predict method
+
         """
         cyc0 = self.obs_cycles[0]
         if self._json is None:
             raise ValueError("Please call `predict` first")
-        recovery_predictions = self._json
+        recovery_predictions = self._json['predictions']
 
         for sim_c in recovery_predictions.keys():
             this_prediction = recovery_predictions[sim_c]
@@ -1620,52 +1881,11 @@ class SimPredictor:
                 this_prediction['metrics'] = metrics
                 recovery_predictions.update({sim_c: this_prediction})
 
-        self._json = recovery_predictions
-        return recovery_predictions
+        self._json.update({"predictions": recovery_predictions})
+        return self
 
-    def add_ref(self):
-        if self._json is None:
-            raise ValueError("Please call `predict` first")
-        recovery_predictions = self._json
 
-        profiles_to_predict = []
-
-        for cyc in self.sim_cycles:
-            this = {'wmo': self.WMO,
-                    'cycle_number': cyc,
-                    'url_float': argoplot.dashboard(self.WMO, url_only=True),
-                    'url_profile': None,
-                    'location': {'longitude': {'value': None,
-                                               'unit': 'degree East'},
-                                 'latitude': {'value': None,
-                                              'unit': 'degree North'},
-                                 'time': {'value': None}}
-                    }
-            if cyc in self.obs['cyc']:
-                this['url_profile'] = get_ea_profile_page_url(self.WMO, cyc)
-                this_df = self.obs[self.obs['cyc'] == cyc]
-                this['location']['longitude']['value'] = this_df['longitude'].iloc[0]
-                this['location']['latitude']['value'] = this_df['latitude'].iloc[0]
-                this['location']['time']['value'] = this_df['date'].iloc[0]
-            profiles_to_predict.append(this)
-
-        recovery_predictions['observations'] = profiles_to_predict
-
-        cyc = self.obs_cycles[0]
-        this_df = self.obs[self.obs['cyc'] == cyc]
-        recovery_predictions['initial_profile'] = {'wmo': self.WMO,
-                                      'cycle_number': cyc,
-                                      'url_float': argoplot.dashboard(self.WMO, url_only=True),
-                                      'url_profile': get_ea_profile_page_url(self.WMO, cyc),
-                                      'location': {'longitude': {'value': this_df['longitude'].iloc[0],
-                                                                 'unit': 'degree East'},
-                                                   'latitude': {'value': this_df['latitude'].iloc[0],
-                                                                'unit': 'degree North'},
-                                                   'time': {'value': this_df['data'].iloc[0]}}
-                                      }
-
-        self._json = recovery_predictions
-        return recovery_predictions
+class SimPredictor_3(SimPredictor_2):
 
     def plot_predictions(self,
                          VFvel,
@@ -1679,35 +1899,35 @@ class SimPredictor:
                          dpi=120,
                          orient='portrait'):
         ebox = self.bbox(s=s)
-        # obs_cycles = np.unique(self.obs['cyc'])
-        # sim_cycles = obs_cycles[0] + 1 + range(self.n_cycles)
         pred_traj = self.trajectory
 
         if orient == 'portrait':
             if self.n_cycles == 1:
                 nrows, ncols = 2, 1
+                if figsize is None:
+                    figsize = (5, 5)
             else:
                 nrows, ncols = self.n_cycles, 2
-            if figsize is None:
-                figsize = (5, 15)
+                if figsize is None:
+                    figsize = (5, (self.n_cycles-1)*5)
         else:
             if self.n_cycles == 1:
                 nrows, ncols = 1, 2
             else:
                 nrows, ncols = 2, self.n_cycles
             if figsize is None:
-                figsize = (15, 5)
+                figsize = (ncols*5, 5)
 
         def plot_this(this_ax, i_cycle, ip):
             df_sim = self.swarm[self.swarm['cyc'] == i_cycle + 1]
             weights = self._prediction_data['cyc'][i_cycle + 1]['weights'].values
             if self.sim_cycles[i_cycle] in self.obs_cycles:
-                this_profile = self.obs[self.obs['cyc'] == self.obs_cycles[i_cycle]]
+                this_profile = self.obs[self.obs['cyc'] == self.sim_cycles[i_cycle]]
             else:
                 this_profile = None
 
-            xpred = self.predictions[i_cycle + 1]['location']['longitude']['value']
-            ypred = self.predictions[i_cycle + 1]['location']['latitude']['value']
+            xpred = self.predictions['predictions'][i_cycle + 1]['location']['longitude']['value']
+            ypred = self.predictions['predictions'][i_cycle + 1]['location']['latitude']['value']
 
             this_ax.set_extent(ebox)
             this_ax = map_add_features(ax[ix])
@@ -1776,7 +1996,7 @@ class SimPredictor:
 
             this_ax.set_title("")
             # this_ax.set_ylabel("Cycle %i predictions" % (i_cycle+1))
-            # this_ax.set_title("%s\nCycle %i predictions" % (title, sim_cycles[i_cycle]))
+            this_ax.set_title("%s\nCycle %i predictions" % (title, self.sim_cycles[i_cycle]), fontsize=6)
 
         fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize, dpi=dpi,
                                subplot_kw={'projection': ccrs.PlateCarree()},
@@ -1831,191 +2051,19 @@ class SimPredictor:
         return fig, ax
 
 
-def analyse_pairwise_distances(this_args, this_cfg,  data):
-    from scipy.signal import find_peaks
+class SimPredictor(SimPredictor_3):
 
-    def get_hist_and_peaks(this_d):
-        x = this_d.flatten()
-        x = x[~np.isnan(x)]
-        x = x[:, np.newaxis]
-        hist, bin_edges = np.histogram(x, bins=100, density=1)
-        # dh = np.diff(bin_edges[0:2])
-        peaks, _ = find_peaks(hist / np.max(hist), height=.4, distance=20)
-        return {'pdf': hist, 'bins': bin_edges[0:-1], 'Npeaks': len(peaks)}
-
-    # Trajectory file:
-    workdir = this_args.output
-    simufile = os.path.sep.join([workdir,
-                               'trajectories_%s.zarr' % get_sim_suffix(this_args, this_cfg)])
-    engine = "zarr"
-    if not os.path.exists(simufile):
-        ncfile = os.path.sep.join([workdir,
-                                   'trajectories_%s.nc' % get_sim_suffix(this_args, this_cfg)])
-        engine = "netcdf4"
-        if not os.path.exists(ncfile):
-            puts('Cannot analyse pairwise distances because the trajectory file cannot be found at: %s' % simufile,
-                 color=COLORS.red)
-            return data  # Return results dict unchanged
-
-    # Open trajectory file:
-    ds = xr.open_dataset(simufile, engine=engine)
-
-    # Compute trajectories relative to the single/only real float initial position:
-    lon = ds['lon'].values
-    lat = ds['lat'].values
-    lon0 = data['previous_profile']['location']['longitude']['value']
-    lat0 = data['previous_profile']['location']['latitude']['value']
-    ds['lonc'] = xr.DataArray(lon - np.broadcast_to(lon[:, 0][:, np.newaxis], lon.shape) + lon0, dims=['trajectory', 'obs'])
-    ds['latc'] = xr.DataArray(lat - np.broadcast_to(lat[:, 0][:, np.newaxis], lat.shape) + lat0, dims=['trajectory', 'obs'])
-
-    # Compute trajectory lengths:
-    ds['length'] = np.sqrt(ds.diff(dim='obs')['lon'] ** 2 + ds.diff(dim='obs')['lat'] ** 2).sum(dim='obs')
-    ds['lengthc'] = np.sqrt(ds.diff(dim='obs')['lonc'] ** 2 + ds.diff(dim='obs')['latc'] ** 2).sum(dim='obs')
-
-    # Compute initial points pairwise distances, PDF and nb of peaks:
-    X = ds.isel(obs=0)
-    X = X.isel(trajectory=~np.isnan(X['lon']))
-    X0 = np.array((X['lon'].values, X['lat'].values)).T
-    d0 = pairwise_distances(X0, n_jobs=-1)
-    d0 = np.triu(d0)
-    d0[d0 == 0] = np.nan
-
-    x0 = d0.flatten()
-    x0 = x0[~np.isnan(x0)]
-    x0 = x0[:, np.newaxis]
-
-    hist0, bin_edges0 = np.histogram(x0, bins=100, density=1)
-    dh0 = np.diff(bin_edges0[0:2])
-    peaks0, _ = find_peaks(hist0 / np.max(hist0), height=.4, distance=20)
-
-    # Compute final points pairwise distances, PDF and nb of peaks:
-    X = ds.isel(obs=-1)
-    X = X.isel(trajectory=~np.isnan(X['lon']))
-    dsf = X
-    X = np.array((X['lon'].values, X['lat'].values)).T
-    d = pairwise_distances(X, n_jobs=-1)
-    d = np.triu(d)
-    d[d == 0] = np.nan
-
-    x = d.flatten()
-    x = x[~np.isnan(x)]
-    x = x[:, np.newaxis]
-
-    hist, bin_edges = np.histogram(x, bins=100, density=1)
-    dh = np.diff(bin_edges[0:2])
-    peaks, _ = find_peaks(hist / np.max(hist), height=.4, distance=20)
-
-    # Compute final points pairwise distances (relative traj), PDF and nb of peaks:
-    X1 = ds.isel(obs=-1)
-    X1 = X1.isel(trajectory=~np.isnan(X1['lonc']))
-    dsfc = X1
-    X1 = np.array((X1['lonc'].values, X1['latc'].values)).T
-    d1 = pairwise_distances(X1, n_jobs=-1)
-    d1 = np.triu(d1)
-    d1[d1 == 0] = np.nan
-
-    x1 = d1.flatten()
-    x1 = x1[~np.isnan(x1)]
-    x1 = x1[:, np.newaxis]
-
-    hist1, bin_edges1 = np.histogram(x1, bins=100, density=1)
-    dh1 = np.diff(bin_edges1[0:2])
-    peaks1, _ = find_peaks(hist1 / np.max(hist1), height=.4, distance=20)
-
-    # Compute the overlapping between the initial and relative state PDFs:
-    bin_unif = np.arange(0, np.max([bin_edges0, bin_edges1]), np.min([dh0, dh1]))
-    dh_unif = np.diff(bin_unif[0:2])
-    hist0_unif = np.interp(bin_unif, bin_edges0[0:-1], hist0)
-    hist_unif = np.interp(bin_unif, bin_edges[0:-1], hist)
-    hist1_unif = np.interp(bin_unif, bin_edges1[0:-1], hist1)
-
-    # Area under hist1 AND hist0:
-    # overlapping = np.sum(hist1_unif[hist0_unif >= hist1_unif]*dh_unif)
-    overlapping = np.sum(hist_unif[hist0_unif >= hist_unif] * dh_unif)
-
-    # Ratio of the max PDF ranges:
-    # staggering = np.max(bin_edges1)/np.max(bin_edges0)
-    staggering = np.max(bin_edges) / np.max(bin_edges0)
-
-    # Save metrics:
-    prediction_metrics = data['prediction_metrics']
-    # prediction_metrics = {}
-
-    prediction_metrics['trajectory_lengths'] = {'median': np.nanmedian(ds['length'].values),
-                                                'std': np.nanstd(ds['length'].values)}
-
-    prediction_metrics['pairwise_distances'] = {
-        'initial_state': {'median': np.nanmedian(d0), 'std': np.nanstd(d0), 'nPDFpeaks': len(peaks0)},
-        'final_state': {'median': np.nanmedian(d), 'std': np.nanstd(d), 'nPDFpeaks': len(peaks)},
-        'relative_state': {'median': np.nanmedian(d1), 'std': np.nanstd(d1), 'nPDFpeaks': len(peaks1)},
-        'overlapping': {'value': overlapping,
-                        'comment': 'Overlapping area between PDF(initial_state) and PDF(final_state)'},
-        'staggering': {'value': staggering, 'comment': 'Ratio of PDF(initial_state) vs PDF(final_state) ranges'},
-        'score': {'value': overlapping / len(peaks), 'comment': 'overlapping/nPDFpeaks(final_state)'}}
-
-    if np.isinf(overlapping / len(peaks)):
-        raise ValueError("Can't compute the prediction score, infinity !")
-
-    ratio = prediction_metrics['pairwise_distances']['final_state']['std'] / \
-            prediction_metrics['pairwise_distances']['initial_state']['std']
-    prediction_metrics['pairwise_distances']['std_ratio'] = ratio
-
-    data['prediction_metrics'] = prediction_metrics
-
-    # Figure:
-    backend = matplotlib.get_backend()
-    if this_args.json:
-        matplotlib.use('Agg')
-
-    fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(18, 10), dpi=90)
-    ax, ix = ax.flatten(), -1
-    cmap = plt.cm.coolwarm
-
-    ix += 1
-    dd = dsf['length'].values
-    ax[ix].plot(X0[:, 0], X0[:, 1], '.', markersize=3, color='grey', alpha=0.5, markeredgecolor=None, zorder=0)
-    ax[ix].scatter(X[:, 0], X[:, 1], c=dd, zorder=10, s=3, cmap=cmap)
-    ax[ix].grid()
-    this_traj = int(dsf.isel(trajectory=np.argmax(dd))['trajectory'].values[np.newaxis][0])
-    ax[ix].plot(ds.where(ds['trajectory'] == this_traj, drop=True).isel(trajectory=0)['lon'],
-                ds.where(ds['trajectory'] == this_traj, drop=True).isel(trajectory=0)['lat'], 'r',
-                zorder=13, label='Longest traj.')
-    this_traj = int(dsf.isel(trajectory=np.argmin(dd))['trajectory'].values[np.newaxis][0])
-    ax[ix].plot(ds.where(ds['trajectory'] == this_traj, drop=True).isel(trajectory=0)['lon'],
-                ds.where(ds['trajectory'] == this_traj, drop=True).isel(trajectory=0)['lat'], 'b',
-                zorder=13, label='Shortest traj.')
-    ax[ix].legend()
-    ax[ix].set_title('Trajectory lengths')
-
-    ix += 1
-    ax[ix].plot(bin_edges0[0:-1], hist0, label='Initial (%i peak)' % len(peaks0), color='gray')
-    ax[ix].plot(bin_edges[0:-1], hist, label='Final (%i peak)' % len(peaks), color='lightblue')
-    ax[ix].plot(bin_edges[peaks], hist[peaks], "x", label='Peaks')
-    ax[ix].legend()
-    ax[ix].grid()
-    ax[ix].set_xlabel('Pairwise distance [degree]')
-    line1 = "Staggering: %0.4f" % staggering
-    line2 = "Overlapping: %0.4f" % overlapping
-    line3 = "Score: %0.4f" % (overlapping / len(peaks))
-    ax[ix].set_title("Pairwise distances PDF: [%s / %s / %s]" % (line1, line2, line3))
-
-    line0 = "VirtualFleet recovery prediction for WMO %i: starting from cycle %i, predicting cycle %i\n%s" % \
-            (this_args.wmo, this_args.cyc - 1, this_args.cyc, get_cfg_str(this_cfg))
-    line1 = "Prediction made with %s and %i virtual floats" % (this_args.velocity, this_args.nfloats)
-    fig.suptitle("%s\n%s" % (line0, line1), fontsize=15)
-    plt.tight_layout()
-    if this_args.save_figure:
-        figfile = 'vfrecov_metrics01_%s' % get_sim_suffix(this_args, this_cfg)
-        save_figurefile(fig, figfile, workdir)
-
-    # Save new data to json file:
-    # jsfile = os.path.join(workdir, 'prediction_%s_%i.json' % (this_args.velocity, this_args.nfloats))
-    # with open(jsfile, 'w', encoding='utf-8') as f:
-    #     json.dump(data, f, ensure_ascii=False, indent=4, default=str, sort_keys=True)
-
-    if this_args.json:
-        matplotlib.use(backend)
-    return data
+    def to_json(self, fp=None):
+        kw = {'indent': 4, 'sort_keys': True, 'default': str}
+        if fp is not None:
+            if hasattr(fp, 'write'):
+                json.dump(self._json, fp, **kw)
+            else:
+                with open(fp, 'w') as f:
+                    json.dump(self._json, f, **kw)
+        else:
+            results_js = json.dumps(self._json, **kw)
+            return results_js
 
 
 def get_ea_profile_page_url(wmo, cyc):
@@ -2243,7 +2291,7 @@ def predictor(args):
 
     # VirtualFleet, get simulated profiles index:
     if not args.json:
-        puts("\nVirtualFleet, extract simulated profiles index...")
+        puts("\nExtract swarm profiles index...")
 
     T = Trajectories(WORKDIR + "/" + 'trajectories_%s.zarr' % get_sim_suffix(args, CFG))
     DF_SIM = T.get_index().add_distances(origin=[THIS_PROFILE['longitude'].values[0], THIS_PROFILE['latitude'].values[0]])
@@ -2257,57 +2305,34 @@ def predictor(args):
     # Recovery, make predictions based on simulated profile density:
     SP = SimPredictor(DF_SIM, THIS_PROFILE)
     if not args.json:
+        puts("\nPredict float cycle position(s) from swarm simulation...", color=COLORS.white)
         puts(str(SP), color=COLORS.magenta)
     SP.fit_predict()
-    results = SP.add_metrics(VEL)
+    SP.add_metrics(VEL)
     SP.plot_predictions(VEL,
                          CFG,
                          sim_suffix=get_sim_suffix(args, CFG),
                          save_figure=args.save_figure,
                          workdir=WORKDIR,
                          orient='portrait')
+    results = SP.predictions
 
-    # raise ValueError('stophere')
+    # Recovery, compute more swarm metrics:
+    for this_cyc in T.sim_cycles:
+        jsmetrics, fig, ax = T.analyse_pairwise_distances(cycle=this_cyc,
+                                                          save_figure=True,
+                                                          this_args=args,
+                                                          this_cfg=CFG,
+                                                          sim_suffix=get_sim_suffix(args, CFG),
+                                                          workdir=WORKDIR,
+                                                          )
+        if 'metrics' in results['predictions'][this_cyc]:
+            for key in jsmetrics.keys():
+                results['predictions'][this_cyc]['metrics'].update({key: jsmetrics[key]})
+        else:
+            results['predictions'][this_cyc].update({'metrics': jsmetrics})
 
-    # results = predict_position(args, WORKDIR, WMO, CYC, CFG, VEL, VEL_NAME, DF_SIM, DF_PLAN, THIS_PROFILE,
-    #                            save_figure=args.save_figure, quiet=~args.json)
-    profiles_to_predict = []
-    for cyc in CYC[1:]:
-        this = {'wmo': WMO,
-                          'cycle_number': cyc,
-                          'url_float': argoplot.dashboard(WMO, url_only=True),
-                          'url_profile': None,
-                          'location': {'longitude': {'value': None,
-                                                     'unit': 'degree East'},
-                                       'latitude': {'value': None,
-                                                    'unit': 'degree North'},
-                                       'time': {'value': None}}
-                                     }
-        if cyc in THIS_PROFILE['cyc']:
-            this['url_profile'] = get_ea_profile_page_url(WMO, cyc)
-            this_df = THIS_PROFILE[THIS_PROFILE['cyc'] == cyc]
-            this['location']['longitude']['value'] = this_df['longitude'].iloc[0]
-            this['location']['latitude']['value'] = this_df['latitude'].iloc[0]
-            this['location']['time']['value'] = this_df['date'].iloc[0]
-        profiles_to_predict.append(this)
-    results['profiles_to_predict'] = profiles_to_predict
-
-    results['initial_profile'] = {'wmo': WMO,
-                          'cycle_number': CYC[0],
-                          'url_float': argoplot.dashboard(WMO, url_only=True),
-                          'url_profile': get_ea_profile_page_url(WMO, CYC[0]),
-                          'location': {'longitude': {'value': CENTER[0],
-                                                     'unit': 'degree East'},
-                                       'latitude': {'value': CENTER[1],
-                                                    'unit': 'degree North'},
-                                       'time': {'value': THIS_DATE}}
-                                   }
-
-    results_js = json.dumps(results, indent=4, sort_keys=True, default=str)
-    raise ValueError('stophere')
-
-    results = analyse_pairwise_distances(args, CFG, results)
-
+    # Recovery, finalize JSON output:
     execution_end = time.time()
     process_end = time.process_time()
     computation = {
@@ -2326,15 +2351,11 @@ def predictor(args):
         puts("\nPredictions:")
     results_js = json.dumps(results, indent=4, sort_keys=True, default=str)
 
-    # with open(os.path.join(WORKDIR, 'prediction.json'), 'w', encoding='utf-8') as f:
-    #     json.dump(results, f, ensure_ascii=False, indent=4, default=str, sort_keys=True)
-
     with open(os.path.join(WORKDIR, 'prediction_%s.json' % get_sim_suffix(args, CFG)), 'w', encoding='utf-8') as f:
         json.dump(results, f, ensure_ascii=False, indent=4, default=str, sort_keys=True)
 
     if not args.json:
         puts(results_js, color=COLORS.green)
-
         puts("\nCheck results at:")
         puts("\t%s" % WORKDIR, color=COLORS.green)
 
@@ -2349,6 +2370,7 @@ def predictor(args):
 if __name__ == '__main__':
     # Read mandatory arguments from the command line
     ARGS = setup_args().parse_args()
+
     js = predictor(ARGS)
     if ARGS.json:
         sys.stdout.write(js)
