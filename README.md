@@ -63,11 +63,16 @@ To make prediction of where the 99th cycle of the 6902919 float will be, just ty
 recovery_prediction.py 6902919 99
 ```
 
+You can also predict more than one cycle:
+```
+recovery_prediction.py 6902919 99 100 101
+```
+
 A few options are available:
 ```
-usage: recovery_prediction.py [-h] [--nfloats NFLOATS] [--output OUTPUT] [--velocity VELOCITY] [--save_figure SAVE_FIGURE] [--save_sim SAVE_SIM] [--vf VF] [--json]
-                              [--cfg_parking_depth CFG_PARKING_DEPTH] [--cfg_cycle_duration CFG_CYCLE_DURATION]
-                              wmo cyc
+usage: recovery_prediction.py [-h] [--nfloats NFLOATS] [--output OUTPUT] [--velocity VELOCITY] [--domain_size DOMAIN_SIZE] [--save_figure SAVE_FIGURE] [--save_sim SAVE_SIM]
+                              [--vf VF] [--json] [--cfg_parking_depth CFG_PARKING_DEPTH] [--cfg_cycle_duration CFG_CYCLE_DURATION] [--cfg_profile_depth CFG_PROFILE_DEPTH]
+                              wmo cyc [cyc ...]
 
 VirtualFleet recovery predictor
 
@@ -80,6 +85,8 @@ optional arguments:
   --nfloats NFLOATS     Number of virtual floats used to make the prediction, default: 2000
   --output OUTPUT       Output folder, default: webAPI internal folder
   --velocity VELOCITY   Velocity field to use. Possible values are: 'ARMOR3D' (default), 'GLORYS'
+  --domain_size DOMAIN_SIZE
+                        Size (deg) of the velocity domain to load, default: 12
   --save_figure SAVE_FIGURE
                         Should we save figure on file or not ? Default: True
   --save_sim SAVE_SIM   Should we save the simulation on file or not ? Default: False
@@ -89,6 +96,8 @@ optional arguments:
                         Virtual floats parking depth in [db], default: use previous cycle value
   --cfg_cycle_duration CFG_CYCLE_DURATION
                         Virtual floats cycle duration in [hours], default: use previous cycle value
+  --cfg_profile_depth CFG_PROFILE_DEPTH
+                        Virtual floats profiles depth in [db], default: use previous cycle value
 
 This script can be used to make prediction of a specific float cycle position.
     This script can be used on past or unknown float cycles.
@@ -107,7 +116,7 @@ So, don't forget to:
 ```
 recovery_prediction.py 6902915 116
 ```
-Below is an example of this prediction for the 99th cycle of the 6902919 float.  
-The really observed 99th cycle is shown at the tip of the arrow (red point) starting from the previous 98th cycle.  
+Below is an example of this prediction for the 116th cycle of the 6902919 float.  
+The really observed 116th cycle is shown at the tip of the arrow (red point) starting from the previous 115th cycle.  
 The VirtualFleet Recovery prediction is in the probabilistic red shading: the most probable position predicted is in the redder region.
 ![Figure](docs/img/vfrecov_predictions_recap_VELARMOR3D_NF2000_CYCDUR240_PDPTH1000.png)
