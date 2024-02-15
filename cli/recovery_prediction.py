@@ -26,7 +26,7 @@ import json
 from datetime import timedelta
 from tqdm import tqdm
 import argparse
-from argopy.utils import is_wmo, is_cyc
+from argopy.utils import is_wmo, is_cyc, check_cyc
 import argopy.plot as argoplot
 from argopy.stores.argo_index_pd import indexstore_pandas as store
 import matplotlib.pyplot as plt
@@ -36,9 +36,11 @@ import matplotlib
 import time
 import platform, socket, psutil
 from sklearn.metrics import pairwise_distances
+from sklearn.neighbors import KernelDensity
+from scipy.signal import find_peaks
+
 import copernicusmarine
 # from virtualargofleet import Velocity, VirtualFleet, FloatConfiguration
-
 
 logging.getLogger("matplotlib").setLevel(logging.ERROR)
 logging.getLogger("parso").setLevel(logging.ERROR)
@@ -71,9 +73,9 @@ def puts(text, color=None, bold=False, file=sys.stdout):
     Parameters
     ----------
     text
-    color
-    bold
-    file
+    color=None
+    bold=False
+    file=sys.stdout
     """
     if color is None:
         txt = f'{PREF}{1 if bold else 0}m' + text + RESET
@@ -265,9 +267,11 @@ class Armor3d:
         dt = pd.Timedelta(n_days, 'D') if n_days > 1 else pd.Timedelta(0, 'D')
         if start_date + dt <= pd.to_datetime('2022-12-28', utc=True):
             self._loader = self._get_rep
+            self.dataset_id = "dataset-armor-3d-rep-weekly"
             self.time_axis = pd.Series(pd.date_range('19930106', '20221228', freq='7D').tz_localize("UTC"))
         else:
             self._loader = self._get_nrt
+            self.dataset_id = "dataset-armor-3d-nrt-weekly"
             self.time_axis = pd.Series(
                 pd.date_range('20190102', pd.to_datetime('now', utc=True).strftime("%Y%m%d"), freq='7D').tz_localize(
                     "UTC")[0:-1])
@@ -275,8 +279,6 @@ class Armor3d:
         if start_date < self.time_axis.iloc[0]:
             raise ValueError('Date out of bounds')
         elif start_date + dt > self.time_axis.iloc[-1]:
-            # target delivery  time: Near Real Time: Tuesday at 16:00
-            # Eg: on Tuesday Feb. 6th is published the last 7 days nrt analysis, dated Wed. Jan. 31st
             raise ValueError('Date out of bounds, %s > %s' % (
                 start_date + dt, self.time_axis.iloc[-1]))
 
@@ -308,7 +310,7 @@ class Armor3d:
         -------
         :class:xarray.dataset
         """
-        return self._get_this("dataset-armor-3d-rep-weekly")
+        return self._get_this(self.dataset_id)
 
     def _get_nrt(self):
         """near-real-time (NRT) weekly data
@@ -317,7 +319,7 @@ class Armor3d:
         -------
         :class:xarray.dataset
         """
-        return self._get_this("dataset-armor-3d-nrt-weekly")
+        return self._get_this(self.dataset_id)
 
     def to_xarray(self):
         """Load and return data as a :class:`xarray.dataset`
@@ -327,6 +329,15 @@ class Armor3d:
         :class:xarray.dataset
         """
         return self._loader()
+
+    def __repr__(self):
+        summary = ["<CopernicusMarineData.Loader><Armor3D>"]
+        summary.append("dataset_id: %s" % self.dataset_id)
+        summary.append("First day: %s" % self.start_date)
+        summary.append("N days: %s" % self.n_days)
+        summary.append("Domain: %s" % self.box)
+        summary.append("Max depth (m): %s" % self.max_depth)
+        return "\n".join(summary)
 
 
 class Glorys:
@@ -368,8 +379,10 @@ class Glorys:
         dt = pd.Timedelta(n_days, 'D') if n_days > 1 else pd.Timedelta(0, 'D')
         if start_date + dt <= pd.to_datetime('2021-01-09', utc=True):
             self._loader = self._get_reanalysis
+            self.dataset_id = "cmems_mod_glo_phy_my_0.083_P1D-m"
         else:
-            self._loader = self._get_forecast  # 'now' + 10 days
+            self._loader = self._get_forecast
+            self.dataset_id = "cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m"
 
     def _get_this(self, dataset_id, dates):
         ds = copernicusmarine.open_dataset(
@@ -396,7 +409,7 @@ class Glorys:
             end_date = start_date
         else:
             end_date = start_date + pd.Timedelta(self.n_days - 1, 'D')
-        return self._get_this("cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m", [start_date, end_date])
+        return self._get_this(self.dataset_id, [start_date, end_date])
 
     def _get_reanalysis(self):
         """
@@ -409,7 +422,7 @@ class Glorys:
             end_date = start_date
         else:
             end_date = self.start_date + pd.Timedelta(self.n_days - 1, 'D')
-        return self._get_this("cmems_mod_glo_phy_my_0.083_P1D-m", [start_date, end_date])
+        return self._get_this(self.dataset_id, [start_date, end_date])
 
     def to_xarray(self):
         """ Load and return data as a :class:`xarray.dataset`
@@ -418,6 +431,15 @@ class Glorys:
         :class:`xarray.dataset`
         """
         return self._loader()
+
+    def __repr__(self):
+        summary = ["<CopernicusMarineData.Loader><Glorys>"]
+        summary.append("dataset_id: %s" % self.dataset_id)
+        summary.append("First day: %s" % self.start_date)
+        summary.append("N days: %s" % self.n_days)
+        summary.append("Domain: %s" % self.box)
+        summary.append("Max depth (m): %s" % self.max_depth)
+        return "\n".join(summary)
 
 
 def get_velocity_field(a_box, a_date, n_days=1, output='.', dataset='ARMOR3D'):
@@ -438,18 +460,19 @@ def get_velocity_field(a_box, a_date, n_days=1, output='.', dataset='ARMOR3D'):
 
     velocity_file = get_velocity_filename(dataset, n_days)
     if not os.path.exists(velocity_file):
-        # Load
-        if dataset == 'ARMOR3D':
-            ds = Armor3d(a_box, a_date, n_days=n_days).to_xarray()
-        elif dataset == 'GLORYS':
-            ds = Glorys(a_box, a_date, n_days=n_days).to_xarray()
+        # Define Data loader:
+        loader = Armor3d if dataset == 'ARMOR3D' else Glorys
+        loader = loader(a_box, a_date, n_days=n_days)
+        puts(str(loader), color=COLORS.magenta)
+
+        # Load data from Copernicus Marine Data store:
+        ds = loader.to_xarray()
 
         # Save on file for later re-used:
         ds.to_netcdf(velocity_file)
     else:
         ds = xr.open_dataset(velocity_file)
 
-    print(ds)
     return ds, velocity_file
 
 
@@ -499,9 +522,10 @@ def get_EBOX(df_sim, df_plan, this_profile, s=1):
 
 
 def get_cfg_str(a_cfg):
-    txt = "VFloat configuration: (Parking depth: %i [db], Cycle duration: %i [hours])" % (
+    txt = "VFloat configuration: (Parking depth: %i [db], Cycle duration: %i [hours], Profile depth: %i [db])" % (
         a_cfg.mission['parking_depth'],
-        a_cfg.mission['cycle_duration']
+        a_cfg.mission['cycle_duration'],
+        a_cfg.mission['profile_depth'],
     )
     return txt
 
@@ -646,25 +670,28 @@ def figure_positions(this_args, vel, df_sim, df_plan, this_profile, cfg, wmo, cy
                                                                                    alpha=0.5,
                                                                                    add_guide=False)
 
-        ax[ix].plot(df_sim['deploy_lon'], df_sim['deploy_lat'], '.', markersize=3, color='grey', alpha=0.1, markeredgecolor=None, zorder=0)
+        ax[ix].plot(df_sim['deploy_lon'], df_sim['deploy_lat'], '.',
+                    markersize=3, color='grey', alpha=0.1, markeredgecolor=None, zorder=0)
         if ix == 0:
             title = 'Velocity field at %0.2fm and deployment plan' % cfg.mission['parking_depth']
             v.set_alpha(1)
             # v.set_color('black')
         elif ix == 1:
-            x, y = df_sim['longitude'], df_sim['latitude']
+            x, y, c = df_sim['longitude'], df_sim['latitude'], df_sim['cyc']
             title = 'Final float positions'
-            sc = ax[ix].plot(x, y, '.', markersize=3, color='cyan', alpha=0.9, markeredgecolor=None)
+            # sc = ax[ix].plot(x, y, '.', markersize=3, color='cyan', alpha=0.9, markeredgecolor=None)
+            sc = ax[ix].scatter(x, y, c=c, s=3, alpha=0.9, edgecolors=None)
         elif ix == 2:
-            x, y = df_sim['rel_lon'], df_sim['rel_lat']
+            x, y, c = df_sim['rel_lon'], df_sim['rel_lat'], df_sim['cyc']
             title = 'Final floats position relative to last float position'
-            sc = ax[ix].plot(x, y, '.', markersize=3, color='cyan', alpha=0.9, markeredgecolor=None)
+            # sc = ax[ix].plot(x, y, '.', markersize=3, color='cyan', alpha=0.9, markeredgecolor=None)
+            sc = ax[ix].scatter(x, y, c=c, s=3, alpha=0.9, edgecolors=None)
 
         ax[ix] = map_add_profiles(ax[ix], this_profile)
         ax[ix].set_title(title)
 
-    fig.suptitle("VirtualFleet recovery prediction for WMO %i: starting from cycle %i, predicting cycle %i\n%s" %
-                 (wmo, cyc[0], cyc[1], get_cfg_str(cfg)), fontsize=15)
+    fig.suptitle("VirtualFleet recovery prediction for WMO %i: starting from cycle %i, predicting cycle %s\n%s" %
+                 (wmo, cyc[0], cyc[1:], get_cfg_str(cfg)), fontsize=15)
     plt.tight_layout()
     if save_figure:
         save_figurefile(fig, "vfrecov_positions_%s" % get_sim_suffix(this_args, cfg), workdir)
@@ -945,403 +972,1098 @@ def setup_deployment_plan(a_profile, a_date, nfloats=15000):
     return df
 
 
-def simu2index_legacy(df_plan, this_ds):
-    # Specific method for the recovery simulations
-    # This is very slow but could be optimized
-    ds_list = []
-    for irow_plan, row_plan in tqdm(df_plan.iterrows()):
-        ii = np.argwhere(((this_ds['lon'].isel(obs=0) - row_plan['longitude']) ** 2 + (
-                    this_ds['lat'].isel(obs=0) - row_plan['latitude']) ** 2).values == 0)
-        if ii:
-            wmo = row_plan['wmo']
-            deploy_lon, deploy_lat = row_plan['longitude'], row_plan['latitude']
-            itraj = ii[0][0]
-            for cyc, grp in this_ds.isel(traj=itraj).groupby(group='cycle_number'):
-                ds_cyc = grp.isel(obs=-1)
-                if cyc == 1:
-                    if ds_cyc['cycle_phase'] in [3, 4]:
-                        ds_cyc['wmo'] = xr.DataArray(np.full_like((1,), fill_value=wmo), dims='obs')
-                        ds_cyc['deploy_lon'] = xr.DataArray(np.full_like((1,), fill_value=deploy_lon, dtype=float),
-                                                            dims='obs')
-                        ds_cyc['deploy_lat'] = xr.DataArray(np.full_like((1,), fill_value=deploy_lat, dtype=float),
-                                                            dims='obs')
-                        ds_list.append(ds_cyc)
+class Trajectories:
+    """Trajectory file manager for VFrecovery
 
-    ds_profiles = xr.concat(ds_list, dim='obs')
-    df = ds_profiles.to_dataframe()
-    df = df.rename({'time': 'date', 'lat': 'latitude', 'lon': 'longitude', 'z': 'min_depth'}, axis='columns')
-    df = df[['date', 'latitude', 'longitude', 'wmo', 'cycle_number', 'deploy_lon', 'deploy_lat']]
-    df['wmo'] = df['wmo'].astype('int')
-    df = df.reset_index(drop=True)
-    return df
-
-
-def ds_simu2index(this_ds):
-    # Instead of really looking at the cycle phase and structure, we just pick the last trajectory point from output file !
-    # This is way much faster and a good approximation IF the simulation length is the cycling frequency.
-    data = {
-        'date': this_ds.isel(obs=-1)['time'],
-        'latitude': this_ds.isel(obs=-1)['lat'],
-        'longitude': this_ds.isel(obs=-1)['lon'],
-        'wmo': 9000000 + this_ds['traj'].values,
-        'deploy_lon': this_ds.isel(obs=0)['lon'],
-        'deploy_lat': this_ds.isel(obs=0)['lat']
-    }
-    df = pd.DataFrame(data)
-    df['wmo'] = df['wmo'].astype(int)
-    return df
-
-
-def get_index(vf, vel, df_plan):
-    # Instead of really looking at the cycle phase and structure, we just pick the last trajectory point in memory !
-    # This is way much faster and a good approximation IF the simulation length is the cycling frequency.
-    data = {
-        'date': [vel.field['time'][0].values + pd.Timedelta(dt, 's') for dt in vf.ParticleSet.time],
-        'latitude': vf.ParticleSet.lat,
-        'longitude': vf.ParticleSet.lon,
-        'wmo': 9000000 + np.arange(0, vf.ParticleSet.lon.shape[0]),
-        'deploy_lon': df_plan['longitude'],
-        'deploy_lat': df_plan['latitude']
-    }
-    if len(data['latitude']) != len(data['deploy_lat']):
-        raise ValueError('Virtual floats have been lost during the simulation ! %i simulated vs %i deployed' % (len(data['latitude']), len(data['deploy_lat'])))
-    df = pd.DataFrame(data)
-    df['wmo'] = df['wmo'].astype(int)
-    return df
-
-
-def postprocess_index(this_df, this_profile):
-    # Compute some distances
-
-    # Compute distance between the predicted profile and the initial profile location from the deployment plan
-    # We assume that virtual floats are sequentially taken from the deployment plan
-    # Since distances are very short, we compute a simple rectangular distance
-
-    x2, y2 = this_profile['longitude'].values[0], this_profile['latitude'].values[0]  # real float initial position
-    this_df['distance'] = np.nan
-    this_df['rel_lon'] = np.nan
-    this_df['rel_lat'] = np.nan
-    this_df['distance_origin'] = np.nan
-
-    for isim, sim_row in this_df.iterrows():
-        # Profile coordinates:
-        x0, y0 = sim_row['deploy_lon'], sim_row['deploy_lat']  # virtual float initial position
-        x1, y1 = sim_row['longitude'], sim_row['latitude']  # virtual float final position
-
-        # Distance between each pair of cycles of virtual floats:
-        dist = np.sqrt((y1 - y0) ** 2 + (x1 - x0) ** 2)
-        this_df.loc[isim, 'distance'] = dist
-
-        # Shift between each pair of cycles:
-        dx, dy = x1 - x0, y1 - y0
-        # Get a relative displacement from real float initial position:
-        this_df.loc[isim, 'rel_lon'] = x2 + dx
-        this_df.loc[isim, 'rel_lat'] = y2 + dy
-
-        # Distance between the predicted profile and the observed initial profile
-        dist = np.sqrt((y2 - y0) ** 2 + (x2 - x0) ** 2)
-        # dinit.append(dist)
-        this_df.loc[isim, 'distance_origin'] = dist
-
-    return this_df
-
-
-def predict_position(this_args, workdir, wmo, cyc, cfg, vel, vel_name, df_sim, df_plan, this_profile,
-                     save_figure=False, quiet=False):
-    """ Compute the position of the next profile for recovery
-
-    Prediction is based on weighted statistics from the last position of virtual floats
-
-    Returns
-    -------
-    dict
-
+    Examples:
+    ---------
+    T = Trajectories(traj_zarr_file)
+    T.n_floats
+    T.sim_cycles
+    df = T.to_index()
+    df = T.get_index().add_distances()
+    jsdata, fig, ax = T.analyse_pairwise_distances(cycle=1, show_plot=True)
     """
 
-    def get_weights(scale=20):
-        """Return weights as a gaussian distance with a std based on the size of the deployment domain"""
-        rx, ry = df_plan['longitude'].max() - df_plan['longitude'].min(), \
-                 df_plan['latitude'].max() - df_plan['latitude'].min()
-        r = np.min([rx, ry])  # Minimal size of the deployment domain
-        weights = np.exp(-(df_sim['distance_origin'] ** 2) / (r / scale))
-        weights[np.isnan(weights)] = 0
-        return weights
+    def __init__(self, zfile):
+        self.zarr_file = zfile
+        self.obj = xr.open_zarr(zfile)
+        self._index = None
 
-    # Compute a weighted histogram of the virtual float positions
-    hbox = get_EBOX(df_sim, df_plan, this_profile, s=1)
-    bin_res = 1 / 12 / 2
-    bin_x, bin_y = np.arange(hbox[0], hbox[1], bin_res), np.arange(hbox[2], hbox[3], bin_res)
-    weights = get_weights(scale=20)
-    Hrel, xedges, yedges = np.histogram2d(df_sim['rel_lon'],
-                                          df_sim['rel_lat'],
-                                          bins=[bin_x, bin_y],
-                                          weights=weights,
-                                          density=True)
+    @property
+    def n_floats(self):
+        # len(self.obj['trajectory'])
+        return self.obj['trajectory'].shape[0]
 
-    # Get coordinates of the most probable location (max of the histogram):
-    ixmax, iymax = np.unravel_index(Hrel.argmax(), Hrel.shape)
-    xpred, ypred = (bin_x[0:-1] + bin_res / 2)[ixmax], (bin_y[0:-1] + bin_res / 2)[iymax]
-    tpred = df_sim['date'].mean()
-    recovery = {'prediction_location': {'longitude': {'value': xpred, 'unit': 'degree East'},
-                                        'latitude': {'value': ypred, 'unit': 'degree North'},
-                                        'time': {'value': tpred}}}
+    @property
+    def sim_cycles(self):
+        """Return list of cycles simulated"""
+        cycs = np.unique(self.obj['cycle_number'])
+        last_obs_phase = \
+        self.obj.where(self.obj['cycle_number'] == cycs[-1])['cycle_phase'].isel(trajectory=0).isel(obs=-1).values[
+            np.newaxis][0]
+        if last_obs_phase < 3:
+            cycs = cycs[0:-1]
+        return cycs
 
-    # Nicer histogram
-    Hrel[Hrel == 0] = np.NaN
+    def __repr__(self):
+        summary = ["<VRecovery.Trajectories>"]
+        summary.append("Swarm size: %i floats" % self.n_floats)
+        start_date = pd.to_datetime(self.obj['time'].isel(trajectory=0, obs=0).values)
+        end_date = pd.to_datetime(self.obj['time'].isel(trajectory=0, obs=-1).values)
+        summary.append("Simulation length: %s, from %s to %s" % (
+        pd.Timedelta(end_date - start_date, 'd'), start_date.strftime("%Y/%m/%d"), end_date.strftime("%Y/%m/%d")))
+        return "\n".join(summary)
 
-    # Compute error metrics of the predicted position:
-    error = {'distance': {'value': None,
-                          'unit': 'km'},
-             'bearing': {'value': None,
-                         'unit': 'degree'},
-             'time': {'value': None,
-                      'unit': 'hour'}
-             }
-    if this_profile.shape[0] > 1:
-        dd = haversine(this_profile['longitude'][1], this_profile['latitude'][1], xpred, ypred)
-        dt = pd.Timedelta(recovery['prediction_location']['time']['value']-
-                          this_profile['date'].values[-1]).seconds/3600.
-        error['distance']['value'] = dd
-        error['bearing']['value'] = bearing(this_profile['longitude'][0],
-                                    this_profile['latitude'][0],
-                                    this_profile['longitude'][1],
-                                    this_profile['latitude'][1]) - bearing(this_profile['longitude'][0],
-                                                                           this_profile['latitude'][0],
-                                                                           xpred,
-                                                                           ypred)
-        error['time']['value'] = dt
+    def to_index_par(self) -> pd.DataFrame:
+        # Deployment loc:
+        deploy_lon, deploy_lat = self.obj.isel(obs=0)['lon'].values, self.obj.isel(obs=0)['lat'].values
 
-    # Compute more metrics to understand the prediction:
-    metrics = {}
-    # Compute a transit time to cover the distance error:
-    # (assume a 12 kts boat speed with 1 kt = 1.852 km/h)
-    metrics['transit'] = {'value': None,
-                          'unit': 'hour',
-                          'comment': 'Boat transit time to cover the distance error '
-                                     '(assume a 12 kts boat speed with 1 kt = 1.852 km/h)'}
-    if error['distance']['value'] is not None:
-        metrics['transit']['value'] = pd.Timedelta(error['distance']['value'] / (12 * 1.852), 'h').seconds/3600.
+        def worker(ds, cyc, x0, y0):
+            mask = np.logical_and((ds['cycle_number'] == cyc).compute(),
+                                  (ds['cycle_phase'] >= 3).compute())
+            this_cyc = ds.where(mask, drop=True)
+            if len(this_cyc['time']) > 0:
+                data = {
+                    'date': this_cyc.isel(obs=-1)['time'].values,
+                    'latitude': this_cyc.isel(obs=-1)['lat'].values,
+                    'longitude': this_cyc.isel(obs=-1)['lon'].values,
+                    'wmo': 9000000 + this_cyc.isel(obs=-1)['trajectory'].values,
+                    'cyc': cyc,
+                    # 'cycle_phase': this_cyc.isel(obs=-1)['cycle_phase'].values,
+                    'deploy_lon': x0,
+                    'deploy_lat': y0,
+                }
+                return pd.DataFrame(data)
+            else:
+                return None
 
-    # Compute the possible drift due to the time lag between the predicted profile timing and the expected one:
-    dsc = vel.field.interp(
-        {vel.dim['lon']: xpred,
-         vel.dim['lat']: ypred,
-         vel.dim['time']: tpred,
-         vel.dim['depth']: vel.field[{vel.dim['depth']: 0}][vel.dim['depth']].values[np.newaxis][0]}
-    )
-    velc = np.sqrt(dsc[vel.var['U']] ** 2 + dsc[vel.var['V']] ** 2).values[np.newaxis][0]
-    metrics['surface_drift'] = {'value': None,
-                                'unit': 'km',
-                                'surface_currents_speed': None,
-                                'surface_currents_speed_unit': 'm/s',
-                                'comment': 'Drift by surface currents due to the float ascent time error '
-                                           '(difference between simulated profile time and the observed one).'}
-    if error['time']['value'] is not None:
-        metrics['surface_drift']['value'] = (error['time']['value']*3600 * velc / 1e3)
-        metrics['surface_drift']['surface_currents_speed'] = velc
+        cycles = np.unique(self.obj['cycle_number'])
+        rows = []
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future_to_url = {
+                executor.submit(
+                    worker,
+                    self.obj,
+                    cyc,
+                    deploy_lon,
+                    deploy_lat
+                ): cyc
+                for cyc in cycles
+            }
+            futures = concurrent.futures.as_completed(future_to_url)
+            for future in futures:
+                data = None
+                try:
+                    data = future.result()
+                except Exception:
+                    raise
+                finally:
+                    rows.append(data)
 
-    # Add to the mean result dict:
-    recovery['prediction_location_error'] = error
-    recovery['prediction_metrics'] = metrics
+        rows = [r for r in rows if r is not None]
+        df = pd.concat(rows).reset_index()
+        df['wmo'] = df['wmo'].astype(int)
+        df['cyc'] = df['cyc'].astype(int)
+        # df['cycle_phase'] = df['cycle_phase'].astype(int)
+        self._index = df
 
-    # Final figures:
-    fig, ax = figure_predictions(this_args, weights, bin_x, bin_y, bin_res, Hrel, recovery,
-                                 vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name,
-                                 save_figure=save_figure, workdir=workdir)
+        return self._index
 
-    fig, ax = figure_predictions_recap(this_args, weights, bin_x, bin_y, bin_res, Hrel, recovery,
-                                 vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name,
-                                 save_figure=save_figure, workdir=workdir)
+    def to_index(self) -> pd.DataFrame:
+        """Compute and return index (profile dataframe from trajectory dataset)
 
-    #
-    return recovery
+        Create a Profile index :class:`pandas.dataframe` with columns: [data, latitude ,longitude, wmo, cyc, deploy_lon, deploy_lat]
+        from a trajectory :class:`xarray.dataset`.
 
+        There is one dataframe row for each dataset trajectory cycle.
 
-def analyse_pairwise_distances(this_args, this_cfg,  data):
-    from scipy.signal import find_peaks
+        We use the last trajectory point of given cycle number (with cycle phase >= 3) to identify a profile location.
 
-    def get_hist_and_peaks(this_d):
-        x = this_d.flatten()
+        If they are N trajectories simulating C cycles, there will be about a maximum of N*C rows in the dataframe.
+
+        Returns
+        -------
+        :class:`pandas.dataframe`
+        """
+        if self._index is None:
+
+            # Deployment loc:
+            deploy_lon, deploy_lat = self.obj.isel(obs=0)['lon'].values, self.obj.isel(obs=0)['lat'].values
+
+            def worker(ds, cyc, x0, y0):
+                mask = np.logical_and((ds['cycle_number'] == cyc).compute(),
+                                      (ds['cycle_phase'] >= 3).compute())
+                this_cyc = ds.where(mask, drop=True)
+                if len(this_cyc['time']) > 0:
+                    data = {
+                        'date': this_cyc.isel(obs=-1)['time'].values,
+                        'latitude': this_cyc.isel(obs=-1)['lat'].values,
+                        'longitude': this_cyc.isel(obs=-1)['lon'].values,
+                        'wmo': 9000000 + this_cyc.isel(obs=-1)['trajectory'].values,
+                        'cyc': cyc,
+                        # 'cycle_phase': this_cyc.isel(obs=-1)['cycle_phase'].values,
+                        'deploy_lon': x0,
+                        'deploy_lat': y0,
+                    }
+                    return pd.DataFrame(data)
+                else:
+                    return None
+
+            cycles = np.unique(self.obj['cycle_number'])
+            rows = []
+            for cyc in cycles:
+                df = worker(self.obj, cyc, deploy_lon, deploy_lat)
+                rows.append(df)
+            rows = [r for r in rows if r is not None]
+            df = pd.concat(rows).reset_index()
+            df['wmo'] = df['wmo'].astype(int)
+            df['cyc'] = df['cyc'].astype(int)
+            # df['cycle_phase'] = df['cycle_phase'].astype(int)
+            self._index = df
+
+        return self._index
+
+    def get_index(self):
+        """Compute index and return self"""
+        self.to_index()
+        return self
+
+    def add_distances(self, origin: None) -> pd.DataFrame:
+        """Compute profiles distance to some origin
+
+        Returns
+        -------
+        :class:`pandas.dataframe`
+        """
+
+        # Compute distance between the predicted profile and the initial profile location from the deployment plan
+        # We assume that virtual floats are sequentially taken from the deployment plan
+        # Since distances are very short, we compute a simple rectangular distance
+
+        # Observed cycles:
+        # obs_cyc = np.unique(this_profile['cyc'])
+
+        # Simulated cycles:
+        # sim_cyc = np.unique(this_df['cyc'])
+
+        df = self._index
+
+        x2, y2 = origin  # real float initial position
+        df['distance'] = np.nan
+        df['rel_lon'] = np.nan
+        df['rel_lat'] = np.nan
+        df['distance_origin'] = np.nan
+
+        def worker(row):
+            # Simulation profile coordinates:
+            x0, y0 = row['deploy_lon'], row['deploy_lat']  # virtual float initial position
+            x1, y1 = row['longitude'], row['latitude']  # virtual float position
+
+            # Distance between each pair of cycles of virtual floats:
+            dist = np.sqrt((y1 - y0) ** 2 + (x1 - x0) ** 2)
+            row['distance'] = dist
+
+            # Shift between each pair of cycles:
+            dx, dy = x1 - x0, y1 - y0
+            # Get a relative displacement from real float initial position:
+            row['rel_lon'] = x2 + dx
+            row['rel_lat'] = y2 + dy
+
+            # Distance between the predicted profile and the observed initial profile
+            dist = np.sqrt((y2 - y0) ** 2 + (x2 - x0) ** 2)
+            row['distance_origin'] = dist
+
+            return row
+
+        df = df.apply(worker, axis=1)
+        self._index = df
+
+        return self._index
+
+    def analyse_pairwise_distances(self,
+                                   cycle: int = 1,
+                                   show_plot: bool = True,
+                                   save_figure: bool = False,
+                                   workdir: str = '.',
+                                   sim_suffix = None,
+                                   this_cfg = None,
+                                   this_args: dict = None):
+
+        def get_hist_and_peaks(this_d):
+            x = this_d.flatten()
+            x = x[~np.isnan(x)]
+            x = x[:, np.newaxis]
+            hist, bin_edges = np.histogram(x, bins=100, density=1)
+            # dh = np.diff(bin_edges[0:2])
+            peaks, _ = find_peaks(hist / np.max(hist), height=.4, distance=20)
+            return {'pdf': hist, 'bins': bin_edges[0:-1], 'Npeaks': len(peaks)}
+
+        # Squeeze traj file to the first predicted cycle (sim can have more than 1 cycle)
+        ds = self.obj.where((self.obj['cycle_number'] == cycle).compute(), drop=True)
+        ds = ds.compute()
+
+        # Compute trajectories relative to the single/only real float initial position:
+        lon0, lat0 = self.obj.isel(obs=0)['lon'].values[0], self.obj.isel(obs=0)['lat'].values[0]
+        lon, lat = ds['lon'].values, ds['lat'].values
+        ds['lonc'] = xr.DataArray(lon - np.broadcast_to(lon[:, 0][:, np.newaxis], lon.shape) + lon0,
+                                  dims=['trajectory', 'obs'])
+        ds['latc'] = xr.DataArray(lat - np.broadcast_to(lat[:, 0][:, np.newaxis], lat.shape) + lat0,
+                                  dims=['trajectory', 'obs'])
+
+        # Compute trajectory lengths:
+        ds['length'] = np.sqrt(ds.diff(dim='obs')['lon'] ** 2 + ds.diff(dim='obs')['lat'] ** 2).sum(dim='obs')
+        ds['lengthc'] = np.sqrt(ds.diff(dim='obs')['lonc'] ** 2 + ds.diff(dim='obs')['latc'] ** 2).sum(dim='obs')
+
+        # Compute initial points pairwise distances, PDF and nb of peaks:
+        X = ds.isel(obs=0)
+        X = X.isel(trajectory=~np.isnan(X['lon']))
+        X0 = np.array((X['lon'].values, X['lat'].values)).T
+        d0 = pairwise_distances(X0, n_jobs=-1)
+        d0 = np.triu(d0)
+        d0[d0 == 0] = np.nan
+
+        x0 = d0.flatten()
+        x0 = x0[~np.isnan(x0)]
+        x0 = x0[:, np.newaxis]
+
+        hist0, bin_edges0 = np.histogram(x0, bins=100, density=1)
+        dh0 = np.diff(bin_edges0[0:2])
+        peaks0, _ = find_peaks(hist0 / np.max(hist0), height=.4, distance=20)
+
+        # Compute final points pairwise distances, PDF and nb of peaks:
+        X = ds.isel(obs=-1)
+        X = X.isel(trajectory=~np.isnan(X['lon']))
+        dsf = X
+        X = np.array((X['lon'].values, X['lat'].values)).T
+        d = pairwise_distances(X, n_jobs=-1)
+        d = np.triu(d)
+        d[d == 0] = np.nan
+
+        x = d.flatten()
         x = x[~np.isnan(x)]
         x = x[:, np.newaxis]
+
         hist, bin_edges = np.histogram(x, bins=100, density=1)
-        # dh = np.diff(bin_edges[0:2])
+        dh = np.diff(bin_edges[0:2])
         peaks, _ = find_peaks(hist / np.max(hist), height=.4, distance=20)
-        return {'pdf': hist, 'bins': bin_edges[0:-1], 'Npeaks': len(peaks)}
 
-    # Trajectory file:
-    workdir = this_args.output
-    simufile = os.path.sep.join([workdir,
-                               'trajectories_%s.zarr' % get_sim_suffix(this_args, this_cfg)])
-    engine = "zarr"
-    if not os.path.exists(simufile):
-        ncfile = os.path.sep.join([workdir,
-                                   'trajectories_%s.nc' % get_sim_suffix(this_args, this_cfg)])
-        engine = "netcdf4"
-        if not os.path.exists(ncfile):
-            puts('Cannot analyse pairwise distances because the trajectory file cannot be found at: %s' % simufile,
-                 color=COLORS.red)
-            return data  # Return results dict unchanged
+        # Compute final points pairwise distances (relative traj), PDF and nb of peaks:
+        X1 = ds.isel(obs=-1)
+        X1 = X1.isel(trajectory=~np.isnan(X1['lonc']))
+        dsfc = X1
+        X1 = np.array((X1['lonc'].values, X1['latc'].values)).T
+        d1 = pairwise_distances(X1, n_jobs=-1)
+        d1 = np.triu(d1)
+        d1[d1 == 0] = np.nan
 
-    # Open trajectory file:
-    ds = xr.open_dataset(simufile, engine=engine)
+        x1 = d1.flatten()
+        x1 = x1[~np.isnan(x1)]
+        x1 = x1[:, np.newaxis]
 
-    # Compute trajectories relative to the single/only real float initial position:
-    lon = ds['lon'].values
-    lat = ds['lat'].values
-    lon0 = data['previous_profile']['location']['longitude']['value']
-    lat0 = data['previous_profile']['location']['latitude']['value']
-    ds['lonc'] = xr.DataArray(lon - np.broadcast_to(lon[:, 0][:, np.newaxis], lon.shape) + lon0, dims=['trajectory', 'obs'])
-    ds['latc'] = xr.DataArray(lat - np.broadcast_to(lat[:, 0][:, np.newaxis], lat.shape) + lat0, dims=['trajectory', 'obs'])
+        hist1, bin_edges1 = np.histogram(x1, bins=100, density=1)
+        dh1 = np.diff(bin_edges1[0:2])
+        peaks1, _ = find_peaks(hist1 / np.max(hist1), height=.4, distance=20)
 
-    # Compute trajectory lengths:
-    ds['length'] = np.sqrt(ds.diff(dim='obs')['lon'] ** 2 + ds.diff(dim='obs')['lat'] ** 2).sum(dim='obs')
-    ds['lengthc'] = np.sqrt(ds.diff(dim='obs')['lonc'] ** 2 + ds.diff(dim='obs')['latc'] ** 2).sum(dim='obs')
+        # Compute the overlapping between the initial and relative state PDFs:
+        bin_unif = np.arange(0, np.max([bin_edges0, bin_edges1]), np.min([dh0, dh1]))
+        dh_unif = np.diff(bin_unif[0:2])
+        hist0_unif = np.interp(bin_unif, bin_edges0[0:-1], hist0)
+        hist_unif = np.interp(bin_unif, bin_edges[0:-1], hist)
+        hist1_unif = np.interp(bin_unif, bin_edges1[0:-1], hist1)
 
-    # Compute initial points pairwise distances, PDF and nb of peaks:
-    X = ds.isel(obs=0)
-    X = X.isel(trajectory=~np.isnan(X['lon']))
-    X0 = np.array((X['lon'].values, X['lat'].values)).T
-    d0 = pairwise_distances(X0, n_jobs=-1)
-    d0 = np.triu(d0)
-    d0[d0 == 0] = np.nan
+        # Area under hist1 AND hist0:
+        # overlapping = np.sum(hist1_unif[hist0_unif >= hist1_unif]*dh_unif)
+        overlapping = np.sum(hist_unif[hist0_unif >= hist_unif] * dh_unif)
 
-    x0 = d0.flatten()
-    x0 = x0[~np.isnan(x0)]
-    x0 = x0[:, np.newaxis]
+        # Ratio of the max PDF ranges:
+        # staggering = np.max(bin_edges1)/np.max(bin_edges0)
+        staggering = np.max(bin_edges) / np.max(bin_edges0)
 
-    hist0, bin_edges0 = np.histogram(x0, bins=100, density=1)
-    dh0 = np.diff(bin_edges0[0:2])
-    peaks0, _ = find_peaks(hist0 / np.max(hist0), height=.4, distance=20)
+        # Store metrics in a dict:
+        prediction_metrics = {}
 
-    # Compute final points pairwise distances, PDF and nb of peaks:
-    X = ds.isel(obs=-1)
-    X = X.isel(trajectory=~np.isnan(X['lon']))
-    dsf = X
-    X = np.array((X['lon'].values, X['lat'].values)).T
-    d = pairwise_distances(X, n_jobs=-1)
-    d = np.triu(d)
-    d[d == 0] = np.nan
+        prediction_metrics['trajectory_lengths'] = {'median': np.nanmedian(ds['length'].values),
+                                                    'std': np.nanstd(ds['length'].values)}
 
-    x = d.flatten()
-    x = x[~np.isnan(x)]
-    x = x[:, np.newaxis]
+        prediction_metrics['pairwise_distances'] = {
+            'initial_state': {'median': np.nanmedian(d0), 'std': np.nanstd(d0), 'nPDFpeaks': len(peaks0)},
+            'final_state': {'median': np.nanmedian(d), 'std': np.nanstd(d), 'nPDFpeaks': len(peaks)},
+            'relative_state': {'median': np.nanmedian(d1), 'std': np.nanstd(d1), 'nPDFpeaks': len(peaks1)},
+            'overlapping': {'value': overlapping,
+                            'comment': 'Overlapping area between PDF(initial_state) and PDF(final_state)'},
+            'staggering': {'value': staggering, 'comment': 'Ratio of PDF(initial_state) vs PDF(final_state) ranges'},
+            'score': {'value': overlapping / len(peaks), 'comment': 'overlapping/nPDFpeaks(final_state)'}}
 
-    hist, bin_edges = np.histogram(x, bins=100, density=1)
-    dh = np.diff(bin_edges[0:2])
-    peaks, _ = find_peaks(hist / np.max(hist), height=.4, distance=20)
+        if np.isinf(overlapping / len(peaks)):
+            raise ValueError("Can't compute the prediction score, infinity !")
 
-    # Compute final points pairwise distances (relative traj), PDF and nb of peaks:
-    X1 = ds.isel(obs=-1)
-    X1 = X1.isel(trajectory=~np.isnan(X1['lonc']))
-    dsfc = X1
-    X1 = np.array((X1['lonc'].values, X1['latc'].values)).T
-    d1 = pairwise_distances(X1, n_jobs=-1)
-    d1 = np.triu(d1)
-    d1[d1 == 0] = np.nan
+        ratio = prediction_metrics['pairwise_distances']['final_state']['std'] / \
+                prediction_metrics['pairwise_distances']['initial_state']['std']
+        prediction_metrics['pairwise_distances']['std_ratio'] = ratio
 
-    x1 = d1.flatten()
-    x1 = x1[~np.isnan(x1)]
-    x1 = x1[:, np.newaxis]
+        # Figure:
+        if show_plot:
+            backend = matplotlib.get_backend()
+            if this_args is not None and this_args.json:
+                matplotlib.use('Agg')
 
-    hist1, bin_edges1 = np.histogram(x1, bins=100, density=1)
-    dh1 = np.diff(bin_edges1[0:2])
-    peaks1, _ = find_peaks(hist1 / np.max(hist1), height=.4, distance=20)
+            fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(18, 10), dpi=90)
+            ax, ix = ax.flatten(), -1
+            cmap = plt.cm.coolwarm
 
-    # Compute the overlapping between the initial and relative state PDFs:
-    bin_unif = np.arange(0, np.max([bin_edges0, bin_edges1]), np.min([dh0, dh1]))
-    dh_unif = np.diff(bin_unif[0:2])
-    hist0_unif = np.interp(bin_unif, bin_edges0[0:-1], hist0)
-    hist_unif = np.interp(bin_unif, bin_edges[0:-1], hist)
-    hist1_unif = np.interp(bin_unif, bin_edges1[0:-1], hist1)
+            ix += 1
+            dd = dsf['length'].values
+            ax[ix].plot(X0[:, 0], X0[:, 1], '.', markersize=3, color='grey', alpha=0.5, markeredgecolor=None, zorder=0)
+            ax[ix].scatter(X[:, 0], X[:, 1], c=dd, zorder=10, s=3, cmap=cmap)
+            ax[ix].grid()
+            this_traj = int(dsf.isel(trajectory=np.argmax(dd))['trajectory'].values[np.newaxis][0])
+            ax[ix].plot(ds.where(ds['trajectory'] == this_traj, drop=True).isel(trajectory=0)['lon'],
+                        ds.where(ds['trajectory'] == this_traj, drop=True).isel(trajectory=0)['lat'], 'r',
+                        zorder=13, label='Longest traj.')
+            this_traj = int(dsf.isel(trajectory=np.argmin(dd))['trajectory'].values[np.newaxis][0])
+            ax[ix].plot(ds.where(ds['trajectory'] == this_traj, drop=True).isel(trajectory=0)['lon'],
+                        ds.where(ds['trajectory'] == this_traj, drop=True).isel(trajectory=0)['lat'], 'b',
+                        zorder=13, label='Shortest traj.')
+            ax[ix].legend()
+            ax[ix].set_title('Trajectory lengths')
 
-    # Area under hist1 AND hist0:
-    # overlapping = np.sum(hist1_unif[hist0_unif >= hist1_unif]*dh_unif)
-    overlapping = np.sum(hist_unif[hist0_unif >= hist_unif] * dh_unif)
+            ix += 1
+            ax[ix].plot(bin_edges0[0:-1], hist0, label='Initial (%i peak)' % len(peaks0), color='gray')
+            ax[ix].plot(bin_edges[0:-1], hist, label='Final (%i peak)' % len(peaks), color='lightblue')
+            ax[ix].plot(bin_edges[peaks], hist[peaks], "x", label='Peaks')
+            ax[ix].legend()
+            ax[ix].grid()
+            ax[ix].set_xlabel('Pairwise distance [degree]')
+            line1 = "Staggering: %0.4f" % staggering
+            line2 = "Overlapping: %0.4f" % overlapping
+            line3 = "Score: %0.4f" % (overlapping / len(peaks))
+            ax[ix].set_title("Pairwise distances PDF: [%s / %s / %s]" % (line1, line2, line3))
 
-    # Ratio of the max PDF ranges:
-    # staggering = np.max(bin_edges1)/np.max(bin_edges0)
-    staggering = np.max(bin_edges) / np.max(bin_edges0)
+            if this_args is not None:
+                line0 = "VirtualFleet recovery swarm simulation for WMO %i, starting from cycle %i, predicting cycle %i\n%s" % \
+                        (this_args.wmo, this_args.cyc[0] - 1, this_args.cyc[0], get_cfg_str(this_cfg))
+                line1 = "Simulation made with %s and %i virtual floats" % (this_args.velocity, this_args.nfloats)
+            else:
+                line0 = "VirtualFleet recovery swarm simulation for cycle %i" % cycle
+                line1 = "Simulation made with %i virtual floats" % (self.n_floats)
 
-    # Save metrics:
-    prediction_metrics = data['prediction_metrics']
-    # prediction_metrics = {}
+            fig.suptitle("%s\n%s" % (line0, line1), fontsize=15)
+            plt.tight_layout()
 
-    prediction_metrics['trajectory_lengths'] = {'median': np.nanmedian(ds['length'].values),
-                                                'std': np.nanstd(ds['length'].values)}
+            if save_figure:
+                if sim_suffix is not None:
+                    filename = 'vfrecov_metrics01_%s_cyc%i' % (sim_suffix, cycle)
+                else:
+                    filename = 'vfrecov_metrics01_cyc%i' % (cycle)
+                save_figurefile(fig, filename, workdir)
 
-    prediction_metrics['pairwise_distances'] = {
-        'initial_state': {'median': np.nanmedian(d0), 'std': np.nanstd(d0), 'nPDFpeaks': len(peaks0)},
-        'final_state': {'median': np.nanmedian(d), 'std': np.nanstd(d), 'nPDFpeaks': len(peaks)},
-        'relative_state': {'median': np.nanmedian(d1), 'std': np.nanstd(d1), 'nPDFpeaks': len(peaks1)},
-        'overlapping': {'value': overlapping,
-                        'comment': 'Overlapping area between PDF(initial_state) and PDF(final_state)'},
-        'staggering': {'value': staggering, 'comment': 'Ratio of PDF(initial_state) vs PDF(final_state) ranges'},
-        'score': {'value': overlapping / len(peaks), 'comment': 'overlapping/nPDFpeaks(final_state)'}}
+            if this_args is not None and this_args.json:
+                matplotlib.use(backend)
 
-    if np.isinf(overlapping / len(peaks)):
-        raise ValueError("Can't compute the prediction score, infinity !")
+        if show_plot:
+            return prediction_metrics, fig, ax
+        else:
+            return prediction_metrics
 
-    ratio = prediction_metrics['pairwise_distances']['final_state']['std'] / \
-            prediction_metrics['pairwise_distances']['initial_state']['std']
-    prediction_metrics['pairwise_distances']['std_ratio'] = ratio
 
-    data['prediction_metrics'] = prediction_metrics
+class SimPredictor_0:
+    """
 
-    # Figure:
-    backend = matplotlib.get_backend()
-    if this_args.json:
-        matplotlib.use('Agg')
+    Examples
+    --------
+    T = Trajectories(traj_zarr_file)
+    df = T.get_index().add_distances()
 
-    fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(18, 10), dpi=90)
-    ax, ix = ax.flatten(), -1
-    cmap = plt.cm.coolwarm
+    SP = SimPredictor(df)
+    SP.fit_predict()
+    SP.add_metrics(VFvelocity)
+    SP.bbox()
+    SP.plot_predictions(VFvelocity)
+    SP.plan
+    SP.n_cycles
+    SP.trajectory
+    SP.prediction
+    """
 
-    ix += 1
-    dd = dsf['length'].values
-    ax[ix].plot(X0[:, 0], X0[:, 1], '.', markersize=3, color='grey', alpha=0.5, markeredgecolor=None, zorder=0)
-    ax[ix].scatter(X[:, 0], X[:, 1], c=dd, zorder=10, s=3, cmap=cmap)
-    ax[ix].grid()
-    this_traj = int(dsf.isel(trajectory=np.argmax(dd))['trajectory'].values[np.newaxis][0])
-    ax[ix].plot(ds.where(ds['trajectory'] == this_traj, drop=True).isel(trajectory=0)['lon'],
-                ds.where(ds['trajectory'] == this_traj, drop=True).isel(trajectory=0)['lat'], 'r',
-                zorder=13, label='Longest traj.')
-    this_traj = int(dsf.isel(trajectory=np.argmin(dd))['trajectory'].values[np.newaxis][0])
-    ax[ix].plot(ds.where(ds['trajectory'] == this_traj, drop=True).isel(trajectory=0)['lon'],
-                ds.where(ds['trajectory'] == this_traj, drop=True).isel(trajectory=0)['lat'], 'b',
-                zorder=13, label='Shortest traj.')
-    ax[ix].legend()
-    ax[ix].set_title('Trajectory lengths')
+    def __init__(self, df_sim: pd.DataFrame, df_obs: pd.DataFrame):
+        self.swarm = df_sim
+        self.obs = df_obs
+        # self.set_weights()
+        self.WMO = np.unique(df_obs['wmo'])[0]
+        self._json = None
 
-    ix += 1
-    ax[ix].plot(bin_edges0[0:-1], hist0, label='Initial (%i peak)' % len(peaks0), color='gray')
-    ax[ix].plot(bin_edges[0:-1], hist, label='Final (%i peak)' % len(peaks), color='lightblue')
-    ax[ix].plot(bin_edges[peaks], hist[peaks], "x", label='Peaks')
-    ax[ix].legend()
-    ax[ix].grid()
-    ax[ix].set_xlabel('Pairwise distance [degree]')
-    line1 = "Staggering: %0.4f" % staggering
-    line2 = "Overlapping: %0.4f" % overlapping
-    line3 = "Score: %0.4f" % (overlapping / len(peaks))
-    ax[ix].set_title("Pairwise distances PDF: [%s / %s / %s]" % (line1, line2, line3))
+    def __repr__(self):
+        summary = ["<VFRecovery.Predictor>"]
+        summary.append("Simulation target: %i / %i" % (self.WMO, self.sim_cycles[0]))
+        summary.append("Swarm size: %i floats" % len(np.unique(self.swarm['wmo'])))
+        summary.append("Number of simulated cycles: %i profile(s) for cycle number(s): [%s]" % (
+        self.n_cycles, ",".join([str(c) for c in self.sim_cycles])))
+        summary.append("Observed reference: %i profile(s) for cycle number(s): [%s]" % (
+        self.obs.shape[0], ",".join([str(c) for c in self.obs_cycles])))
+        return "\n".join(summary)
 
-    line0 = "VirtualFleet recovery prediction for WMO %i: starting from cycle %i, predicting cycle %i\n%s" % \
-            (this_args.wmo, this_args.cyc - 1, this_args.cyc, get_cfg_str(this_cfg))
-    line1 = "Prediction made with %s and %i virtual floats" % (this_args.velocity, this_args.nfloats)
-    fig.suptitle("%s\n%s" % (line0, line1), fontsize=15)
-    plt.tight_layout()
-    if this_args.save_figure:
-        figfile = 'vfrecov_metrics01_%s' % get_sim_suffix(this_args, this_cfg)
-        save_figurefile(fig, figfile, workdir)
+    @property
+    def n_cycles(self):
+        """Number of simulated cycles"""
+        return len(np.unique(self.swarm['cyc']))
+        # return len(self.sim_cycles)
 
-    # Save new data to json file:
-    # jsfile = os.path.join(workdir, 'prediction_%s_%i.json' % (this_args.velocity, this_args.nfloats))
-    # with open(jsfile, 'w', encoding='utf-8') as f:
-    #     json.dump(data, f, ensure_ascii=False, indent=4, default=str, sort_keys=True)
+    @property
+    def obs_cycles(self):
+        """Observed cycle numbers"""
+        return np.unique(self.obs['cyc'])
 
-    if this_args.json:
-        matplotlib.use(backend)
-    return data
+    @property
+    def sim_cycles(self):
+        """Simulated cycle numbers"""
+        return self.obs_cycles[0] + 1 + range(self.n_cycles)
+
+    @property
+    def plan(self) -> pd.DataFrame:
+        if not hasattr(self, '_plan'):
+            df_plan = self.swarm[self.swarm['cyc'] == 1][['date', 'deploy_lon', 'deploy_lat']]
+            df_plan = df_plan.rename(columns={'deploy_lon': 'longitude', 'deploy_lat': 'latitude'})
+            self._plan = df_plan
+        return self._plan
+
+    @property
+    def trajectory(self):
+        """Return the predicted trajectory as a simple :class:`np.array`
+
+        First row is longitude, 2nd is latitude and 3rd is date of simulated profiles
+
+        Return
+        ------
+        :class:`np.array`
+
+        """
+        if self._json is None:
+            raise ValueError("Please call `fit_predict` first")
+        traj_prediction = np.array([self.obs['longitude'].values[0],
+                                    self.obs['latitude'].values[0],
+                                    self.obs['date'].values[0]])[
+            np.newaxis]  # Starting point where swarm was deployed
+        for cyc in self._json['predictions'].keys():
+            xpred = self._json['predictions'][cyc]['location']['longitude']['value']
+            ypred = self._json['predictions'][cyc]['location']['latitude']['value']
+            tpred = self._json['predictions'][cyc]['location']['time']['value']
+            traj_prediction = np.concatenate((traj_prediction,
+                                              np.array([xpred, ypred, tpred])[np.newaxis]),
+                                             axis=0)
+        return traj_prediction
+
+    @property
+    def predictions(self):
+        if self._json is None:
+            raise ValueError("Please call `fit_predict` first")
+        return self._json
+
+    def bbox(self, s: float = 1) -> list:
+        """Get a bounding box for maps
+
+        Parameters
+        ----------
+        s: float, default:1
+
+        Returns
+        -------
+        list
+        """
+        df_sim = self.swarm
+        df_obs = self.obs
+
+        box = [np.min([df_sim['deploy_lon'].min(),
+                       df_sim['longitude'].min(),
+                       df_sim['rel_lon'].min(),
+                       df_obs['longitude'].min()]),
+               np.max([df_sim['deploy_lon'].max(),
+                       df_sim['longitude'].max(),
+                       df_sim['rel_lon'].max(),
+                       df_obs['longitude'].max()]),
+               np.min([df_sim['deploy_lat'].min(),
+                       df_sim['latitude'].min(),
+                       df_sim['rel_lat'].min(),
+                       df_obs['latitude'].min()]),
+               np.max([df_sim['deploy_lat'].max(),
+                       df_sim['latitude'].max(),
+                       df_sim['rel_lat'].max(),
+                       df_obs['latitude'].max()])]
+        rx, ry = box[1] - box[0], box[3] - box[2]
+        r = np.min([rx, ry])
+        ebox = [box[0] - s * r, box[1] + s * r, box[2] - s * r, box[3] + s * r]
+
+        return ebox
+
+class SimPredictor_1(SimPredictor_0):
+
+    def set_weights(self, scale: float = 20):
+        """Compute weights for predictions
+
+        Add weights column to swarm :class:`pandas.DataFrame` as a gaussian distance
+        with a std based on the size of the deployment domain
+
+        Parameters
+        ----------
+        scale: float (default=20.)
+        """
+        rx, ry = self.plan['longitude'].max() - self.plan['longitude'].min(), \
+                 self.plan['latitude'].max() - self.plan['latitude'].min()
+        r = np.min([rx, ry])  # Minimal size of the deployment domain
+        weights = np.exp(-(self.swarm['distance_origin'] ** 2) / (r / scale))
+        weights[np.isnan(weights)] = 0
+        self.swarm['weights'] = weights
+        return self
+
+    def fit_predict_binned(self, bin_res: float = 1 / 12 / 4, weights_scale: float = 20) -> dict:
+        """Predict profile positions from simulated float swarm
+
+        Prediction is based on lat/lon histogram of simulated profiles, weighted by the deployment distance
+        to the observed previous cycle position.
+
+        Parameters
+        ----------
+        bin_res: float (default=1/12/14),
+            Bin size of the lat/lon histogram
+        weights_scale: float (default=20)
+            Scale (in deg) to use to weight the deployment distance to the observed previous cycle position
+
+        Returns
+        -------
+        dict
+        """
+
+        def blank_prediction() -> dict:
+            return {'prediction_location': {
+                'longitude': {'value': None, 'unit': 'degree East'},
+                'latitude': {'value': None, 'unit': 'degree North'},
+                'time': {'value': None},
+            }}
+
+        # Compute a weighted histogram of the swarm float profiles locations, for each predicted cycles
+        hbox = self.bbox()
+        bin_x, bin_y = np.arange(hbox[0], hbox[1], bin_res), np.arange(hbox[2], hbox[3], bin_res)
+        self.set_weights(scale=weights_scale)
+        self._prediction_data = {'hbox': hbox, 'bin_x': bin_x, 'bin_y': bin_y, 'bin_res': bin_res,
+                                 'weights_scale': weights_scale, 'cyc': {}}
+
+        cycles = np.unique(self.swarm['cyc'])  # 1, 2, ...
+        recovery_predictions = {}
+        for icyc, this_sim_cyc in enumerate(cycles):
+            this_cyc_df = self.swarm[self.swarm['cyc'] == this_sim_cyc]
+            Hrel, xedges, yedges = np.histogram2d(this_cyc_df['rel_lon'],
+                                                  this_cyc_df['rel_lat'],
+                                                  bins=[bin_x, bin_y],
+                                                  weights=this_cyc_df['weights'],
+                                                  density=True)
+
+            # Get coordinates of the most probable location (max of the histogram):
+            ixmax, iymax = np.unravel_index(Hrel.argmax(), Hrel.shape)
+            xpred, ypred = (bin_x[0:-1] + bin_res / 2)[ixmax], (bin_y[0:-1] + bin_res / 2)[iymax]
+            tpred = this_cyc_df['date'].mean()
+
+            # Store results
+            recovery = blank_prediction()
+            recovery['prediction_location']['longitude']['value'] = xpred
+            recovery['prediction_location']['latitude']['value'] = ypred
+            recovery['prediction_location']['time']['value'] = tpred
+            recovery_predictions.update({this_sim_cyc: recovery})
+
+            # Nicer histogram
+            Hrel[Hrel == 0] = np.NaN
+            self._prediction_data['cyc'].update({this_sim_cyc: {'weights': this_cyc_df['weights'], 'Hrel': Hrel}})
+
+        self._json = {'predictions': recovery_predictions}
+
+        #
+        return self
+
+    def fit_predict_average(self, weights_scale: float = 20) -> dict:
+        """Predict profile positions from simulated float swarm
+
+        Prediction is based on a trivial mean of lat/lon of simulated profiles, weighted by the deployment distance
+        to the observed previous cycle position.
+
+        Parameters
+        ----------
+        weights_scale: float (default=20)
+            Scale (in deg) to use to weight the deployment distance to the observed previous cycle position
+
+        Returns
+        -------
+        dict
+        """
+
+        def blank_prediction() -> dict:
+            return {'prediction_location': {
+                'longitude': {'value': None, 'unit': 'degree East'},
+                'latitude': {'value': None, 'unit': 'degree North'},
+                'time': {'value': None},
+            }}
+
+        def weighted_quantiles(values, weights, quantiles=0.5):
+            i = np.argsort(values)
+            c = np.cumsum(weights[i])
+            return values[i[np.searchsorted(c, np.array(quantiles) * c[-1])]]
+
+        # Compute weights of the swarm float profiles locations
+        self.set_weights(scale=weights_scale)
+
+        self._prediction_data = {'weights_scale': weights_scale, 'cyc': {}}
+
+        cycles = np.unique(self.swarm['cyc'])  # 1, 2, ...
+        recovery_predictions = {}
+        for icyc, this_sim_cyc in enumerate(cycles):
+            this_cyc_df = self.swarm[self.swarm['cyc'] == this_sim_cyc]
+
+            # Get coordinates of the most probable location (weighted average):
+            xpred = np.average(this_cyc_df['rel_lon'], weights=this_cyc_df['weights'])
+            ypred = np.average(this_cyc_df['rel_lat'], weights=this_cyc_df['weights'])
+            tpred = this_cyc_df['date'].mean()
+
+            # Store results
+            recovery = blank_prediction()
+            recovery['prediction_location']['longitude']['value'] = xpred
+            recovery['prediction_location']['latitude']['value'] = ypred
+            recovery['prediction_location']['time']['value'] = tpred
+            recovery_predictions.update({this_sim_cyc: recovery})
+
+            # Nicer histogram
+            self._prediction_data['cyc'].update({this_sim_cyc: {'weights': this_cyc_df['weights']}})
+
+        self._json = {'predictions': recovery_predictions}
+
+        #
+        return self
+
+    def fit_predict(self, weights_scale: float = 20.) -> dict:
+        """Predict profile positions from simulated float swarm
+
+        Prediction is based on a :class:`klearn.neighbors._kde.KernelDensity` estimate of the N_FLOATS
+        simulated, weighted by their deployment distance to the observed previous cycle position.
+
+        Parameters
+        ----------
+        weights_scale: float (default=20)
+            Scale (in deg) to use to weight the deployment distance to the observed previous cycle position
+
+        Returns
+        -------
+        dict
+        """
+
+        def blank_prediction() -> dict:
+            return {'location': {
+                        'longitude': {'value': None, 'unit': 'degree East'},
+                        'latitude': {'value': None, 'unit': 'degree North'},
+                        'time': {'value': None}},
+                    'cycle_number': None,
+                    'wmo': self.WMO,
+                    }
+
+        # Compute weights of the swarm float profiles locations
+        self.set_weights(scale=weights_scale)
+
+        self._prediction_data = {'weights_scale': weights_scale, 'cyc': {}}
+
+        cycles = np.unique(self.swarm['cyc']).astype(int)  # 1, 2, ...
+        recovery_predictions = {}
+        for icyc, this_sim_cyc in enumerate(cycles):
+            this_cyc_df = self.swarm[self.swarm['cyc'] == this_sim_cyc]
+            weights = this_cyc_df['weights']
+            x, y = this_cyc_df['rel_lon'], this_cyc_df['rel_lat']
+
+            w = weights / np.max(np.abs(weights), axis=0)
+            X = np.array([x, y]).T
+            kde = KernelDensity(kernel='gaussian', bandwidth=0.15).fit(X, sample_weight=w)
+
+            xg, yg = (np.linspace(np.min(X[:, 0]), np.max(X[:, 0]), 100),
+                      np.linspace(np.min(X[:, 1]), np.max(X[:, 1]), 100))
+            xg, yg = np.meshgrid(xg, yg)
+            Xg = np.array([xg.flatten(), yg.flatten(), ]).T
+            llh = kde.score_samples(Xg)
+            xpred = Xg[np.argmax(llh), 0]
+            ypred = Xg[np.argmax(llh), 1]
+            tpred = this_cyc_df['date'].mean()
+
+            # Store results
+            recovery = blank_prediction()
+            recovery['location']['longitude']['value'] = xpred
+            recovery['location']['latitude']['value'] = ypred
+            recovery['location']['time']['value'] = tpred
+            recovery['cycle_number'] = self.sim_cycles[icyc]
+            recovery_predictions.update({int(this_sim_cyc): recovery})
+
+            #
+            self._prediction_data['cyc'].update({this_sim_cyc: {'weights': this_cyc_df['weights']}})
+
+        # Store results internally
+        self._json = {'predictions': recovery_predictions}
+
+        # Add more stuff to internal storage:
+        self._predict_errors()
+        self._add_ref()
+        self.add_metrics()
+
+        #
+        return self
+
+
+class SimPredictor_2(SimPredictor_1):
+
+    def _predict_errors(self) -> dict:
+        """Compute error metrics for the predicted positions
+
+        This is for past cycles, for which we have observed positions of the predicted profiles
+
+        This adds more keys to self._json['predictions'] created by the fit_predict method
+
+        Returns
+        -------
+        dict
+        """
+
+        def blank_error():
+            return {'distance': {'value': None,
+                                 'unit': 'km'},
+                    'bearing': {'value': None,
+                                'unit': 'degree'},
+                    'time': {'value': None,
+                             'unit': 'hour'}
+                    }
+
+        cyc0 = self.obs_cycles[0]
+        if self._json is None:
+            raise ValueError("Please call `fit_predict` first")
+        recovery_predictions = self._json['predictions']
+
+        for sim_c in recovery_predictions.keys():
+            this_prediction = recovery_predictions[sim_c]
+            if sim_c + cyc0 in self.obs_cycles:
+                error = blank_error()
+
+                this_obs_profile = self.obs[self.obs['cyc'] == sim_c + cyc0]
+                xobs = this_obs_profile['longitude'].iloc[0]
+                yobs = this_obs_profile['latitude'].iloc[0]
+                tobs = this_obs_profile['date'].iloc[0]
+
+                prev_obs_profile = self.obs[self.obs['cyc'] == sim_c + cyc0 - 1]
+                xobs0 = prev_obs_profile['longitude'].iloc[0]
+                yobs0 = prev_obs_profile['latitude'].iloc[0]
+
+                xpred = this_prediction['location']['longitude']['value']
+                ypred = this_prediction['location']['latitude']['value']
+                tpred = this_prediction['location']['time']['value']
+
+                dd = haversine(xobs, yobs, xpred, ypred)
+                error['distance']['value'] = dd
+
+                observed_bearing = bearing(xobs0, yobs0, xobs, yobs)
+                sim_bearing = bearing(xobs0, yobs0, xpred, ypred)
+                error['bearing']['value'] = sim_bearing - observed_bearing
+
+                dt = pd.Timedelta(tpred - tobs) / np.timedelta64(1, 's')
+                # print(tpred, tobs, pd.Timedelta(tpred - tobs))
+                error['time']['value'] = dt / 3600  # From seconds to hours
+
+                this_prediction['location_error'] = error
+                recovery_predictions.update({sim_c: this_prediction})
+
+        self._json.update({'predictions': recovery_predictions})
+        return self
+
+    def _add_ref(self):
+        """Add observations data to internal data structure
+
+        This adds more keys to self._json['predictions'] created by the fit_predict method
+
+        """
+        if self._json is None:
+            raise ValueError("Please call `predict` first")
+
+        # Observed profiles that were simulated:
+        profiles_to_predict = []
+        for cyc in self.sim_cycles:
+            this = {'wmo': self.WMO,
+                    'cycle_number': cyc,
+                    'url_float': argoplot.dashboard(self.WMO, url_only=True),
+                    'url_profile': None,
+                    'location': {'longitude': {'value': None,
+                                               'unit': 'degree East'},
+                                 'latitude': {'value': None,
+                                              'unit': 'degree North'},
+                                 'time': {'value': None}}
+                    }
+            if cyc in self.obs_cycles:
+                this['url_profile'] = get_ea_profile_page_url(self.WMO, cyc)
+                this_df = self.obs[self.obs['cyc'] == cyc]
+                this['location']['longitude']['value'] = this_df['longitude'].iloc[0]
+                this['location']['latitude']['value'] = this_df['latitude'].iloc[0]
+                this['location']['time']['value'] = this_df['date'].iloc[0]
+            profiles_to_predict.append(this)
+
+        self._json.update({'observations': profiles_to_predict})
+
+        # Observed profile used as initial conditions to the simulation:
+        cyc = self.obs_cycles[0]
+        this_df = self.obs[self.obs['cyc'] == cyc]
+        self._json.update({'initial_profile': {'wmo': self.WMO,
+                                               'cycle_number': cyc,
+                                               'url_float': argoplot.dashboard(self.WMO, url_only=True),
+                                               'url_profile': get_ea_profile_page_url(self.WMO, cyc),
+                                               'location': {'longitude': {'value': this_df['longitude'].iloc[0],
+                                                                          'unit': 'degree East'},
+                                                            'latitude': {'value': this_df['latitude'].iloc[0],
+                                                                         'unit': 'degree North'},
+                                                            'time': {'value': this_df['date'].iloc[0]}}
+                                               }})
+
+        #
+        return self
+
+    def add_metrics(self, VFvel=None):
+        """Compute more metrics to understand the prediction error
+
+        1. Compute a transit time to cover the distance error
+        (assume a 12 kts boat speed with 1 kt = 1.852 km/h)
+
+        1. Compute the possible drift due to the time lag between the predicted profile timing and the expected one
+
+        This adds more keys to self._json['predictions'] created by the fit_predict method
+
+        """
+        cyc0 = self.obs_cycles[0]
+        if self._json is None:
+            raise ValueError("Please call `predict` first")
+        recovery_predictions = self._json['predictions']
+
+        for sim_c in recovery_predictions.keys():
+            this_prediction = recovery_predictions[sim_c]
+            if sim_c + cyc0 in self.obs_cycles and 'location_error' in this_prediction.keys():
+
+                error = this_prediction['location_error']
+                metrics = {}
+
+                # Compute a transit time to cover the distance error:
+                metrics['transit'] = {'value': None,
+                                      'unit': 'hour',
+                                      'comment': 'Transit time to cover the distance error '
+                                                 '(assume a 12 kts boat speed with 1 kt = 1.852 km/h)'}
+
+                if error['distance']['value'] is not None:
+                    metrics['transit']['value'] = pd.Timedelta(error['distance']['value'] / (12 * 1.852),
+                                                               'h').seconds / 3600.
+
+                # Compute the possible drift due to the time lag between the predicted profile timing and the expected one:
+                if VFvel is not None:
+                    xpred = this_prediction['location']['longitude']['value']
+                    ypred = this_prediction['location']['latitude']['value']
+                    tpred = this_prediction['location']['time']['value']
+                    dsc = VFvel.field.interp(
+                        {VFvel.dim['lon']: xpred,
+                         VFvel.dim['lat']: ypred,
+                         VFvel.dim['time']: tpred,
+                         VFvel.dim['depth']:
+                             VFvel.field[{VFvel.dim['depth']: 0}][VFvel.dim['depth']].values[np.newaxis][0]}
+                    )
+                    velc = np.sqrt(dsc[VFvel.var['U']] ** 2 + dsc[VFvel.var['V']] ** 2).values[np.newaxis][0]
+                    metrics['surface_drift'] = {'value': None,
+                                                'unit': 'km',
+                                                'surface_currents_speed': None,
+                                                'surface_currents_speed_unit': 'm/s',
+                                                'comment': 'Drift by surface currents due to the float ascent time error '
+                                                           '(difference between simulated profile time and the observed one).'}
+                    if error['time']['value'] is not None:
+                        metrics['surface_drift']['value'] = (error['time']['value'] * 3600 * velc / 1e3)
+                        metrics['surface_drift']['surface_currents_speed'] = velc
+
+                #
+                this_prediction['metrics'] = metrics
+                recovery_predictions.update({sim_c: this_prediction})
+
+        self._json.update({"predictions": recovery_predictions})
+        return self
+
+
+class SimPredictor_3(SimPredictor_2):
+
+    def plot_predictions(self,
+                         VFvel,
+                         cfg,
+                         sim_suffix='',  # get_sim_suffix(this_args, cfg)
+                         s=0.2,
+                         alpha=False,
+                         save_figure=False,
+                         workdir='.',
+                         figsize=None,
+                         dpi=120,
+                         orient='portrait'):
+        ebox = self.bbox(s=s)
+        pred_traj = self.trajectory
+
+        if orient == 'portrait':
+            if self.n_cycles == 1:
+                nrows, ncols = 2, 1
+                if figsize is None:
+                    figsize = (5, 5)
+            else:
+                nrows, ncols = self.n_cycles, 2
+                if figsize is None:
+                    figsize = (5, (self.n_cycles-1)*5)
+        else:
+            if self.n_cycles == 1:
+                nrows, ncols = 1, 2
+            else:
+                nrows, ncols = 2, self.n_cycles
+            if figsize is None:
+                figsize = (ncols*5, 5)
+
+        def plot_this(this_ax, i_cycle, ip):
+            df_sim = self.swarm[self.swarm['cyc'] == i_cycle + 1]
+            weights = self._prediction_data['cyc'][i_cycle + 1]['weights'].values
+            if self.sim_cycles[i_cycle] in self.obs_cycles:
+                this_profile = self.obs[self.obs['cyc'] == self.sim_cycles[i_cycle]]
+            else:
+                this_profile = None
+
+            xpred = self.predictions['predictions'][i_cycle + 1]['location']['longitude']['value']
+            ypred = self.predictions['predictions'][i_cycle + 1]['location']['latitude']['value']
+
+            this_ax.set_extent(ebox)
+            this_ax = map_add_features(ax[ix])
+
+            v = VFvel.field.isel(time=0).interp(depth=cfg.mission['parking_depth'])
+            v.plot.quiver(x="longitude",
+                          y="latitude",
+                          u=VFvel.var['U'],
+                          v=VFvel.var['V'],
+                          ax=this_ax,
+                          color='grey',
+                          alpha=0.5,
+                          scale=5,
+                          add_guide=False)
+
+            this_ax.plot(df_sim['deploy_lon'], df_sim['deploy_lat'], '.',
+                         markersize=3,
+                         color='grey',
+                         alpha=0.1,
+                         markeredgecolor=None,
+                         zorder=0)
+
+            this_ax.plot(pred_traj[:, 0], pred_traj[:, 1], color='k', linewidth=1, marker='+')
+            this_ax.plot(xpred, ypred, color='g', marker='+')
+
+            w = weights / np.max(np.abs(weights), axis=0)
+            ii = np.argsort(w)
+            cmap = plt.cm.cool
+            # cmap = plt.cm.Reds
+
+            if ip == 0:
+                x, y = df_sim['deploy_lon'], df_sim['deploy_lat']
+                title = 'Initial virtual float positions'
+                if not alpha:
+                    this_ax.scatter(x.iloc[ii], y.iloc[ii], c=w[ii],
+                                    marker='o', s=4, edgecolor=None, vmin=0, vmax=1, cmap=cmap)
+                else:
+                    this_ax.scatter(x.iloc[ii], y.iloc[ii], c=w[ii],
+                                    alpha=w[ii],
+                                    marker='o', s=4, edgecolor=None, vmin=0, vmax=1, cmap=cmap)
+            elif ip == 1:
+                x, y = df_sim['longitude'], df_sim['latitude']
+                title = 'Final virtual float positions'
+                if not alpha:
+                    this_ax.scatter(x, y, c=w, marker='o', s=4, edgecolor=None, vmin=0, vmax=1, cmap=cmap)
+                else:
+                    this_ax.scatter(x, y, c=w, marker='o', s=4, alpha=w, edgecolor=None, vmin=0, vmax=1, cmap=cmap)
+            elif ip == 2:
+                x, y = df_sim['rel_lon'], df_sim['rel_lat']
+                title = 'Final virtual floats positions relative to observed float'
+                if not alpha:
+                    this_ax.scatter(x.iloc[ii], y.iloc[ii], c=w[ii],
+                                    marker='o', s=4, edgecolor=None, vmin=0, vmax=1, cmap=cmap)
+                else:
+                    this_ax.scatter(x.iloc[ii], y.iloc[ii], c=w[ii],
+                                    marker='o', s=4, alpha=w[ii], edgecolor=None, vmin=0, vmax=1, cmap=cmap)
+
+            # Display full trajectory prediction:
+            if ip != 0 and this_profile is not None:
+                this_ax.arrow(this_profile['longitude'].iloc[0],
+                              this_profile['latitude'].iloc[0],
+                              xpred - this_profile['longitude'].iloc[0],
+                              ypred - this_profile['latitude'].iloc[0],
+                              length_includes_head=True, fc='k', ec='c', head_width=0.025, zorder=10)
+                this_ax.plot(xpred, ypred, 'k+', zorder=10)
+
+            this_ax.set_title("")
+            # this_ax.set_ylabel("Cycle %i predictions" % (i_cycle+1))
+            this_ax.set_title("%s\nCycle %i predictions" % (title, self.sim_cycles[i_cycle]), fontsize=6)
+
+        fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize, dpi=dpi,
+                               subplot_kw={'projection': ccrs.PlateCarree()},
+                               sharex=True, sharey=True)
+        ax, ix = ax.flatten(), -1
+
+        if orient == 'portrait':
+            rows = range(self.n_cycles)
+            cols = [1, 2]
+        else:
+            rows = [1, 2]
+            cols = range(self.n_cycles)
+
+        if orient == 'portrait':
+            for i_cycle in rows:
+                for ip in cols:
+                    ix += 1
+                    plot_this(ax[ix], i_cycle, ip)
+        else:
+            for ip in rows:
+                for i_cycle in cols:
+                    ix += 1
+                    plot_this(ax[ix], i_cycle, ip)
+
+        # log.debug("Start to write metrics string")
+        #
+        # xpred = SP.prediction[i_cycle + 1]['location']['longitude']['value']
+        #
+        # err = recovery['prediction_location_error']
+        # met = recovery['prediction_metrics']
+        # if this_profile.shape[0] > 1:
+        #     # err_str = "Prediction vs Truth: [%0.2fkm, $%0.2f^o$]" % (err['distance'], err['bearing'])
+        #     err_str = "Prediction errors: [dist=%0.2f%s, bearing=$%0.2f^o$, time=%s]\n" \
+        #               "Distance error represents %s of transit at 12kt" % (err['distance']['value'],
+        #                                               err['distance']['unit'],
+        #                                               err['bearing']['value'],
+        #                                               strfdelta(pd.Timedelta(err['time']['value'], 'h'),
+        #                                                         "{hours}H{minutes:02d}"),
+        #                                               strfdelta(pd.Timedelta(met['transit']['value'], 'h'),
+        #                                                         "{hours}H{minutes:02d}"))
+        # else:
+        #     err_str = ""
+        #
+        # fig.suptitle("VirtualFleet recovery prediction for WMO %i: \
+        # starting from cycle %i, predicting cycle %i\n%s\n%s\n%s" %
+        #              (wmo, cyc[0], cyc[1], get_cfg_str(cfg), err_str, "Prediction based on %s" % vel_name), fontsize=15)
+
+        plt.tight_layout()
+        if save_figure:
+            save_figurefile(fig, 'vfrecov_predictions_%s' % sim_suffix, workdir)
+
+        return fig, ax
+
+
+class SimPredictor(SimPredictor_3):
+
+    def to_json(self, fp=None):
+        kw = {'indent': 4, 'sort_keys': True, 'default': str}
+        if fp is not None:
+            if hasattr(fp, 'write'):
+                json.dump(self._json, fp, **kw)
+            else:
+                with open(fp, 'w') as f:
+                    json.dump(self._json, f, **kw)
+        else:
+            results_js = json.dumps(self._json, **kw)
+            return results_js
 
 
 def get_ea_profile_page_url(wmo, cyc):
@@ -1366,12 +2088,14 @@ def setup_args():
 
     # Add long and short arguments
     parser.add_argument('wmo', help="Float WMO number", type=int)
-    parser.add_argument("cyc", help="Cycle number to predict", type=int)
+    parser.add_argument("cyc", help="Cycle number to predict", type=int, nargs="+")
     parser.add_argument("--nfloats", help="Number of virtual floats used to make the prediction, default: 2000",
                         type=int, default=2000)
     parser.add_argument("--output", help="Output folder, default: webAPI internal folder", default=None)
     parser.add_argument("--velocity", help="Velocity field to use. Possible values are: 'ARMOR3D' (default), 'GLORYS'",
                         default='ARMOR3D')
+    parser.add_argument("--domain_size", help="Size (deg) of the velocity domain to load, default: 12",
+                        type=float, default=12)
     parser.add_argument("--save_figure", help="Should we save figure on file or not ? Default: True", default=True)
     parser.add_argument("--save_sim", help="Should we save the simulation on file or not ? Default: False", default=False)
     parser.add_argument("--vf", help="Parent folder to the VirtualFleet repository clone", default=None)
@@ -1379,6 +2103,7 @@ def setup_args():
 
     parser.add_argument("--cfg_parking_depth", help="Virtual floats parking depth in [db], default: use previous cycle value", default=None)
     parser.add_argument("--cfg_cycle_duration", help="Virtual floats cycle duration in [hours], default: use previous cycle value", default=None)
+    parser.add_argument("--cfg_profile_depth", help="Virtual floats profiles depth in [db], default: use previous cycle value", default=None)
 
     return parser
 
@@ -1386,10 +2111,11 @@ def setup_args():
 def get_sim_suffix(this_args, this_cfg):
     """Compose a string suffix for output files"""
     # suf = '%s_%i' % (this_args.velocity, this_args.nfloats)
-    suf = 'VEL%s_NF%i_CYCDUR%i_PDPTH%i' % (this_args.velocity,
+    suf = 'VEL%s_NF%i_CYCDUR%i_PARKD%i_PROFD%i' % (this_args.velocity,
                                                 this_args.nfloats,
                                                 int(this_cfg.mission['cycle_duration']),
-                                                int(this_cfg.mission['parking_depth']))
+                                                int(this_cfg.mission['parking_depth']),
+                                                int(this_cfg.mission['profile_depth']))
     return suf
 
 
@@ -1400,12 +2126,16 @@ def predictor(args):
 
     if is_wmo(args.wmo):
         WMO = args.wmo
-    if is_cyc(args.cyc) and args.cyc > 1:
-        CYC = [args.cyc-1, args.cyc]
+    if is_cyc(args.cyc):
+        CYC = [check_cyc(args.cyc)[0]-1]
+        [CYC.append(c) for c in check_cyc(args.cyc)]
     if args.velocity not in ['ARMOR3D', 'GLORYS']:
         raise ValueError("Velocity field must be one in: ['ARMOR3D', 'GLORYS']")
     else:
         VEL_NAME = args.velocity.upper()
+
+    puts('CYC = %s' % CYC, color=COLORS.magenta)
+    # raise ValueError('stophere')
 
     if args.save_figure:
         mplbackend = matplotlib.get_backend()
@@ -1453,6 +2183,7 @@ def predictor(args):
     if not args.json:
         puts("\nYou can check this float dashboard while we prepare the prediction:")
         puts("\t%s" % argoplot.dashboard(WMO, url_only=True), color=COLORS.green)
+        puts("\nLoading float profiles index ...")
     host = "https://data-argo.ifremer.fr"
     # host = "/home/ref-argo/gdac" if os.uname()[0] == 'Darwin' else "https://data-argo.ifremer.fr"
     # host = "/home/ref-argo/gdac" if not os.uname()[0] == 'Darwin' else "~/data/ARGO"
@@ -1487,31 +2218,40 @@ def predictor(args):
                                                           float(args.cfg_cycle_duration)))
         CFG.update('cycle_duration', float(args.cfg_cycle_duration))
 
+    if args.cfg_profile_depth is not None:
+        puts("profile_depth=%i is overwritten with %i" % (CFG.mission['profile_depth'],
+                                                          float(args.cfg_profile_depth)))
+        CFG.update('profile_depth', float(args.cfg_profile_depth))
+
     # Save virtual float configuration on file:
     CFG.to_json(os.path.join(WORKDIR, "floats_configuration_%s.json" % get_sim_suffix(args, CFG)))
 
     if not args.json:
         puts("\n".join(["\t%s" % line for line in CFG.__repr__().split("\n")]), color=COLORS.green)
 
-    # Get the cycling frequency (in days):
+    # Get the cycling frequency (in days, this is more a period then...):
     CYCLING_FREQUENCY = int(np.round(CFG.mission['cycle_duration'])/24)
 
     # Define domain to load velocity for, and get it:
-    width = 10 + np.abs(np.ceil(THIS_PROFILE['longitude'].values[-1] - CENTER[0]))
-    height = 10 + np.abs(np.ceil(THIS_PROFILE['latitude'].values[-1] - CENTER[1]))
+    width = args.domain_size + np.abs(np.ceil(THIS_PROFILE['longitude'].values[-1] - CENTER[0]))
+    height = args.domain_size + np.abs(np.ceil(THIS_PROFILE['latitude'].values[-1] - CENTER[1]))
     VBOX = [CENTER[0] - width / 2, CENTER[0] + width / 2, CENTER[1] - height / 2, CENTER[1] + height / 2]
+    N_DAYS = (len(CYC)-1)*CYCLING_FREQUENCY+1
     if not args.json:
-        puts("\nLoading %s velocity field to cover %i days..." % (VEL_NAME, CYCLING_FREQUENCY+1))
+        puts("\nLoading %s velocity field to cover %i days..." % (VEL_NAME, N_DAYS))
     ds_vel, velocity_file = get_velocity_field(VBOX, THIS_DATE,
-                                           n_days=CYCLING_FREQUENCY+1,
+                                           n_days=N_DAYS,
                                            output=WORKDIR,
                                            dataset=VEL_NAME)
     VEL = Velocity(model='GLORYS12V1' if VEL_NAME == 'GLORYS' else VEL_NAME, src=ds_vel)
     if not args.json:
-        puts("\tLoaded velocity field from %s to %s" %
+        puts("\n\t%s" % str(ds_vel), color=COLORS.green)
+        puts("\n\tLoaded velocity field from %s to %s" %
              (pd.to_datetime(ds_vel['time'][0].values).strftime("%Y-%m-%dT%H:%M:%S"),
               pd.to_datetime(ds_vel['time'][-1].values).strftime("%Y-%m-%dT%H:%M:%S")), color=COLORS.green)
-    fig, ax = figure_velocity(VBOX, VEL, VEL_NAME, THIS_PROFILE, WMO, CYC, save_figure=args.save_figure, workdir=WORKDIR)
+    figure_velocity(VBOX, VEL, VEL_NAME, THIS_PROFILE, WMO, CYC, save_figure=args.save_figure, workdir=WORKDIR)
+
+    # raise ValueError('stophere')
 
     # VirtualFleet, get a deployment plan:
     if not args.json:
@@ -1540,7 +2280,7 @@ def predictor(args):
     if args.save_sim and os.path.exists(output_path):
         shutil.rmtree(output_path)
 
-    VFleet.simulate(duration=timedelta(hours=CYCLING_FREQUENCY*24+1),
+    VFleet.simulate(duration=timedelta(hours=N_DAYS*24+1),
                     step=timedelta(minutes=5),
                     record=timedelta(minutes=30),
                     output=args.save_sim,
@@ -1551,52 +2291,48 @@ def predictor(args):
 
     # VirtualFleet, get simulated profiles index:
     if not args.json:
-        puts("\nVirtualFleet, extract simulated profiles index...")
-    # ds_traj = xr.open_dataset(VFleet.output)
-    # DF_SIM = simu2index_legacy(DF_PLAN, ds_traj)
-    # DF_SIM = ds_simu2index(ds_traj)
-    try:
-        DF_SIM = get_index(VFleet, VEL, DF_PLAN)
-    except ValueError:
-        ds_traj = xr.open_zarr(VFleet.output)
-        DF_SIM = ds_simu2index(ds_traj)
-    DF_SIM = postprocess_index(DF_SIM, THIS_PROFILE)
+        puts("\nExtract swarm profiles index...")
+
+    T = Trajectories(WORKDIR + "/" + 'trajectories_%s.zarr' % get_sim_suffix(args, CFG))
+    DF_SIM = T.get_index().add_distances(origin=[THIS_PROFILE['longitude'].values[0], THIS_PROFILE['latitude'].values[0]])
     if not args.json:
+        puts(str(T), color=COLORS.magenta)
         puts(DF_SIM.head().to_string(), color=COLORS.green)
-    fig, ax = figure_positions(args, VEL, DF_SIM, DF_PLAN, THIS_PROFILE, CFG, WMO, CYC, VEL_NAME,
-                               dd=1, save_figure=args.save_figure, workdir=WORKDIR)
+    figure_positions(args, VEL, DF_SIM, DF_PLAN, THIS_PROFILE, CFG, WMO, CYC, VEL_NAME,
+                     dd=1, save_figure=args.save_figure, workdir=WORKDIR)
+
 
     # Recovery, make predictions based on simulated profile density:
-    results = predict_position(args, WORKDIR, WMO, CYC, CFG, VEL, VEL_NAME, DF_SIM, DF_PLAN, THIS_PROFILE,
-                               save_figure=args.save_figure, quiet=~args.json)
-    results['profile_to_predict'] = {'wmo': WMO,
-                          'cycle_number': CYC[-1],
-                          'url_float': argoplot.dashboard(WMO, url_only=True),
-                          'url_profile': None,
-                          'location': {'longitude': {'value': None,
-                                                     'unit': 'degree East'},
-                                       'latitude': {'value': None,
-                                                    'unit': 'degree North'},
-                                       'time': {'value': None}}
-                                     }
-    if THIS_PROFILE.shape[0] > 1:
-        results['profile_to_predict']['url_profile'] = get_ea_profile_page_url(WMO, CYC[-1])
-        results['profile_to_predict']['location']['longitude']['value'] = THIS_PROFILE['longitude'].values[-1]
-        results['profile_to_predict']['location']['latitude']['value'] = THIS_PROFILE['latitude'].values[-1]
-        results['profile_to_predict']['location']['time']['value'] = THIS_PROFILE['date'].values[-1]
+    SP = SimPredictor(DF_SIM, THIS_PROFILE)
+    if not args.json:
+        puts("\nPredict float cycle position(s) from swarm simulation...", color=COLORS.white)
+        puts(str(SP), color=COLORS.magenta)
+    SP.fit_predict()
+    SP.add_metrics(VEL)
+    SP.plot_predictions(VEL,
+                         CFG,
+                         sim_suffix=get_sim_suffix(args, CFG),
+                         save_figure=args.save_figure,
+                         workdir=WORKDIR,
+                         orient='portrait')
+    results = SP.predictions
 
-    results['previous_profile'] = {'wmo': WMO,
-                          'cycle_number': CYC[0],
-                          'url_float': argoplot.dashboard(WMO, url_only=True),
-                          'url_profile': get_ea_profile_page_url(WMO, CYC[0]),
-                          'location': {'longitude': {'value': CENTER[0],
-                                                     'unit': 'degree East'},
-                                       'latitude': {'value': CENTER[1],
-                                                    'unit': 'degree North'},
-                                       'time': {'value': THIS_DATE}}
-                                   }
-    results = analyse_pairwise_distances(args, CFG, results)
+    # Recovery, compute more swarm metrics:
+    for this_cyc in T.sim_cycles:
+        jsmetrics, fig, ax = T.analyse_pairwise_distances(cycle=this_cyc,
+                                                          save_figure=True,
+                                                          this_args=args,
+                                                          this_cfg=CFG,
+                                                          sim_suffix=get_sim_suffix(args, CFG),
+                                                          workdir=WORKDIR,
+                                                          )
+        if 'metrics' in results['predictions'][this_cyc]:
+            for key in jsmetrics.keys():
+                results['predictions'][this_cyc]['metrics'].update({key: jsmetrics[key]})
+        else:
+            results['predictions'][this_cyc].update({'metrics': jsmetrics})
 
+    # Recovery, finalize JSON output:
     execution_end = time.time()
     process_end = time.process_time()
     computation = {
@@ -1615,15 +2351,11 @@ def predictor(args):
         puts("\nPredictions:")
     results_js = json.dumps(results, indent=4, sort_keys=True, default=str)
 
-    # with open(os.path.join(WORKDIR, 'prediction.json'), 'w', encoding='utf-8') as f:
-    #     json.dump(results, f, ensure_ascii=False, indent=4, default=str, sort_keys=True)
-
     with open(os.path.join(WORKDIR, 'prediction_%s.json' % get_sim_suffix(args, CFG)), 'w', encoding='utf-8') as f:
         json.dump(results, f, ensure_ascii=False, indent=4, default=str, sort_keys=True)
 
     if not args.json:
         puts(results_js, color=COLORS.green)
-
         puts("\nCheck results at:")
         puts("\t%s" % WORKDIR, color=COLORS.green)
 
@@ -1638,6 +2370,7 @@ def predictor(args):
 if __name__ == '__main__':
     # Read mandatory arguments from the command line
     ARGS = setup_args().parse_args()
+
     js = predictor(ARGS)
     if ARGS.json:
         sys.stdout.write(js)
