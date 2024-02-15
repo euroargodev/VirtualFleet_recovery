@@ -698,241 +698,6 @@ def figure_positions(this_args, vel, df_sim, df_plan, this_profile, cfg, wmo, cy
     return fig, ax
 
 
-def figure_predictions(this_args, weights, bin_X, bin_Y, bin_res, Hrel, recovery,
-                       vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name,
-                       s=0.2, alpha=False, save_figure=False, workdir='.'):
-    log.debug("Starts figure_predictions")
-    ebox = get_EBOX(df_sim, df_plan, this_profile, s=s)
-    nfloats = df_plan.shape[0]
-    # fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(25,7), dpi=90,
-    #                        subplot_kw={'projection': ccrs.PlateCarree()},
-    #                        sharex=True, sharey=True)
-    fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(25, 15), dpi=120,
-                           subplot_kw={'projection': ccrs.PlateCarree()},
-                           sharex=True, sharey=True)
-    ax = ax.flatten()
-
-    xpred, ypred = recovery['prediction_location']['longitude']['value'], \
-                   recovery['prediction_location']['latitude']['value']
-
-    for ix in [0, 1, 2, 3]:
-        # log.debug("Plot %i" % ix)
-        ax[ix].set_extent(ebox)
-        ax[ix] = map_add_features(ax[ix])
-
-        vel.field.isel(time=0).interp(depth=cfg.mission['parking_depth']).plot.quiver(x="longitude",
-                                                                                   y="latitude",
-                                                                                   u=vel.var['U'],
-                                                                                   v=vel.var['V'],
-                                                                                   ax=ax[ix],
-                                                                                   color='grey',
-                                                                                   alpha=0.5,
-                                                                                   scale=1,
-                                                                                   add_guide=False)
-
-        ax[ix].plot(df_sim['deploy_lon'], df_sim['deploy_lat'], '.',
-                    markersize=3,
-                    color='grey',
-                    alpha=0.1,
-                    markeredgecolor=None,
-                    zorder=0)
-        w = weights/np.max(np.abs(weights), axis=0)
-        ii = np.argsort(w)
-        cmap = plt.cm.cool
-        # cmap = plt.cm.Reds
-        if ix == 0:
-            x, y = df_sim['deploy_lon'], df_sim['deploy_lat']
-            # title = 'Initial float positions\ncolored with histogram weights'
-            title = 'Initial virtual float positions'
-            # wp = weights_plan/np.nanmax(np.abs(weights_plan),axis=0)
-            if not alpha:
-                sc = ax[ix].scatter(x[ii], y[ii], c=w[ii], marker='o', s=4, edgecolor=None, vmin=0, vmax=1, cmap=cmap)
-            else:
-                sc = ax[ix].scatter(x[ii], y[ii], c=w[ii], marker='o', s=4, alpha=w[ii], edgecolor=None, vmin=0, vmax=1, cmap=cmap)
-        elif ix == 1:
-            x, y = df_sim['longitude'], df_sim['latitude']
-            # title = 'Final float positions\ncolored with histogram weights'
-            title = 'Final virtual float positions'
-            if not alpha:
-                sc = ax[ix].scatter(x, y, c=w, marker='o', s=4, edgecolor=None, vmin=0, vmax=1, cmap=cmap)
-            else:
-                sc = ax[ix].scatter(x, y, c=w, marker='o', s=4, alpha=w, edgecolor=None, vmin=0, vmax=1, cmap=cmap)
-        elif ix == 2:
-            x, y = df_sim['rel_lon'], df_sim['rel_lat']
-            # title = 'Final floats relative to last float position\ncolored with histogram weights'
-            title = 'Final virtual floats positions relative to observed float'
-            if not alpha:
-                sc = ax[ix].scatter(x[ii], y[ii], c=w[ii], marker='o', s=4, edgecolor=None, vmin=0, vmax=1, cmap=cmap)
-            else:
-                sc = ax[ix].scatter(x[ii], y[ii], c=w[ii], marker='o', s=4, alpha=w[ii], edgecolor=None, vmin=0, vmax=1, cmap=cmap)
-        elif ix == 3:
-            # Hs = H/(np.nanmax(H)-np.nanmin(H))
-            # Hs = Hrel/(np.nanmax(Hrel)-np.nanmin(Hrel))
-            sc = ax[ix].pcolor(bin_X[0:-1]+bin_res/2, bin_Y[0:-1]+bin_res/2, Hrel.T, cmap=cmap)
-            # bin_X, bin_Y = np.meshgrid(bin_X[0:-1]+bin_res/2, bin_Y[0:-1]+bin_res/2)
-            # bin_X, bin_Y = bin_X.flatten(), bin_Y.flatten()
-            # c = (Hrel.T).flatten()
-            # alp = c/np.nanmax(np.abs(c),axis=0)
-            # alp[np.isnan(alp)] = 0
-            # sc = ax[ix].scatter(bin_X, bin_Y, c=c, marker='o', s=6, alpha=alp, edgecolor=None, vmin=0, vmax=1, cmap=cmap)
-            title = 'Weighted profile density'
-
-        # Trajectory prediction:
-        ax[ix].arrow(this_profile['longitude'][0],
-                     this_profile['latitude'][0],
-                     xpred-this_profile['longitude'][0],
-                     ypred-this_profile['latitude'][0],
-                     length_includes_head=True, fc='k', ec='c', head_width=0.025, zorder=10)
-        ax[ix].plot(xpred, ypred, 'k+', zorder=10)
-
-        # distance_due_to_timelag
-        if this_profile.shape[0] > 1:
-            km2deg = 360 / (2 * np.pi * 6371) # Approximation
-            ax[ix].add_patch(
-                mpatches.Circle(xy=[xpred, ypred],
-                                radius=recovery['prediction_metrics']['surface_drift']['value'] * km2deg,
-                                color='green',
-                                alpha=0.7,
-                                transform=ccrs.PlateCarree(),
-                                zorder=9))
-
-        # Another
-        # xave, yave = np.average(DF_SIM['longitude'].values, weights=weights), \
-        #              np.average(DF_SIM['latitude'].values, weights=weights)
-        # # ax[ix].arrow(THIS_PROFILE['longitude'][0],
-        # #              THIS_PROFILE['latitude'][0],
-        # #              xave-THIS_PROFILE['longitude'][0],
-        # #              yave-THIS_PROFILE['latitude'][0],
-        # #              length_includes_head=True, fc='k', ec='c', head_width=0.025, zorder=10)
-        # ax[ix].plot([THIS_PROFILE['longitude'][0], xave], [THIS_PROFILE['latitude'][0], yave], 'g--', zorder=10)
-
-        plt.colorbar(sc, ax=ax[ix],shrink =0.5)
-
-        ax[ix] = map_add_profiles(ax[ix], this_profile)
-        ax[ix].set_title(title)
-
-    log.debug("Start to write metrics string")
-
-    err = recovery['prediction_location_error']
-    met = recovery['prediction_metrics']
-    if this_profile.shape[0] > 1:
-        # err_str = "Prediction vs Truth: [%0.2fkm, $%0.2f^o$]" % (err['distance'], err['bearing'])
-        err_str = "Prediction errors: [dist=%0.2f%s, bearing=$%0.2f^o$, time=%s]\n" \
-                  "Distance error represents %s of transit at 12kt" % (err['distance']['value'],
-                                                  err['distance']['unit'],
-                                                  err['bearing']['value'],
-                                                  strfdelta(pd.Timedelta(err['time']['value'], 'h'),
-                                                            "{hours}H{minutes:02d}"),
-                                                  strfdelta(pd.Timedelta(met['transit']['value'], 'h'),
-                                                            "{hours}H{minutes:02d}"))
-    else:
-        err_str = ""
-
-    fig.suptitle("VirtualFleet recovery prediction for WMO %i: \
-    starting from cycle %i, predicting cycle %i\n%s\n%s\n%s" %
-                 (wmo, cyc[0], cyc[1], get_cfg_str(cfg), err_str, "Prediction based on %s" % vel_name), fontsize=15)
-    plt.tight_layout()
-    if save_figure:
-        save_figurefile(fig, 'vfrecov_predictions_%s' % get_sim_suffix(this_args, cfg), workdir)
-    return fig, ax
-
-
-def figure_predictions_recap(this_args, weights, bin_X, bin_Y, bin_res, Hrel, recovery,
-                       vel, df_sim, df_plan, this_profile, cfg, wmo, cyc, vel_name,
-                       s=0.2, alpha=False, save_figure=False, workdir='.'):
-    log.debug("Starts figure_predictions_recap")
-    ebox = get_EBOX(df_sim, df_plan, this_profile, s=s)
-    nfloats = df_plan.shape[0]
-    # fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(25,7), dpi=90,
-    #                        subplot_kw={'projection': ccrs.PlateCarree()},
-    #                        sharex=True, sharey=True)
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(18, 10), dpi=90,
-                           subplot_kw={'projection': ccrs.PlateCarree()},
-                           sharex=True, sharey=True)
-    ax, ix = np.array(ax)[np.newaxis], 0
-
-    xpred, ypred = recovery['prediction_location']['longitude']['value'], \
-                   recovery['prediction_location']['latitude']['value']
-
-    ax[ix].set_extent(ebox)
-    ax[ix] = map_add_features(ax[ix])
-
-    vel.field.isel(time=0).interp(depth=cfg.mission['parking_depth']).plot.quiver(x="longitude",
-                                                                                  y="latitude",
-                                                                                  u=vel.var['U'],
-                                                                                  v=vel.var['V'],
-                                                                                  ax=ax[ix],
-                                                                                  color='grey',
-                                                                                  alpha=0.5,
-                                                                                  scale=1,
-                                                                                  add_guide=False)
-
-    ax[ix].plot(df_sim['deploy_lon'], df_sim['deploy_lat'], '.',
-                markersize=3,
-                color='grey',
-                alpha=0.1,
-                markeredgecolor=None,
-                zorder=0)
-
-    w = weights/np.max(np.abs(weights), axis=0)
-    ii = np.argsort(w)
-    cmap = plt.cm.cool
-
-    x, y = df_sim['rel_lon'], df_sim['rel_lat']
-    title = 'Final virtual floats positions relative to observed starting float'
-    if not alpha:
-        sc = ax[ix].scatter(x[ii], y[ii], c=w[ii], marker='o', s=4, edgecolor=None, vmin=0, vmax=1, cmap=cmap)
-    else:
-        sc = ax[ix].scatter(x[ii], y[ii], c=w[ii], marker='o', s=4, alpha=w[ii], edgecolor=None, vmin=0, vmax=1, cmap=cmap)
-
-    # Trajectory prediction:
-    ax[ix].arrow(this_profile['longitude'][0],
-                 this_profile['latitude'][0],
-                 xpred-this_profile['longitude'][0],
-                 ypred-this_profile['latitude'][0],
-                 length_includes_head=True, fc='k', ec='r', head_width=0.025, zorder=10)
-    ax[ix].plot(xpred, ypred, 'k+', zorder=10)
-
-    # distance_due_to_timelag
-    if this_profile.shape[0] > 1:
-        km2deg = 360 / (2 * np.pi * 6371) # Approximation
-        ax[ix].add_patch(
-            mpatches.Circle(xy=[xpred, ypred],
-                            radius=recovery['prediction_metrics']['surface_drift']['value'] * km2deg,
-                            color='green',
-                            alpha=0.4,
-                            transform=ccrs.PlateCarree(),
-                            zorder=9))
-
-    plt.colorbar(sc, ax=ax[ix], shrink=0.5, label='Norm. gaussian distance to starting position')
-
-    ax[ix] = map_add_profiles(ax[ix], this_profile)
-    ax[ix].set_title('')
-
-    err = recovery['prediction_location_error']
-    met = recovery['prediction_metrics']
-    if this_profile.shape[0] > 1:
-        # err_str = "Prediction vs Truth: [%0.2fkm, $%0.2f^o$]" % (err['distance'], err['bearing'])
-        err_str = "Prediction errors: [dist=%0.2f%s, bearing=$%0.2f^o$, time=%s], " \
-                  "Distance error represents %s of transit at 12kt" % (err['distance']['value'],
-                                                  err['distance']['unit'],
-                                                  err['bearing']['value'],
-                                                  strfdelta(pd.Timedelta(err['time']['value'], 'h'),
-                                                            "{hours}H{minutes:02d}"),
-                                                  strfdelta(pd.Timedelta(met['transit']['value'], 'h'),
-                                                            "{hours}H{minutes:02d}"))
-    else:
-        err_str = ""
-
-    fig.suptitle("VirtualFleet recovery prediction for WMO %i: \
-starting from cycle %i, predicting cycle %i\n%s\n%s\n%s\nFigure: %s" %
-                 (wmo, cyc[0], cyc[1], get_cfg_str(cfg), err_str, "Prediction based on %s" % vel_name, title), fontsize=12)
-    plt.tight_layout()
-    if save_figure:
-        save_figurefile(fig, 'vfrecov_predictions_recap_%s' % get_sim_suffix(this_args, cfg), workdir)
-    return fig, ax
-
-
 def setup_deployment_plan(a_profile, a_date, nfloats=15000):
     # We will deploy a collection of virtual floats that are located around the real float with random perturbations in space and time
 
@@ -2277,13 +2042,13 @@ def predictor(args):
 
     # Remove traj file if exists:
     output_path = os.path.join(WORKDIR, 'trajectories_%s.zarr' % get_sim_suffix(args, CFG))
-    if args.save_sim and os.path.exists(output_path):
+    if os.path.exists(output_path):
         shutil.rmtree(output_path)
 
     VFleet.simulate(duration=timedelta(hours=N_DAYS*24+1),
                     step=timedelta(minutes=5),
                     record=timedelta(minutes=30),
-                    output=args.save_sim,
+                    output=True,
                     output_folder=WORKDIR,
                     output_file='trajectories_%s.zarr' % get_sim_suffix(args, CFG),
                     verbose_progress=not args.json,
@@ -2300,7 +2065,6 @@ def predictor(args):
         puts(DF_SIM.head().to_string(), color=COLORS.green)
     figure_positions(args, VEL, DF_SIM, DF_PLAN, THIS_PROFILE, CFG, WMO, CYC, VEL_NAME,
                      dd=1, save_figure=args.save_figure, workdir=WORKDIR)
-
 
     # Recovery, make predictions based on simulated profile density:
     SP = SimPredictor(DF_SIM, THIS_PROFILE)
@@ -2363,6 +2127,9 @@ def predictor(args):
         plt.close('all')
         # Restore Matplotlib backend
         matplotlib.use(mplbackend)
+
+    if not args.save_sim:
+        shutil.rmtree(output_path)
 
     return results_js
 
