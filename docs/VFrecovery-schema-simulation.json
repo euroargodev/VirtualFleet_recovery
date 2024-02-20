@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-04/schema#",
-  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/VFrecovery-schema-simulation.json",
+  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-simulation.json",
   "title": "VirtualFleet-Recovery Prediction",
   "description": "This document records the details of one VirtualFleet-Recovery simulation and Argo float profile predictions",
   "format_version": {
@@ -16,7 +16,7 @@
   "properties": {
     "initial_profile": {
       "description": "Argo float profile used as initial conditions to the simulation",
-      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/VFrecovery-schema-profile.json"
+      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-profile.json"
     },
     "meta": {
       "description": "Meta-data of the simulation",
@@ -26,7 +26,7 @@
       "description": "Data from observed Argo float profiles relevant to the simulation predictions",
       "type": "array",
       "items": {
-        "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/VFrecovery-schema-profile.json"
+        "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-profile.json"
       },
       "minItems": 1,
       "uniqueItems": true
@@ -35,7 +35,7 @@
       "description": "Data from the simulated virtual float profiles",
       "type": "array",
       "items": {
-        "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/VFrecovery-schema-profile.json"
+        "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-profile.json"
       },
       "minItems": 1,
       "uniqueItems": true

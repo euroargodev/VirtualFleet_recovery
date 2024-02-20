@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-04/schema#",
-  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/VFrecovery-schema-location.json",
+  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-location.json",
   "title": "VirtualFleet-Recovery location",
   "description": "A set of longitude/latitude/time coordinates on Earth",
   "format_version": {

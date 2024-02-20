@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-04/schema#",
-  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/VFrecovery-schema-profile.json",
+  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-profile.json",
   "title": "VirtualFleet-Recovery Argo float profile location",
   "description": "A set of meta-data and longitude/latitude/time coordinates on Earth, for an Argo float vertical profile location",
   "format_version": {
@@ -11,7 +11,7 @@
   "properties": {
     "location": {
       "description": "Space/time coordinates of the profile",
-      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/VFrecovery-schema-location.json"
+      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-location.json"
     },
     "cycle_number":{
       "description": "Cycle number of the profile",
