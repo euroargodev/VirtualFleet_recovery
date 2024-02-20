@@ -36,7 +36,7 @@
       "minimum": 0
     },
     "metrics": {
-      "$ref": "./VFrecovery-schema-metrics.json"
+      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-metrics.json"
     },
     "dependentRequired": {
       "virtual_cycle_number": ["metrics"]}
