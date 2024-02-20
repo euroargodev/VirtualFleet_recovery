@@ -70,12 +70,8 @@
           "required":["comment", "value"]
         },
         "staggering": {
-          "type": ["object", "null"],
-          "properties": {
-            "comment": {"type": ["string", "null"]},
-            "value": {"type": ["number", "null"]}
-          },
-          "required":["comment", "value"]
+          "type": ["number", "null"],
+          "description": "?"
         },
         "std_ratio": {
           "type": "number"
