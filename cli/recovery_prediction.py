@@ -1214,9 +1214,9 @@ class SimPredictor_0:
                                     self.obs['date'].values[0]])[
             np.newaxis]  # Starting point where swarm was deployed
         for cyc in self._json['predictions'].keys():
-            xpred = self._json['predictions'][cyc]['location']['longitude']['value']
-            ypred = self._json['predictions'][cyc]['location']['latitude']['value']
-            tpred = self._json['predictions'][cyc]['location']['time']['value']
+            xpred = self._json['predictions'][cyc]['location']['longitude']
+            ypred = self._json['predictions'][cyc]['location']['latitude']
+            tpred = self._json['predictions'][cyc]['location']['time']
             traj_prediction = np.concatenate((traj_prediction,
                                               np.array([xpred, ypred, tpred])[np.newaxis]),
                                              axis=0)
@@ -1423,11 +1423,11 @@ class SimPredictor_1(SimPredictor_0):
 
         def blank_prediction() -> dict:
             return {'location': {
-                        'longitude': {'value': None, 'unit': 'degree East'},
-                        'latitude': {'value': None, 'unit': 'degree North'},
-                        'time': {'value': None}},
+                        'longitude': None,
+                        'latitude': None,
+                        'time': None},
                     'cycle_number': None,
-                    'wmo': self.WMO,
+                    'wmo': int(self.WMO),
                     }
 
         # Compute weights of the swarm float profiles locations
@@ -1457,10 +1457,11 @@ class SimPredictor_1(SimPredictor_0):
 
             # Store results
             recovery = blank_prediction()
-            recovery['location']['longitude']['value'] = xpred
-            recovery['location']['latitude']['value'] = ypred
-            recovery['location']['time']['value'] = tpred
-            recovery['cycle_number'] = self.sim_cycles[icyc]
+            recovery['location']['longitude'] = xpred
+            recovery['location']['latitude'] = ypred
+            recovery['location']['time'] = tpred
+            recovery['cycle_number'] = int(self.sim_cycles[icyc])
+            recovery['virtual_cycle_number'] = int(self.sim_cycles[icyc])
             recovery_predictions.update({int(this_sim_cyc): recovery})
 
             #
@@ -1520,9 +1521,9 @@ class SimPredictor_2(SimPredictor_1):
                 xobs0 = prev_obs_profile['longitude'].iloc[0]
                 yobs0 = prev_obs_profile['latitude'].iloc[0]
 
-                xpred = this_prediction['location']['longitude']['value']
-                ypred = this_prediction['location']['latitude']['value']
-                tpred = this_prediction['location']['time']['value']
+                xpred = this_prediction['location']['longitude']
+                ypred = this_prediction['location']['latitude']
+                tpred = this_prediction['location']['time']
 
                 dd = haversine(xobs, yobs, xpred, ypred)
                 error['distance']['value'] = dd
@@ -1553,22 +1554,20 @@ class SimPredictor_2(SimPredictor_1):
         # Observed profiles that were simulated:
         profiles_to_predict = []
         for cyc in self.sim_cycles:
-            this = {'wmo': self.WMO,
-                    'cycle_number': cyc,
+            this = {'wmo': int(self.WMO),
+                    'cycle_number': int(cyc),
                     'url_float': argoplot.dashboard(self.WMO, url_only=True),
-                    'url_profile': None,
-                    'location': {'longitude': {'value': None,
-                                               'unit': 'degree East'},
-                                 'latitude': {'value': None,
-                                              'unit': 'degree North'},
-                                 'time': {'value': None}}
+                    'url_profile': "",
+                    'location': {'longitude': None,
+                                 'latitude': None,
+                                 'time': None}
                     }
             if cyc in self.obs_cycles:
                 this['url_profile'] = get_ea_profile_page_url(self.WMO, cyc)
                 this_df = self.obs[self.obs['cyc'] == cyc]
-                this['location']['longitude']['value'] = this_df['longitude'].iloc[0]
-                this['location']['latitude']['value'] = this_df['latitude'].iloc[0]
-                this['location']['time']['value'] = this_df['date'].iloc[0]
+                this['location']['longitude'] = this_df['longitude'].iloc[0]
+                this['location']['latitude'] = this_df['latitude'].iloc[0]
+                this['location']['time'] = this_df['date'].iloc[0]
             profiles_to_predict.append(this)
 
         self._json.update({'observations': profiles_to_predict})
@@ -1576,15 +1575,13 @@ class SimPredictor_2(SimPredictor_1):
         # Observed profile used as initial conditions to the simulation:
         cyc = self.obs_cycles[0]
         this_df = self.obs[self.obs['cyc'] == cyc]
-        self._json.update({'initial_profile': {'wmo': self.WMO,
-                                               'cycle_number': cyc,
+        self._json.update({'initial_profile': {'wmo': int(self.WMO),
+                                               'cycle_number': int(cyc),
                                                'url_float': argoplot.dashboard(self.WMO, url_only=True),
                                                'url_profile': get_ea_profile_page_url(self.WMO, cyc),
-                                               'location': {'longitude': {'value': this_df['longitude'].iloc[0],
-                                                                          'unit': 'degree East'},
-                                                            'latitude': {'value': this_df['latitude'].iloc[0],
-                                                                         'unit': 'degree North'},
-                                                            'time': {'value': this_df['date'].iloc[0]}}
+                                               'location': {'longitude': this_df['longitude'].iloc[0],
+                                                            'latitude': this_df['latitude'].iloc[0],
+                                                            'time': this_df['date'].iloc[0]}
                                                }})
 
         #
@@ -1625,9 +1622,9 @@ class SimPredictor_2(SimPredictor_1):
 
                 # Compute the possible drift due to the time lag between the predicted profile timing and the expected one:
                 if VFvel is not None:
-                    xpred = this_prediction['location']['longitude']['value']
-                    ypred = this_prediction['location']['latitude']['value']
-                    tpred = this_prediction['location']['time']['value']
+                    xpred = this_prediction['location']['longitude']
+                    ypred = this_prediction['location']['latitude']
+                    tpred = this_prediction['location']['time']
                     dsc = VFvel.field.interp(
                         {VFvel.dim['lon']: xpred,
                          VFvel.dim['lat']: ypred,
@@ -1695,8 +1692,8 @@ class SimPredictor_3(SimPredictor_2):
             else:
                 this_profile = None
 
-            xpred = self.predictions['predictions'][i_cycle + 1]['location']['longitude']['value']
-            ypred = self.predictions['predictions'][i_cycle + 1]['location']['latitude']['value']
+            xpred = self.predictions['predictions'][i_cycle + 1]['location']['longitude']
+            ypred = self.predictions['predictions'][i_cycle + 1]['location']['latitude']
 
             this_ax.set_extent(ebox)
             this_ax = map_add_features(ax[ix])
@@ -2046,17 +2043,17 @@ def predictor(args):
 
     # Remove traj file if exists:
     output_path = os.path.join(WORKDIR, 'trajectories_%s.zarr' % get_sim_suffix(args, CFG))
-    if os.path.exists(output_path):
-        shutil.rmtree(output_path)
-
-    VFleet.simulate(duration=timedelta(hours=N_DAYS*24+1),
-                    step=timedelta(minutes=5),
-                    record=timedelta(minutes=30),
-                    output=True,
-                    output_folder=WORKDIR,
-                    output_file='trajectories_%s.zarr' % get_sim_suffix(args, CFG),
-                    verbose_progress=not args.json,
-                    )
+    # if os.path.exists(output_path):
+    #     shutil.rmtree(output_path)
+    #
+    # VFleet.simulate(duration=timedelta(hours=N_DAYS*24+1),
+    #                 step=timedelta(minutes=5),
+    #                 record=timedelta(minutes=30),
+    #                 output=True,
+    #                 output_folder=WORKDIR,
+    #                 output_file='trajectories_%s.zarr' % get_sim_suffix(args, CFG),
+    #                 verbose_progress=not args.json,
+    #                 )
 
     # VirtualFleet, get simulated profiles index:
     if not args.json:
