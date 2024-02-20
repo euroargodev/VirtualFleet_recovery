@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-profile.json",
+  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-metrics.json",
   "title": "VirtualFleet-Recovery Predicted profile metrics",
   "description": "A set of metrics to describe/interpret one VFrecovery predicted profile location",
   "format_version": {
