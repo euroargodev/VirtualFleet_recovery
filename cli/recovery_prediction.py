@@ -88,7 +88,7 @@ def puts(text, color=None, bold=False, file=sys.stdout):
 
 def haversine(lon1, lat1, lon2, lat2):
     """
-    Calculate the great circle distance between two points
+    Calculate the great circle distance (in [km]) between two points
     on the earth (specified in decimal degrees)
 
     see: https://stackoverflow.com/questions/4913349/haversine-formula-in-python-bearing-and-distance-between-two-gps-points
@@ -99,6 +99,10 @@ def haversine(lon1, lat1, lon2, lat2):
     lat1
     lon2
     lat2
+
+    Returns
+    -------
+    km
     """
     from math import radians, cos, sin, asin, sqrt
     # convert decimal degrees to radians
@@ -1995,7 +1999,7 @@ def predictor(args):
         puts("\n".join(["\t%s" % line for line in CFG.__repr__().split("\n")]), color=COLORS.green)
 
     # Get the cycling frequency (in days, this is more a period then...):
-    CYCLING_FREQUENCY = int(np.round(CFG.mission['cycle_duration'])/24)
+    CYCLING_FREQUENCY = int(np.round(CFG.mission['cycle_duration']/24))
 
     # Define domain to load velocity for, and get it:
     width = args.domain_size + np.abs(np.ceil(THIS_PROFILE['longitude'].values[-1] - CENTER[0]))
