@@ -55,20 +55,38 @@
         },
         "overlapping": {
           "type": ["number", "null"],
-          "description": "?"
+          "description": "Overlapping area between PDF(initial_state) and PDF(final_state)"
         },
         "score": {
           "type": ["number", "null"],
-          "description": "?"
+          "description": "overlapping/nPDFpeaks(final_state)"
         },
         "staggering": {
           "type": ["number", "null"],
-          "description": "?"
+          "description": "Ratio of PDF(initial_state) vs PDF(final_state) ranges"
         },
         "std_ratio": {
           "type": ["number", "null"],
-          "description": "?"
+          "description": ""
         }
+      }
+    },
+    "surface_drift": {
+      "description": "Drift by surface currents due to the float ascent time error (difference between simulated profile time and the observed one)",
+      "type": "object",
+      "properties": {
+        "surface_currents_speed": {"type": "number"},
+        "surface_currents_speed_unit": {"type": "string"},
+        "unit": {"type": "string"},
+        "value": {"type": "number"}
+      }
+    },
+    "transit": {
+      "description": "Transit time to cover the distance error (assume a 12 kts boat speed with 1 kt = 1.852 km/h)",
+      "type": "object",
+      "properties": {
+        "unit": {"type": "string"},
+        "value": {"type": "number"}
       }
     }
   }
