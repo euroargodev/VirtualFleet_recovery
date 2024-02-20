@@ -11,7 +11,7 @@
   "properties": {
     "location": {
       "description": "Space/time coordinates of the profile",
-      "$ref": "./VFrecovery-schema-location.json"
+      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/VFrecovery-schema-location.json"
     },
     "cycle_number":{
       "description": "Cycle number of the profile",
