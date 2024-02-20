@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/VFrecovery-schema-profile.json",
+  "title": "VirtualFleet-Recovery Predicted profile metrics",
+  "description": "A set of metrics to describe/interpret one VFrecovery predicted profile location",
+  "format_version": {
+    "const": "0.1"
+  },
+  "required": [
+  ],
+  "type": "object",
+  "properties": {
+    "trajectory_lengths": {
+      "description": "Statistics about swarm trajectory lengths",
+      "type": "object",
+      "properties": {
+        "median": {
+          "type": "number"
+        },
+        "std": {
+          "type": "number"
+        }
+      }
+    },
+    "pairwise_distances": {
+      "description": "Statistics about swarm profiles pairwise distances",
+      "type": "object",
+      "properties": {
+        "final_state": {
+          "type": "object",
+          "properties": {
+            "median": {"type": "number"},
+            "nPDFpeaks": {"type": "number"},
+            "std": {"type": "number"}
+          },
+          "required":["median", "nPDFpeaks", "std"]
+        },
+        "initial_state": {
+          "type": "object",
+          "properties": {
+            "median": {"type": "number"},
+            "nPDFpeaks": {"type": "number"},
+            "std": {"type": "number"}
+          },
+          "required":["median", "nPDFpeaks", "std"]
+        },
+        "relative_state": {
+          "type": "object",
+          "properties": {
+            "median": {"type": "number"},
+            "nPDFpeaks": {"type": "number"},
+            "std": {"type": "number"}
+          },
+          "required":["median", "nPDFpeaks", "std"]
+        },
+        "overlapping": {
+          "type": "object",
+          "properties": {
+            "comment": {"type": "string"},
+            "value": {"type": "number"}
+          },
+          "required":["comment", "value"]
+        },
+        "score": {
+          "type": "object",
+          "properties": {
+            "comment": {"type": "string"},
+            "value": {"type": "number"}
+          },
+          "required":["comment", "value"]
+        },
+        "staggering": {
+          "type": "object",
+          "properties": {
+            "comment": {"type": "string"},
+            "value": {"type": "number"}
+          },
+          "required":["comment", "value"]
+        },
+        "std_ratio": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}

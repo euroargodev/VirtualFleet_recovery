@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/VFrecovery-schema-profile.json",
+  "title": "VirtualFleet-Recovery Argo float profile location",
+  "description": "A set of meta-data and longitude/latitude/time coordinates on Earth, for an Argo float vertical profile location",
+  "format_version": {
+    "const": "0.1"
+  },
+  "required": [ "location" ],
+  "type": "object",
+  "properties": {
+    "location": {
+      "description": "Space/time coordinates of the profile",
+      "$ref": "./VFrecovery-schema-location.json"
+    },
+    "cycle_number":{
+      "description": "Cycle number of the profile",
+      "type": "integer",
+      "minimum": 0
+    },
+    "wmo":{
+      "description": "WMO number of the float",
+      "type": "integer"
+    },
+    "url_float": {
+      "type": "string",
+      "description": "Fleet-monitoring webpage for this float"
+    },
+    "url_profile": {
+      "type": "string",
+      "description": "Fleet-monitoring webpage for this profile"
+    },
+    "virtual_cycle_number": {
+      "description": "Cycle number of the profile within the VFrecovery simulation",
+      "type": "integer",
+      "minimum": 0
+    },
+    "metrics": {
+      "$ref": "./VFrecovery-schema-metrics.json"
+    },
+    "dependentRequired": {
+      "virtual_cycle_number": ["metrics"]}
+  }
+}
