@@ -22,7 +22,7 @@
       "description": "Latitude of the geo-location"
     },
     "time": {
-      "type": "string",
+      "type": ["string", "null"],
       "format": "date-time",
       "description": "Date and time of the geo-location"
     }
