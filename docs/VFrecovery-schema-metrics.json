@@ -15,10 +15,10 @@
       "type": "object",
       "properties": {
         "median": {
-          "type": "number"
+          "type": ["number", "null"]
         },
         "std": {
-          "type": "number"
+          "type": ["number", "null"]
         }
       }
     },
@@ -29,51 +29,51 @@
         "final_state": {
           "type": "object",
           "properties": {
-            "median": {"type": "number"},
-            "nPDFpeaks": {"type": "number"},
-            "std": {"type": "number"}
+            "median": {"type": ["number", "null"]},
+            "nPDFpeaks": {"type": ["number", "null"]},
+            "std": {"type": ["number", "null"]}
           },
           "required":["median", "nPDFpeaks", "std"]
         },
         "initial_state": {
           "type": "object",
           "properties": {
-            "median": {"type": "number"},
-            "nPDFpeaks": {"type": "number"},
-            "std": {"type": "number"}
+            "median": {"type": ["number", "null"]},
+            "nPDFpeaks": {"type": ["number", "null"]},
+            "std": {"type": ["number", "null"]}
           },
           "required":["median", "nPDFpeaks", "std"]
         },
         "relative_state": {
           "type": "object",
           "properties": {
-            "median": {"type": "number"},
-            "nPDFpeaks": {"type": "number"},
-            "std": {"type": "number"}
+            "median": {"type": ["number", "null"]},
+            "nPDFpeaks": {"type": ["number", "null"]},
+            "std": {"type": ["number", "null"]}
           },
           "required":["median", "nPDFpeaks", "std"]
         },
         "overlapping": {
           "type": "object",
           "properties": {
-            "comment": {"type": "string"},
-            "value": {"type": "number"}
+            "comment": {"type": ["string", "null"]},
+            "value": {"type": ["number", "null"]}
           },
           "required":["comment", "value"]
         },
         "score": {
           "type": "object",
           "properties": {
-            "comment": {"type": "string"},
-            "value": {"type": "number"}
+            "comment": {"type": ["string", "null"]},
+            "value": {"type": ["number", "null"]}
           },
           "required":["comment", "value"]
         },
         "staggering": {
           "type": "object",
           "properties": {
-            "comment": {"type": "string"},
-            "value": {"type": "number"}
+            "comment": {"type": ["string", "null"]},
+            "value": {"type": ["number", "null"]}
           },
           "required":["comment", "value"]
         },
