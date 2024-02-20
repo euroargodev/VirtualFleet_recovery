@@ -27,7 +27,7 @@
       "type": "object",
       "properties": {
         "final_state": {
-          "type": "object",
+          "type": ["object", "null"],
           "properties": {
             "median": {"type": ["number", "null"]},
             "nPDFpeaks": {"type": ["number", "null"]},
@@ -36,7 +36,7 @@
           "required":["median", "nPDFpeaks", "std"]
         },
         "initial_state": {
-          "type": "object",
+          "type": ["object", "null"],
           "properties": {
             "median": {"type": ["number", "null"]},
             "nPDFpeaks": {"type": ["number", "null"]},
@@ -45,7 +45,7 @@
           "required":["median", "nPDFpeaks", "std"]
         },
         "relative_state": {
-          "type": "object",
+          "type": ["object", "null"],
           "properties": {
             "median": {"type": ["number", "null"]},
             "nPDFpeaks": {"type": ["number", "null"]},
@@ -54,7 +54,7 @@
           "required":["median", "nPDFpeaks", "std"]
         },
         "overlapping": {
-          "type": "object",
+          "type": ["object", "null"],
           "properties": {
             "comment": {"type": ["string", "null"]},
             "value": {"type": ["number", "null"]}
@@ -62,7 +62,7 @@
           "required":["comment", "value"]
         },
         "score": {
-          "type": "object",
+          "type": ["object", "null"],
           "properties": {
             "comment": {"type": ["string", "null"]},
             "value": {"type": ["number", "null"]}
@@ -70,7 +70,7 @@
           "required":["comment", "value"]
         },
         "staggering": {
-          "type": "object",
+          "type": ["object", "null"],
           "properties": {
             "comment": {"type": ["string", "null"]},
             "value": {"type": ["number", "null"]}
