@@ -15,24 +15,24 @@
     },
     "cycle_number":{
       "description": "Cycle number of the profile",
-      "type": "integer",
+      "type": ["integer", "null"],
       "minimum": 0
     },
     "wmo":{
       "description": "WMO number of the float",
-      "type": "integer"
+      "type": ["integer", "null"]
     },
     "url_float": {
-      "type": "string",
+      "type": ["string", "null"],
       "description": "Fleet-monitoring webpage for this float"
     },
     "url_profile": {
-      "type": "string",
+      "type": ["string", "null"],
       "description": "Fleet-monitoring webpage for this profile"
     },
     "virtual_cycle_number": {
       "description": "Cycle number of the profile within the VFrecovery simulation",
-      "type": "integer",
+      "type": ["integer", "null"],
       "minimum": 0
     },
     "metrics": {
