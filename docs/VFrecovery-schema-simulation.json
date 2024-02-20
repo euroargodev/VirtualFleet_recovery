@@ -1,5 +1,5 @@
 {
-  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-simulation.json",
   "title": "VirtualFleet-Recovery Prediction",
   "description": "This document records the details of one VirtualFleet-Recovery simulation and Argo float profile predictions",
