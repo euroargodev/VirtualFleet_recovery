@@ -40,7 +40,6 @@ from sklearn.neighbors import KernelDensity
 from scipy.signal import find_peaks
 
 import copernicusmarine
-# from virtualargofleet import Velocity, VirtualFleet, FloatConfiguration
 
 logging.getLogger("matplotlib").setLevel(logging.ERROR)
 logging.getLogger("parso").setLevel(logging.ERROR)
@@ -1205,6 +1204,7 @@ class SimPredictor_0:
         """
         if self._json is None:
             raise ValueError("Please call `fit_predict` first")
+
         traj_prediction = np.array([self.obs['longitude'].values[0],
                                     self.obs['latitude'].values[0],
                                     self.obs['date'].values[0]])[
@@ -1869,6 +1869,7 @@ def setup_args():
     parser.add_argument("--cfg_parking_depth", help="Virtual floats parking depth in [db], default: use previous cycle value", default=None)
     parser.add_argument("--cfg_cycle_duration", help="Virtual floats cycle duration in [hours], default: use previous cycle value", default=None)
     parser.add_argument("--cfg_profile_depth", help="Virtual floats profiles depth in [db], default: use previous cycle value", default=None)
+    parser.add_argument("--cfg_free_surface_drift", help="Virtual floats free surface drift starting cycle number, default: 9999", default=9999)
 
     return parser
 
@@ -1876,11 +1877,12 @@ def setup_args():
 def get_sim_suffix(this_args, this_cfg):
     """Compose a string suffix for output files"""
     # suf = '%s_%i' % (this_args.velocity, this_args.nfloats)
-    suf = 'VEL%s_NF%i_CYCDUR%i_PARKD%i_PROFD%i' % (this_args.velocity,
+    suf = 'VEL%s_NF%i_CYCDUR%i_PARKD%i_PROFD%i_SFD%i' % (this_args.velocity,
                                                 this_args.nfloats,
                                                 int(this_cfg.mission['cycle_duration']),
                                                 int(this_cfg.mission['parking_depth']),
-                                                int(this_cfg.mission['profile_depth']))
+                                                int(this_cfg.mission['profile_depth']),
+                                                int(this_cfg.mission['reco_free_surface_drift']))
     return suf
 
 
@@ -1919,7 +1921,7 @@ def predictor(args):
 
     # Import the VirtualFleet library
     sys.path.insert(0, os.path.join(euroargodev, "VirtualFleet"))
-    from virtualargofleet import Velocity, VirtualFleet, FloatConfiguration
+    from virtualargofleet import Velocity, VirtualFleet, FloatConfiguration, ConfigParam
     # from virtualargofleet.app_parcels import ArgoParticle
 
     # Set up the working directory:
@@ -1987,6 +1989,12 @@ def predictor(args):
         puts("profile_depth=%i is overwritten with %i" % (CFG.mission['profile_depth'],
                                                           float(args.cfg_profile_depth)))
         CFG.update('profile_depth', float(args.cfg_profile_depth))
+
+    CFG.params = ConfigParam(key='reco_free_surface_drift',
+                             value=int(args.cfg_free_surface_drift),
+                             unit='cycle',
+                             description='First cycle with free surface drift',
+                             dtype=int)
 
     # Save virtual float configuration on file:
     CFG.to_json(os.path.join(WORKDIR, "floats_configuration_%s.json" % get_sim_suffix(args, CFG)))
