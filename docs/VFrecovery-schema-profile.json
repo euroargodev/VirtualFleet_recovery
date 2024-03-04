@@ -39,7 +39,7 @@
       "type": ["object", "null"],
       "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-metrics.json"
     },
-    "dependentRequired": {
+    "dependencies": {
       "virtual_cycle_number": ["metrics"]}
   }
 }
