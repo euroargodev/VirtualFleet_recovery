@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-profile.json",
+  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-computation.json",
   "title": "VirtualFleet-Recovery Simulation Computation",
-  "description": "A set of meta-data to describe one computation run",
+  "description": "A set of meta-data documenting one computation run",
   "format_version": {
     "const": "0.1"
   },

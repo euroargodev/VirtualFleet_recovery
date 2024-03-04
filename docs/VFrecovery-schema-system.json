@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-system.json",
   "title": "VirtualFleet-Recovery Simulation System",
-  "description": "A set of meta-data to describe a system where a simulation is executed",
+  "description": "A set of meta-data documenting a system where a simulation is executed",
   "format_version": {
     "const": "0.1"
   },

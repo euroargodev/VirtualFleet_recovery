@@ -20,7 +20,7 @@
     },
     "meta": {
       "description": "Meta-data of the simulation",
-      "type": "object"
+      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-metadata.json"
     },
     "observations": {
       "description": "Data from observed Argo float profiles relevant to the simulation predictions",
