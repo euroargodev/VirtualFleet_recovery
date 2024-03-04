@@ -15,7 +15,8 @@
     },
     "velocity_field": {
       "description": "Velocity field used by the simulation",
-      "type": "string"
+      "type": "string",
+      "enum": ["ARMOR3D", "GLORYS"]
     },
     "vfconfig": {
       "description": "Configuration of the virtual floats",
