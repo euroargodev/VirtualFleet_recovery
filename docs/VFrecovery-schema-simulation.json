@@ -8,7 +8,7 @@
   },
   "required": [
     "initial_profile",
-    "meta",
+    "meta_data",
     "observations",
     "predictions"
   ],
@@ -18,7 +18,7 @@
       "description": "Argo float profile used as initial conditions to the simulation",
       "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-profile.json"
     },
-    "meta": {
+    "meta_data": {
       "description": "Meta-data of the simulation",
       "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-metadata.json"
     },
