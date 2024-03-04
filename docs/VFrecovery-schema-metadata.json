@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-metadata.json",
+  "title": "VirtualFleet-Recovery Simulation Meta-data",
+  "description": "A set of meta-data documenting one simulation",
+  "format_version": {
+    "const": "0.1"
+  },
+  "required": ["nfloats", "velocity_field", "vfconfig"],
+  "type": "object",
+  "properties": {
+    "nfloats": {
+      "description": "Number of virtual floats simulated",
+      "type": "integer"
+    },
+    "velocity_field": {
+      "description": "Velocity field used by the simulation",
+      "type": "string"
+    },
+    "vfconfig": {
+      "description": "Configuration of the virtual floats",
+      "type": ["object", "null"]
+    },
+    "computation": {
+      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-computation.json"
+    }
+  }
+}
