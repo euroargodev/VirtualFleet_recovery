@@ -1,5 +1,5 @@
 import json
-from vfrecovery.core_functions.predict import predict_function
+from vfrecovery.core.predict import predict_function
 
 
 def predict(
@@ -10,8 +10,8 @@ def predict(
     """
     Execute VirtualFleet-Recovery predictor and return results as a JSON string
     
-    Inputs
-    ------
+    Parameters
+    ----------
     wmo
     cyc
     n_predictions

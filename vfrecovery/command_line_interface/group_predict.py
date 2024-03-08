@@ -1,6 +1,6 @@
 import click
 from typing import Union, List
-from vfrecovery.core_functions.predict import predict_function
+from vfrecovery.core.predict import predict_function
 
 @click.group()
 def cli_group_predict() -> None:

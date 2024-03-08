@@ -1,5 +1,6 @@
 from math import radians, cos, sin, asin, sqrt
 import pyproj
+import numpy as np
 
 
 def haversine(lon1, lat1, lon2, lat2):
@@ -61,3 +62,4 @@ def fixLON(x):
     if x < 0:
         x = 360 + x
     return x
+
