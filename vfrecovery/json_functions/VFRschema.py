@@ -56,6 +56,7 @@ class VFschema:
         return html
 
     class JSONEncoder(json.JSONEncoder):
+        """Make sure all dtype are serializable"""
         def default(self, obj):
             if isinstance(obj, pd._libs.tslibs.nattype.NaTType):
                 return None
@@ -67,8 +68,11 @@ class VFschema:
                                 'Metrics', 'TrajectoryLengths', 'PairwiseDistances', 'PairwiseDistancesState',
                                 'SurfaceDrift', 'Transit',
                                 'MetaDataSystem', 'MetaDataComputation', 'MetaData']:
-                # We "getattr(type(obj), '__name__')" in order to avoid circular import
+                # We use "getattr(type(obj), '__name__')" in order to avoid circular import
                 return obj.__dict__
+            if getattr(type(obj), '__name__') in ['FloatConfiguration', 'ConfigParam']:
+                return json.loads(obj.to_json(indent=0))
+
             # 👇️ otherwise use the default behavior
             return json.JSONEncoder.default(self, obj)
 
@@ -81,14 +85,14 @@ class VFschema:
                 d.update({key: value})
         return d
 
-    def to_json(self, fp=None):
+    def to_json(self, fp=None, indent=4):
         jsdata = self.__dict__
         if hasattr(self, 'schema'):
             jsdata.update({"$schema": "%s/%s.json" % (self.schema_root, getattr(self, 'schema'))})
         if fp is None:
-            return json.dumps(jsdata, indent=4, cls=self.JSONEncoder)
+            return json.dumps(jsdata, indent=indent, cls=self.JSONEncoder)
         else:
-            return json.dump(jsdata, fp, indent=4, cls=self.JSONEncoder)
+            return json.dump(jsdata, fp, indent=indent, cls=self.JSONEncoder)
 
 
 class VFvalidators(VFschema):
