@@ -20,7 +20,7 @@
     },
     "vfconfig": {
       "description": "Configuration of the virtual floats",
-      "type": ["object", "null"]
+      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet/json-schemas-FloatConfiguration/schemas/VF-ArgoFloat-Configuration.json"
     },
     "computation": {
       "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas/VFrecovery-schema-computation.json"
