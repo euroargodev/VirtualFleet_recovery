@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-metadata.json",
+  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas/VFrecovery-schema-metadata.json",
   "title": "VirtualFleet-Recovery Simulation Meta-data",
   "description": "A set of meta-data documenting one simulation",
   "format_version": {
@@ -23,7 +23,7 @@
       "type": ["object", "null"]
     },
     "computation": {
-      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-computation.json"
+      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas/VFrecovery-schema-computation.json"
     }
   }
 }

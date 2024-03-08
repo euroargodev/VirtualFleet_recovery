@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-computation.json",
+  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas/VFrecovery-schema-computation.json",
   "title": "VirtualFleet-Recovery Simulation Computation",
   "description": "A set of meta-data documenting one computation run",
   "format_version": {
@@ -11,7 +11,7 @@
   "properties": {
     "system": {
       "description": "System the computation was executed on",
-      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/docs/VFrecovery-schema-system.json"
+      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas/VFrecovery-schema-system.json"
     },
     "date": {
       "description": "UTC starting datetime of the computation",
