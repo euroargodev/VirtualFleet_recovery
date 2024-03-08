@@ -1,5 +1,5 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
   "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas/VFrecovery-schema-profile.json",
   "title": "VirtualFleet-Recovery Argo float profile location",
   "description": "A set of meta-data and longitude/latitude/time coordinates on Earth, for an Argo float vertical profile location",
