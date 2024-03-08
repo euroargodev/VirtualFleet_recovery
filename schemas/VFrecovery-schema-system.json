@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas/VFrecovery-schema-system.json",
+  "title": "VirtualFleet-Recovery Simulation System",
+  "description": "A set of meta-data documenting a system where a simulation is executed",
+  "format_version": {
+    "const": "0.1"
+  },
+  "type": "object",
+  "properties": {
+    "architecture": {
+      "type":["string", "null"],
+      "description": ""
+    },
+    "hostname": {
+      "type":["string", "null"],
+      "description": ""
+    },
+    "ip_address": {
+      "type":["string", "null"],
+      "format": "ip-address",
+      "description": ""
+    },
+    "platform": {
+      "type":["string", "null"],
+      "description": ""
+    },
+    "platform_release": {
+      "type":["string", "null"],
+      "description": ""
+    },
+    "platform_version": {
+      "type":["string", "null"],
+      "description": ""
+    },
+    "processor": {
+      "type":["string", "null"],
+      "description": ""
+    },
+    "ram": {
+      "type":["string", "null"],
+      "description": ""
+    }
+    },
+  "maxProperties": 8
+}

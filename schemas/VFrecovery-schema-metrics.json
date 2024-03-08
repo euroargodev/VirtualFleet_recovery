@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas/VFrecovery-schema-metrics.json",
+  "title": "VirtualFleet-Recovery Predicted profile metrics",
+  "description": "A set of metrics to describe/interpret one VFrecovery predicted profile location",
+  "format_version": {
+    "const": "0.1"
+  },
+  "type": ["object", "null"],
+  "properties": {
+    "trajectory_lengths": {
+      "description": "Statistics about swarm trajectory lengths",
+      "type": "object",
+      "properties": {
+        "median": {
+          "type": ["number", "null"]
+        },
+        "std": {
+          "type": ["number", "null"]
+        }
+      }
+    },
+    "pairwise_distances": {
+      "description": "Statistics about swarm profiles pairwise distances",
+      "type": "object",
+      "properties": {
+        "final_state": {
+          "type": ["object", "null"],
+          "properties": {
+            "median": {"type": ["number", "null"]},
+            "nPDFpeaks": {"type": ["number", "null"]},
+            "std": {"type": ["number", "null"]}
+          },
+          "required":["median", "nPDFpeaks", "std"]
+        },
+        "initial_state": {
+          "type": ["object", "null"],
+          "properties": {
+            "median": {"type": ["number", "null"]},
+            "nPDFpeaks": {"type": ["number", "null"]},
+            "std": {"type": ["number", "null"]}
+          },
+          "required":["median", "nPDFpeaks", "std"]
+        },
+        "relative_state": {
+          "type": ["object", "null"],
+          "properties": {
+            "median": {"type": ["number", "null"]},
+            "nPDFpeaks": {"type": ["number", "null"]},
+            "std": {"type": ["number", "null"]}
+          },
+          "required":["median", "nPDFpeaks", "std"]
+        },
+        "overlapping": {
+          "type": ["number", "null"],
+          "description": "Overlapping area between PDF(initial_state) and PDF(final_state)"
+        },
+        "score": {
+          "type": ["number", "null"],
+          "description": "overlapping/nPDFpeaks(final_state)"
+        },
+        "staggering": {
+          "type": ["number", "null"],
+          "description": "Ratio of PDF(initial_state) vs PDF(final_state) ranges"
+        },
+        "std_ratio": {
+          "type": ["number", "null"],
+          "description": ""
+        }
+      }
+    },
+    "surface_drift": {
+      "description": "Drift by surface currents due to the float ascent time error (difference between simulated profile time and the observed one)",
+      "type": "object",
+      "properties": {
+        "surface_currents_speed": {"type": "number"},
+        "surface_currents_speed_unit": {"type": "string"},
+        "unit": {"type": "string"},
+        "value": {"type": "number"}
+      }
+    },
+    "transit": {
+      "description": "Transit time to cover the distance error (assume a 12 kts boat speed with 1 kt = 1.852 km/h)",
+      "type": "object",
+      "properties": {
+        "unit": {"type": "string"},
+        "value": {"type": "number"}
+      }
+    }
+  },
+  "maxProperties": 4
+}

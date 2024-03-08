@@ -35,6 +35,8 @@ dependencies:
   - xhistogram
   - argopy>=0.1.14
   - tqdm
+  - jsonschema
+  - referencing
   - py
   - pydap
   - pip
@@ -56,5 +58,3 @@ dependencies:
     - dominate
     - copernicusmarine>=1.0<=2.0
     - git+https://github.com/euroargodev/VirtualFleet.git@master
-
-
