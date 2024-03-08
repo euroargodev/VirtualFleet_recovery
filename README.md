@@ -6,7 +6,7 @@ The goal of this repository is to provide a CLI and Python library to make Argo 
 The library produces a prediction _patch_ or _cone_ that could be displayed on a map like here: https://floatrecovery.euro-argo.eu  
 More about Argo floats recovery in here: https://github.com/euroargodev/recovery/issues
 
-# New design
+# Documentation
 
 ## Command Line Interface
 
