@@ -86,6 +86,7 @@ class VFschema:
         return d
 
     def to_json(self, fp=None, indent=4):
+        """Save to JSON file or return a JSON string that can be loaded with json.loads()"""
         jsdata = self.__dict__
         if hasattr(self, 'schema'):
             jsdata.update({"$schema": "%s/%s.json" % (self.schema_root, getattr(self, 'schema'))})
