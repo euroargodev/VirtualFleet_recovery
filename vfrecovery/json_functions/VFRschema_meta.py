@@ -1,6 +1,7 @@
 import pandas as pd
 from typing import List, Dict
 from VFRschema import VFvalidators
+from virtualargofleet.utilities import VFschema_configuration
 
 
 class MetaDataSystem(VFvalidators):
@@ -62,12 +63,12 @@ class MetaDataComputation(VFvalidators):
 class MetaData(VFvalidators):
     nfloats: int = None
     velocity_field: str = None
-    vfconfig: None
+    vfconfig: VFschema_configuration = None
     computation: MetaDataComputation = None
 
     schema: str = "VFrecovery-schema-metadata"
     description: str = "A set of meta-data to describe one simulation"
-    required: List = ["nfloats", "velocity_field"]
+    required: List = ["nfloats", "velocity_field", "vfconfig"]
     properties: List = ["description",
                         "nfloats", "velocity_field",
                         "vfconfig", "computation"]
