@@ -1,5 +1,10 @@
 import pandas as pd
 from typing import List, Dict
+
+import platform
+import socket
+import psutil
+
 from VFRschema import VFvalidators
 from virtualargofleet.utilities import VFschema_configuration
 
@@ -29,6 +34,28 @@ class MetaDataSystem(VFvalidators):
     @staticmethod
     def from_dict(obj: Dict) -> 'MetaDataSystem':
         return MetaDataSystem(**obj)
+
+    @staticmethod
+    def guess_SystemInfo() -> dict:
+        """Return system information as a dict"""
+        try:
+            info = {}
+            info['platform'] = platform.system()
+            info['platform-release'] = platform.release()
+            info['platform-version'] = platform.version()
+            info['architecture'] = platform.machine()
+            info['hostname'] = socket.gethostname()
+            info['ip-address'] = socket.gethostbyname(socket.gethostname())
+            # info['mac-address']=':'.join(re.findall('..', '%012x' % uuid.getnode()))
+            info['processor'] = platform.processor()
+            info['ram'] = str(round(psutil.virtual_memory().total / (1024.0 ** 3))) + " GB"
+            return info
+        except Exception as e:
+            pass
+
+    @staticmethod
+    def auto_load() -> 'MetaDataSystem':
+        return MetaDataSystem(**MetaDataSystem.guess_SystemInfo())
 
 
 class MetaDataComputation(VFvalidators):
