@@ -6,7 +6,6 @@
   "format_version": {
     "const": "0.1"
   },
-  "required": [],
   "type": "object",
   "properties": {
     "architecture": {
@@ -42,5 +41,6 @@
       "type":["string", "null"],
       "description": ""
     }
-    }
+    },
+  "maxProperties": 8
 }

@@ -6,8 +6,6 @@
   "format_version": {
     "const": "0.1"
   },
-  "required": [
-  ],
   "type": ["object", "null"],
   "properties": {
     "trajectory_lengths": {
@@ -89,5 +87,6 @@
         "value": {"type": "number"}
       }
     }
-  }
+  },
+  "maxProperties": 4
 }

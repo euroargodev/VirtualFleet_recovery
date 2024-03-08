@@ -28,5 +28,6 @@
       "type": ["string", "null"],
       "format": "time-delta"
     }
-  }
+  },
+  "maxProperties": 4
 }

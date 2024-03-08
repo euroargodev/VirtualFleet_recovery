@@ -25,5 +25,6 @@
     "computation": {
       "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas/VFrecovery-schema-computation.json"
     }
-  }
+  },
+  "maxProperties": 4
 }
