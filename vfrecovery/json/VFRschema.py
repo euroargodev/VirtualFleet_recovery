@@ -135,7 +135,7 @@ class VFvalidators(VFschema):
         name, type(x))
 
     def _is_integer(self, x, name='?'):
-        assert isinstance(x, int), "'%s' must be an integer, got '%s'" % (name, type(x))
+        assert isinstance(x, (int, np.integer)), "'%s' must be an integer, got '%s'" % (name, type(x))
 
     def _is_timedelta(self, x, name='?'):
         assert isinstance(x, (pd.Timedelta)), "'%s' must be castable with pd.to_timedelta, got '%s'" % (name, type(x))

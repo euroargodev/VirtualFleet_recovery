@@ -47,7 +47,7 @@
 
 """
 from typing import List, Dict
-from VFRschema import VFvalidators
+from .VFRschema import VFvalidators
 
 
 class ArrayMetric(VFvalidators):

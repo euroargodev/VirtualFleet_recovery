@@ -1,0 +1,60 @@
+{
+  "disable_existing_loggers": false,
+  "formatters": {
+    "blank": {
+      "format": "%(message)s"
+    },
+    "simple": {
+      "datefmt": "%Y-%m-%dT%H:%M:%SZ",
+      "format": "%(asctime)s [%(levelname)s]: %(message)s"
+    },
+    "detailed": {
+      "datefmt": "%Y/%m/%d %I:%M:%S",
+      "format": "%(asctime)s | %(levelname)s | %(name)s:%(filename)s:%(lineno)d | %(message)s"
+    }
+  },
+  "handlers": {
+    "console": {
+      "class": "logging.StreamHandler",
+      "formatter": "simple",
+      "stream": "ext://sys.stdout"
+    },
+    "console_blank": {
+      "class": "logging.StreamHandler",
+      "formatter": "blank",
+      "stream": "ext://sys.stdout"
+    },
+    "file": {
+      "class": "logging.handlers.RotatingFileHandler",
+      "formatter": "detailed",
+      "filename": "/tmp/junk.log",
+      "mode": "a",
+      "maxBytes": 10485760,
+      "backupCount": 5
+    }
+  },
+  "loggers": {
+    "vfrecovery_blank_logger": {
+      "handlers": [
+        "console_blank"
+      ],
+      "level": "INFO",
+      "propagate": false
+    },
+    "vfrecovery_root_logger": {
+      "handlers": [
+        "console"
+      ],
+      "level": "WARNING",
+      "propagate": false
+    },
+    "vfrecovery_simulation": {
+      "handlers": [
+        "file"
+      ],
+      "level": "DEBUG",
+      "propagate": false
+    }
+  },
+  "version": 1
+}

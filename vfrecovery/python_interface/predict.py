@@ -1,11 +1,20 @@
 import json
 from vfrecovery.core.predict import predict_function
+from pathlib import Path
+from typing import Union
 
 
 def predict(
         wmo: int,
         cyc: int,
-        n_predictions,
+        velocity: str = 'GLORYS',
+        output_path: Union[str, Path] = None,
+        n_predictions: int = 0,
+        cfg_parking_depth: float = None,
+        cfg_cycle_duration: float = None,
+        cfg_profile_depth: float = None,
+        cfg_free_surface_drift: int = 9999,
+        log_level: str = 'INFO',
 ):
     """
     Execute VirtualFleet-Recovery predictor and return results as a JSON string
@@ -14,7 +23,14 @@ def predict(
     ----------
     wmo
     cyc
+    velocity
+    output_path
     n_predictions
+    cfg_parking_depth
+    cfg_cycle_duration
+    cfg_profile_depth
+    cfg_free_surface_drift
+    log_level
     
     Returns
     -------
@@ -23,7 +39,14 @@ def predict(
     """  # noqa
     results_json = predict_function(
         wmo, cyc,
+        velocity=velocity,
+        output_path=output_path,
         n_predictions=n_predictions,
+        cfg_parking_depth=cfg_parking_depth,
+        cfg_cycle_duration=cfg_cycle_duration,
+        cfg_profile_depth=cfg_profile_depth,
+        cfg_free_surface_drift=cfg_free_surface_drift,
+        log_level=log_level,
     )
     results = json.loads(results_json)
     return results

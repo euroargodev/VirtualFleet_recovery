@@ -1,7 +1,7 @@
 from typing import List, Dict
-from VFRschema import VFvalidators
-from VFRschema_profile import Profile
-from VFRschema_meta import MetaData
+from .VFRschema import VFvalidators
+from .VFRschema_profile import Profile
+from .VFRschema_meta import MetaData
 
 
 class Simulation(VFvalidators):

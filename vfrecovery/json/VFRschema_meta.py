@@ -5,7 +5,7 @@ import platform
 import socket
 import psutil
 
-from VFRschema import VFvalidators
+from .VFRschema import VFvalidators
 from virtualargofleet.utilities import VFschema_configuration
 
 
