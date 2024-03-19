@@ -6,10 +6,10 @@
   "format_version": {
     "const": "0.1"
   },
-  "required": ["nfloats", "velocity_field", "vfconfig"],
+  "required": ["n_floats", "velocity_field", "vfconfig"],
   "type": "object",
   "properties": {
-    "nfloats": {
+    "n_floats": {
       "description": "Number of virtual floats simulated",
       "type": "integer"
     },
@@ -19,12 +19,15 @@
       "enum": ["ARMOR3D", "GLORYS"]
     },
     "vfconfig": {
-      "description": "Configuration of the virtual floats",
+      "description": "Configuration of virtual floats",
       "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet/json-schemas-FloatConfiguration/schemas/VF-ArgoFloat-Configuration.json"
     },
     "computation": {
       "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas/VFrecovery-schema-computation.json"
+    },
+    "system": {
+      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas/VFrecovery-schema-system.json"
     }
   },
-  "maxProperties": 4
+  "maxProperties": 5
 }

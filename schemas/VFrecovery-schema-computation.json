@@ -13,11 +13,7 @@
       "description": "UTC starting datetime of the computation",
       "type": ["string", "null"],
       "format": "date-time"
-    },
-    "system": {
-      "description": "System the computation was executed on",
-      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas/VFrecovery-schema-system.json"
-    },
+    }
     "cpu_time": {
       "description": "CPU time used by the computation",
       "type": ["string", "null"],

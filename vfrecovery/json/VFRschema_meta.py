@@ -59,7 +59,6 @@ class MetaDataSystem(VFvalidators):
 
 
 class MetaDataComputation(VFvalidators):
-    system: MetaDataSystem = None
     date: pd.Timestamp = None
     cpu_time: pd.Timedelta = None
     wall_time: pd.Timedelta = None
@@ -68,7 +67,6 @@ class MetaDataComputation(VFvalidators):
     description: str = "A set of meta-data to describe one computation run"
     required: List = []
     properties: List = ["description",
-                        "system",
                         "cpu_time", "wall_time", "date"]
 
     def __init__(self, **kwargs):
@@ -88,21 +86,22 @@ class MetaDataComputation(VFvalidators):
 
 
 class MetaData(VFvalidators):
-    nfloats: int = None
+    n_floats: int = None
     velocity_field: str = None
     vfconfig: VFschema_configuration = None
     computation: MetaDataComputation = None
+    system: MetaDataSystem = None
 
     schema: str = "VFrecovery-schema-metadata"
     description: str = "A set of meta-data to describe one simulation"
-    required: List = ["nfloats", "velocity_field", "vfconfig"]
+    required: List = ["n_floats", "velocity_field", "vfconfig"]
     properties: List = ["description",
-                        "nfloats", "velocity_field",
-                        "vfconfig", "computation"]
+                        "n_floats", "velocity_field",
+                        "vfconfig", "computation", "system"]
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._is_integer(self.nfloats)
+        self._is_integer(self.n_floats)
         if 'vfconfig' not in kwargs:
             self.vfconfig = None
 
