@@ -38,7 +38,7 @@ def cli_group_predict() -> None:
     type=str,
     required=False,
     default=None,
-    help="Simulation output folder [default: './vfrecovery_data/<WMO>/<CYC>']",
+    help="Simulation data output folder [default: './vfrecovery_simulations_data/<WMO>/<CYC>']",
 )
 # @click.option(
 #     "-v", "--verbose",
@@ -82,12 +82,20 @@ def cli_group_predict() -> None:
     help="Virtual cycle number to start free surface drift, inclusive",
 )
 @click.option(
-    "-n", "--n_predictions",
+    "-np", "--n_predictions",
     type=int,
     required=False,
     default=0,
     show_default=True,
     help="Number of profiles to simulate after cycle specified with argument 'CYC'",
+)
+@click.option(
+    "-nf", "--n_floats",
+    type=int,
+    required=False,
+    default=100,
+    show_default=True,
+    help="Number of virtual floats simulated to make predictions",
 )
 @click.option(
     "--log-level",
@@ -111,6 +119,7 @@ def predict(
         cfg_cycle_duration,
         cfg_profile_depth,
         cfg_free_surface_drift,
+        n_floats,
         log_level,
 ) -> None:
     if log_level == "QUIET":
@@ -130,5 +139,6 @@ def predict(
                                  cfg_cycle_duration=cfg_cycle_duration,
                                  cfg_profile_depth=cfg_profile_depth,
                                  cfg_free_surface_drift=cfg_free_surface_drift,
+                                 n_floats=n_floats,
                                  log_level=log_level)
     blank_logger.info(json_dump)

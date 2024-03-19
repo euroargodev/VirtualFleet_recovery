@@ -9,9 +9,9 @@ import os
 import logging
 import json
 
-from vfrecovery.json import Profile, MetaData
+from vfrecovery.json import Profile, MetaData, MetaDataSystem
 from vfrecovery.utils.formatters import COLORS
-from .utils import df_obs2jsProfile, ArgoIndex2df, ArgoIndex2JsProfile
+from .utils import df_obs2jsProfile, ArgoIndex2df, ArgoIndex2JsProfile, get_simulation_suffix
 
 root_logger = logging.getLogger("vfrecovery_root_logger")
 sim_logger = logging.getLogger("vfrecovery_simulation")
@@ -50,6 +50,7 @@ def predict_function(
         cfg_cycle_duration: float,
         cfg_profile_depth: float,
         cfg_free_surface_drift: int,
+        n_floats: int,
         log_level: str,
 ) -> str:
     """
@@ -62,6 +63,11 @@ def predict_function(
     velocity
     n_predictions
     output_path
+    cfg_parking_depth
+    cfg_cycle_duration
+    cfg_profile_depth
+    cfg_free_surface_drift
+    n_floats
     log_level
 
     Returns
@@ -82,6 +88,7 @@ def predict_function(
 
     execution_start = time.time()
     process_start = time.process_time()
+    # run_id = pd.to_datetime('now', utc=True).strftime('%Y%m%d%H%M%S')
 
     # Validate arguments:
     assert is_wmo(wmo)
@@ -99,12 +106,12 @@ def predict_function(
 
     if output_path is None:
         # output_path = "vfrecovery_sims" % pd.to_datetime('now', utc=True).strftime("%Y%m%d%H%M%S")
-        output_path = os.path.sep.join(["vfrecovery_data", str(wmo), str(cyc[1])])
+        output_path = os.path.sep.join(["vfrecovery_simulations_data", str(wmo), str(cyc[1])])
     output_path = Path(output_path)
     output_path.mkdir(parents=True, exist_ok=True)
 
     # Set-up simulation logger
-    simlogfile = logging.FileHandler(os.path.join(output_path, "vfpred.log"), mode='a')
+    simlogfile = logging.FileHandler(os.path.join(output_path, "vfrecovery_simulations.log"), mode='a')
     simlogfile.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(name)s:%(filename)s:%(lineno)d | %(message)s",
                                               datefmt='%Y/%m/%d %I:%M:%S'))
     sim_logger.handlers = []
@@ -114,6 +121,15 @@ def predict_function(
     # log_this.debug("This is DEBUG")
     # log_this.error("This is ERROR")
     log_this.info("\n\nSTARTING NEW SIMULATION: WMO=%i / CYCLE_NUMBER=%i\n" % (wmo, cyc[1]))
+
+    # Create Simulation Meta-data class holder
+    MD = MetaData.from_dict({
+        'n_floats': n_floats,
+        'velocity_field': velocity,
+        'system': MetaDataSystem.auto_load(),
+        'vfconfig': None,  # will be filled later
+        'computation': None,  # will be filled later
+    })
 
     #
     url = argoplot.dashboard(wmo, url_only=True)
@@ -162,9 +178,11 @@ def predict_function(
                              unit='cycle',
                              description='First cycle with free surface drift',
                              dtype=int)
+    MD.vfconfig = CFG  # Register floats configuration to simulation meta-data class
 
     # Save virtual float configuration on file:
-    # CFG.to_json(os.path.join(output_path, "floats_configuration_%s.json" % get_sim_suffix(args, CFG)))
+    log_this.debug("Sim suffix: %s" % get_simulation_suffix(MD))
+    # CFG.to_json(os.path.join(output_path, "floats_configuration_%s.json" % get_simulation_suffix(MD)))
 
     #     if not args.json:
     #         puts("\n".join(["\t%s" % line for line in CFG.__repr__().split("\n")]), color=COLORS.green)
@@ -172,19 +190,13 @@ def predict_function(
 
 
     #
-    MD = MetaData.from_dict({
-        'nfloats': 0,
-        'velocity_field': velocity,
-        'vfconfig': CFG,
-        'computation': None
-    })
     return MD.to_json()
 
-    output = {'wmo': wmo, 'cyc': cyc, 'velocity': velocity, 'n_predictions': n_predictions, 'cfg': CFG.to_json(indent=0)}
-    json_dump = json.dumps(
-        output, sort_keys=False, indent=2
-    )
-    return json_dump
+    # output = {'wmo': wmo, 'cyc': cyc, 'velocity': velocity, 'n_predictions': n_predictions, 'cfg': CFG.to_json(indent=0)}
+    # json_dump = json.dumps(
+    #     output, sort_keys=False, indent=2
+    # )
+    # return json_dump
 
 
 

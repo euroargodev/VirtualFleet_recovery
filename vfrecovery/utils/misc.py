@@ -16,16 +16,6 @@ def get_cfg_str(a_cfg):
     return txt
 
 
-def get_sim_suffix(this_args, this_cfg):
-    """Compose a string suffix for output files"""
-    # suf = '%s_%i' % (this_args.velocity, this_args.nfloats)
-    suf = 'VEL%s_NF%i_CYCDUR%i_PARKD%i_PROFD%i_SFD%i' % (this_args.velocity,
-                                                this_args.nfloats,
-                                                int(this_cfg.mission['cycle_duration']),
-                                                int(this_cfg.mission['parking_depth']),
-                                                int(this_cfg.mission['profile_depth']),
-                                                int(this_cfg.mission['reco_free_surface_drift']))
-    return suf
 
 
 def get_ea_profile_page_url(wmo, cyc):
