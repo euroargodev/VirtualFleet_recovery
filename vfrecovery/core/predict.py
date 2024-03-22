@@ -20,7 +20,6 @@ from .deployment_plan import setup_deployment_plan
 from .trajfile_handler import Trajectories
 from .simulation_handler import SimPredictor
 
-
 root_logger = logging.getLogger("vfrecovery_root_logger")
 sim_logger = logging.getLogger("vfrecovery_simulation")
 
@@ -277,23 +276,18 @@ class Simulator:
     def postprocess_swarm_metrics(self):
         # Recovery, compute more swarm metrics:
         for this_cyc in self.T.sim_cycles:
-            jsmetrics, fig, ax = self.T.analyse_pairwise_distances(cycle=this_cyc,
-                                                              save_figure=True,
-                                                              this_args=args,
-                                                              this_cfg=self.CFG,
-                                                              sim_suffix=get_simulation_suffix(self.MD),
-                                                              workdir=self.output_path,
-                                                              )
-            if 'metrics' in results['predictions'][this_cyc]:
-                for key in jsmetrics.keys():
-                    results['predictions'][this_cyc]['metrics'].update({key: jsmetrics[key]})
-            else:
-                results['predictions'][this_cyc].update({'metrics': jsmetrics})
+            jsmetrics = self.T.analyse_pairwise_distances(cycle=this_cyc, show_plot=False)
+        #     if 'metrics' in results['predictions'][this_cyc]:
+        #         for key in jsmetrics.keys():
+        #             results['predictions'][this_cyc]['metrics'].update({key: jsmetrics[key]})
+        #     else:
+        #         results['predictions'][this_cyc].update({'metrics': jsmetrics})
+            log_this.info(pp_obj(jsmetrics))
+        return jsmetrics
 
     def postprocess(self):
         self.postprocess_metrics()
         self.postprocess_swarm_metrics()
-
 
 
 def predict_function(

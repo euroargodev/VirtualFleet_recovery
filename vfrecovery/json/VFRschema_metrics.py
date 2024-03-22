@@ -139,9 +139,9 @@ class Transit(VFvalidators):
 
 
 class Metrics(VFvalidators):
+    trajectory_lengths: TrajectoryLengths = None
     pairwise_distances: PairwiseDistances = None
     surface_drift: SurfaceDrift = None
-    trajectory_lengths: TrajectoryLengths = None
     transit: Transit = None
 
     schema: str = "VFrecovery-schema-metrics"

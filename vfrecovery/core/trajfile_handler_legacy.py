@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 from vfrecovery.utils.misc import get_cfg_str
 from vfrecovery.plots.utils import save_figurefile
 from vfrecovery.json import Profile
-from vfrecovery.json import Metrics, TrajectoryLengths, PairwiseDistances, PairwiseDistancesState
 
 
 class Trajectories:
@@ -40,8 +39,8 @@ class Trajectories:
         """Return list of cycles simulated"""
         cycs = np.unique(self.obj['cycle_number'])
         last_obs_phase = \
-            self.obj.where(self.obj['cycle_number'] == cycs[-1])['cycle_phase'].isel(trajectory=0).isel(obs=-1).values[
-                np.newaxis][0]
+        self.obj.where(self.obj['cycle_number'] == cycs[-1])['cycle_phase'].isel(trajectory=0).isel(obs=-1).values[
+            np.newaxis][0]
         if last_obs_phase < 3:
             cycs = cycs[0:-1]
         return cycs
@@ -52,7 +51,7 @@ class Trajectories:
         start_date = pd.to_datetime(self.obj['time'].isel(trajectory=0, obs=0).values)
         end_date = pd.to_datetime(self.obj['time'].isel(trajectory=0, obs=-1).values)
         summary.append("Simulation length: %s, from %s to %s" % (
-            pd.Timedelta(end_date - start_date, 'd'), start_date.strftime("%Y/%m/%d"), end_date.strftime("%Y/%m/%d")))
+        pd.Timedelta(end_date - start_date, 'd'), start_date.strftime("%Y/%m/%d"), end_date.strftime("%Y/%m/%d")))
         return "\n".join(summary)
 
     # def to_index_par(self) -> pd.DataFrame:
@@ -226,8 +225,8 @@ class Trajectories:
                                    show_plot: bool = True,
                                    save_figure: bool = False,
                                    workdir: str = '.',
-                                   sim_suffix=None,
-                                   this_cfg=None,
+                                   sim_suffix = None,
+                                   this_cfg = None,
                                    this_args: dict = None):
 
         def get_hist_and_peaks(this_d):
@@ -320,36 +319,27 @@ class Trajectories:
         # staggering = np.max(bin_edges1)/np.max(bin_edges0)
         staggering = np.max(bin_edges) / np.max(bin_edges0)
 
+        # Store metrics in a dict:
+        prediction_metrics = {}
+
+        prediction_metrics['trajectory_lengths'] = {'median': np.nanmedian(ds['length'].values),
+                                                    'std': np.nanstd(ds['length'].values)}
+
+        prediction_metrics['pairwise_distances'] = {
+            'initial_state': {'median': np.nanmedian(d0), 'std': np.nanstd(d0), 'nPDFpeaks': len(peaks0)},
+            'final_state': {'median': np.nanmedian(d), 'std': np.nanstd(d), 'nPDFpeaks': len(peaks)},
+            'relative_state': {'median': np.nanmedian(d1), 'std': np.nanstd(d1), 'nPDFpeaks': len(peaks1)},
+            'overlapping': {'value': overlapping,
+                            'comment': 'Overlapping area between PDF(initial_state) and PDF(final_state)'},
+            'staggering': {'value': staggering, 'comment': 'Ratio of PDF(initial_state) vs PDF(final_state) ranges'},
+            'score': {'value': overlapping / len(peaks), 'comment': 'overlapping/nPDFpeaks(final_state)'}}
+
         if np.isinf(overlapping / len(peaks)):
             raise ValueError("Can't compute the prediction score, infinity !")
 
-        # Store metrics as VFRschema instance
-        PD = PairwiseDistances.from_dict({
-            'description': None,
-            'initial_state': PairwiseDistancesState.from_dict({
-                'median': np.nanmedian(d0), 'std': np.nanstd(d0), 'nPDFpeaks': len(peaks0), 'description': None,
-            }),
-            'final_state': PairwiseDistancesState.from_dict({
-                'median': np.nanmedian(d), 'std': np.nanstd(d), 'nPDFpeaks': len(peaks), 'description': None,
-            }),
-            'relative_state': PairwiseDistancesState.from_dict({
-                'median': np.nanmedian(d1), 'std': np.nanstd(d1), 'nPDFpeaks': len(peaks1), 'description': None,
-            }),
-            'overlapping': overlapping,
-            'staggering': staggering,
-            'score': overlapping / len(peaks),
-        })
-        PD.std_ratio = PD.final_state.std / PD.initial_state.std
-
-        M = Metrics.from_dict({
-            "description": None,
-            "trajectory_lengths": TrajectoryLengths.from_dict({
-                "median": np.nanmedian(ds['length'].values),
-                "std": np.nanstd(ds['length'].values),
-                "description": None,
-            }),
-            "pairwise_distances": PD,
-        })
+        ratio = prediction_metrics['pairwise_distances']['final_state']['std'] / \
+                prediction_metrics['pairwise_distances']['initial_state']['std']
+        prediction_metrics['pairwise_distances']['std_ratio'] = ratio
 
         # Figure:
         if show_plot:
@@ -411,6 +401,7 @@ class Trajectories:
                 matplotlib.use(backend)
 
         if show_plot:
-            return M, fig, ax
+            return prediction_metrics, fig, ax
         else:
-            return M
+            return prediction_metrics
+

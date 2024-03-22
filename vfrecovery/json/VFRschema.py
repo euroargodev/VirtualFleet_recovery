@@ -140,7 +140,7 @@ class VFvalidators(VFschema):
         return True if len(errors) == 0 else errors
 
     def _is_numeric(self, x, name='?'):
-        assert isinstance(x, (int, float)), "'%s' must be a float, got '%s'" % (name, type(x))
+        assert np.asarray(x).dtype.kind in set('buifc'), "'%s' must be numeric, got '%s'" % (name, type(x))
 
     def _is_datetime(self, x, name='?'):
         assert isinstance(x, (
