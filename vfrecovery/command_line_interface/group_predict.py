@@ -106,7 +106,7 @@ def cli_group_predict() -> None:
     help="Minimal size (deg) of the simulation domain around the initial float position",
 )
 @click.option(
-    "--log-level",
+    "--log_level",
     type=click.Choice(["DEBUG", "INFO", "WARN", "ERROR", "CRITICAL", "QUIET"]),
     default="INFO",
     show_default=True,

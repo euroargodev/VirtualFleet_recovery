@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 from vfrecovery.utils.misc import get_cfg_str
 from vfrecovery.plots.utils import save_figurefile
-
+from vfrecovery.json import Profile
 
 class Trajectories:
     """Trajectory file manager for VFrecovery
@@ -167,7 +167,7 @@ class Trajectories:
         self.to_index()
         return self
 
-    def add_distances(self, origin: None) -> pd.DataFrame:
+    def add_distances(self, origin: Profile = None) -> pd.DataFrame:
         """Compute profiles distance to some origin
 
         Returns
@@ -187,7 +187,7 @@ class Trajectories:
 
         df = self._index
 
-        x2, y2 = origin  # real float initial position
+        x2, y2 = origin.location.longitude, origin.location.latitude  # real float initial position
         df['distance'] = np.nan
         df['rel_lon'] = np.nan
         df['rel_lat'] = np.nan
