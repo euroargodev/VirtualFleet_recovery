@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from typing import List, Dict
 import argopy.plot as argoplot
 
@@ -32,6 +33,10 @@ class Location(VFvalidators):
         self._validate_longitude(self.longitude)
         self._validate_latitude(self.latitude)
         self._validate_time(self.time)
+
+        self.longitude = np.round(self.longitude, 3)
+        self.latitude = np.round(self.latitude, 3)
+
 
     @staticmethod
     def from_dict(obj: Dict) -> 'Location':
@@ -80,14 +85,15 @@ class Profile(VFvalidators):
     @staticmethod
     def from_ArgoIndex(df: pd.DataFrame) -> List['Profile']:
         Plist = []
+        df = df.sort_values(by='date')
         for irow, this_obs in df.iterrows():
             p = Profile.from_dict({
                 'location': Location.from_dict({'longitude': this_obs['longitude'],
                                                 'latitude': this_obs['latitude'],
-                                                'time': this_obs['date']
+                                                'time': this_obs['date'].tz_localize('UTC')
                                                 }),
                 'wmo': this_obs['wmo'],
-                'cyc': this_obs['cyc'],
+                'cycle_number': this_obs['cyc'],
                 'url_float': argoplot.dashboard(wmo=this_obs['wmo'], url_only=True),
                 'url_profile': argoplot.dashboard(wmo=this_obs['wmo'], cyc=this_obs['cyc'], url_only=True),
             })

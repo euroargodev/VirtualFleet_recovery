@@ -15,6 +15,7 @@ def predict(
         cfg_profile_depth: float = None,
         cfg_free_surface_drift: int = 9999,
         n_floats: int = 100,
+        domain_min_size: float = 12.,
         log_level: str = 'INFO',
 ):
     """
@@ -32,6 +33,7 @@ def predict(
     cfg_profile_depth
     cfg_free_surface_drift
     n_floats
+    domain_min_size
     log_level
     
     Returns
@@ -49,6 +51,7 @@ def predict(
         cfg_profile_depth=cfg_profile_depth,
         cfg_free_surface_drift=cfg_free_surface_drift,
         n_floats=n_floats,
+        domain_min_size=domain_min_size,
         log_level=log_level,
     )
     results = json.loads(results_json)

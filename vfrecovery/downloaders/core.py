@@ -24,13 +24,12 @@ def get_velocity_field(a_box, a_date, n_days=1, output='.', dataset='ARMOR3D'):
         download_date = pd.to_datetime('now', utc='now').strftime("%Y%m%d")
         fname = os.path.join(output, 'velocity_%s_%idays_%s.nc' % (dataset, n_days, download_date))
         return fname
-
     velocity_file = get_velocity_filename(dataset, n_days)
+
     if not os.path.exists(velocity_file):
         # Define Data loader:
         loader = Armor3d if dataset == 'ARMOR3D' else Glorys
-        loader = loader(a_box, a_date, n_days=n_days)
-        # puts(str(loader), color=COLORS.magenta)
+        loader = loader(a_box, a_date - pd.Timedelta(1, 'D'), n_days=n_days)
 
         # Load data from Copernicus Marine Data store:
         ds = loader.to_xarray()

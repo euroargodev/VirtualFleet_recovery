@@ -8,7 +8,7 @@ import json
 import numpy as np
 import pandas as pd
 import ipaddress
-from typing import List, Dict, Union
+from typing import List, Dict, Union, TextIO
 import jsonschema
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
@@ -35,10 +35,13 @@ class VFschema:
         summary = []
         for p in self.properties:
             if p != 'description':
-                summary.append("%s=%s" % (p, getattr(self, p)))
-        if hasattr(self, 'description'):
+                v = getattr(self, p)
+                if isinstance(v, (int, float)):
+                    summary.append("%s=%s" % (p, v))
+                else:
+                    summary.append("%s='%s'" % (p, v))
+        if hasattr(self, 'description') and getattr(self, 'description') is not None:
             summary.append("%s='%s'" % ('description', getattr(self, 'description')))
-
         return "%s(%s)" % (name, ", ".join(summary))
 
     def _repr_html_(self):
@@ -83,17 +86,27 @@ class VFschema:
             if key != "description":
                 value = getattr(self, key)
                 d.update({key: value})
+        if hasattr(self, 'schema'):
+            d.update({"$schema": "%s/%s.json" % (self.schema_root, getattr(self, 'schema'))})
         return d
 
-    def to_json(self, fp=None, indent=4):
+    def to_json(self, fp: Union[str, Path, TextIO] = None, indent=4):
         """Save to JSON file or return a JSON string that can be loaded with json.loads()"""
         jsdata = self.__dict__
-        if hasattr(self, 'schema'):
-            jsdata.update({"$schema": "%s/%s.json" % (self.schema_root, getattr(self, 'schema'))})
+        # if hasattr(self, 'schema'):
+        #     jsdata.update({"$schema": "%s/%s.json" % (self.schema_root, getattr(self, 'schema'))})
         if fp is None:
             return json.dumps(jsdata, indent=indent, cls=self.JSONEncoder)
         else:
-            return json.dump(jsdata, fp, indent=indent, cls=self.JSONEncoder)
+            if hasattr(fp, 'write'):
+                return json.dump(jsdata, fp, indent=indent, cls=self.JSONEncoder)
+            else:
+                if isinstance(fp, str):
+                    fp = Path(fp)
+
+                with fp.open('w') as fpp:
+                    o = json.dump(jsdata, fpp, indent=indent, cls=self.JSONEncoder)
+                return o
 
 
 class VFvalidators(VFschema):

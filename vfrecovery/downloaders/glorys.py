@@ -105,7 +105,8 @@ class Glorys:
             maximum_depth=self.max_depth,
             start_datetime=dates[0].strftime("%Y-%m-%dT%H:%M:%S"),
             end_datetime=dates[1].strftime("%Y-%m-%dT%H:%M:%S"),
-            variables=['uo', 'vo']
+            variables=['uo', 'vo'],
+            disable_progress_bar=True,
         )
         return ds
 
@@ -119,7 +120,7 @@ class Glorys:
         if self.n_days == 1:
             end_date = start_date
         else:
-            end_date = start_date + pd.Timedelta(self.n_days - 1, 'D')
+            end_date = start_date + pd.Timedelta(self.n_days + 1, 'D')
         return self._get_this(self.dataset_id, [start_date, end_date])
 
     def _get_reanalysis(self):
@@ -132,7 +133,7 @@ class Glorys:
         if self.n_days == 1:
             end_date = start_date
         else:
-            end_date = self.start_date + pd.Timedelta(self.n_days - 1, 'D')
+            end_date = self.start_date + pd.Timedelta(self.n_days + 1, 'D')
         return self._get_this(self.dataset_id, [start_date, end_date])
 
     def to_xarray(self):

@@ -5,16 +5,20 @@ from virtualargofleet import Velocity, VirtualFleet, FloatConfiguration, ConfigP
 from pathlib import Path
 from typing import Union
 import pandas as pd
+import numpy as np
 import os
 import logging
 import json
+import pprint
 
 from vfrecovery.json import Profile, MetaData, MetaDataSystem
 from vfrecovery.utils.formatters import COLORS
-from .utils import df_obs2jsProfile, ArgoIndex2df, ArgoIndex2JsProfile, get_simulation_suffix
+from vfrecovery.downloaders import get_velocity_field
+from .utils import df_obs2jsProfile, ArgoIndex2df_obs, ArgoIndex2jsProfile, get_simulation_suffix, get_domain
 
 root_logger = logging.getLogger("vfrecovery_root_logger")
 sim_logger = logging.getLogger("vfrecovery_simulation")
+
 
 class log_this:
 
@@ -40,6 +44,46 @@ class log_this:
         return log_this(txt, 'ERROR')
 
 
+def setup_floats_config(
+        wmo: int,
+        cyc: int,
+        cfg_parking_depth: float,
+        cfg_cycle_duration: float,
+        cfg_profile_depth: float,
+        cfg_free_surface_drift: int,
+) -> FloatConfiguration:
+    """Load float configuration at a given cycle number and possibly overwrite data with user parameters"""
+    log_this.debug("Loading float configuration...")
+    try:
+        CFG = FloatConfiguration([wmo, cyc])
+    except:
+        log_this.debug("Can't load this profile configuration, fall back on default values")
+        CFG = FloatConfiguration('default')
+
+    if cfg_parking_depth is not None:
+        log_this.info("parking_depth=%i is overwritten with %i" % (CFG.mission['parking_depth'],
+                                                                   float(cfg_parking_depth)))
+        CFG.update('parking_depth', float(cfg_parking_depth))
+
+    if cfg_cycle_duration is not None:
+        log_this.info("cycle_duration=%i is overwritten with %i" % (CFG.mission['cycle_duration'],
+                                                                    float(cfg_cycle_duration)))
+        CFG.update('cycle_duration', float(cfg_cycle_duration))
+
+    if cfg_profile_depth is not None:
+        log_this.info("profile_depth=%i is overwritten with %i" % (CFG.mission['profile_depth'],
+                                                                   float(cfg_profile_depth)))
+        CFG.update('profile_depth', float(cfg_profile_depth))
+
+    CFG.params = ConfigParam(key='reco_free_surface_drift',
+                             value=int(cfg_free_surface_drift),
+                             unit='cycle',
+                             description='First cycle with free surface drift',
+                             dtype=int)
+
+    return CFG
+
+
 def predict_function(
         wmo: int,
         cyc: int,
@@ -51,6 +95,7 @@ def predict_function(
         cfg_profile_depth: float,
         cfg_free_surface_drift: int,
         n_floats: int,
+        domain_min_size: float,
         log_level: str,
 ) -> str:
     """
@@ -68,6 +113,7 @@ def predict_function(
     cfg_profile_depth
     cfg_free_surface_drift
     n_floats
+    domain_min_size
     log_level
 
     Returns
@@ -101,8 +147,13 @@ def predict_function(
     else:
         velocity = velocity.upper()
 
+    # Build the list of cycle numbers to work with `cyc`:
+    # The `cyc` list follows this structure:
+    #   [PREVIOUS_CYCLE_USED_AS_INITIAL_CONDITIONS, CYCLE_NUMBER_REQUESTED_BY_USER, ADDITIONAL_CYCLE_i, ADDITIONAL_CYCLE_i+1, ...]
     # Prepend previous cycle number that will be used as initial conditions for the prediction of `cyc`:
     cyc = [cyc - 1, cyc]
+    # Append additional `n_predictions` cycle numbers:
+    [cyc.append(cyc[1] + n + 1) for n in range(n_predictions)]
 
     if output_path is None:
         # output_path = "vfrecovery_sims" % pd.to_datetime('now', utc=True).strftime("%Y%m%d%H%M%S")
@@ -112,7 +163,7 @@ def predict_function(
 
     # Set-up simulation logger
     simlogfile = logging.FileHandler(os.path.join(output_path, "vfrecovery_simulations.log"), mode='a')
-    simlogfile.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(name)s:%(filename)s:%(lineno)d | %(message)s",
+    simlogfile.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(name)s:%(filename)s | %(message)s",
                                               datefmt='%Y/%m/%d %I:%M:%S'))
     sim_logger.handlers = []
     sim_logger.addHandler(simlogfile)
@@ -121,6 +172,9 @@ def predict_function(
     # log_this.debug("This is DEBUG")
     # log_this.error("This is ERROR")
     log_this.info("\n\nSTARTING NEW SIMULATION: WMO=%i / CYCLE_NUMBER=%i\n" % (wmo, cyc[1]))
+
+    log_this.info("n_predictions: %i" % n_predictions)
+    log_this.info("Working with cycle numbers array: %s" % str(cyc))
 
     # Create Simulation Meta-data class holder
     MD = MetaData.from_dict({
@@ -136,58 +190,61 @@ def predict_function(
     txt = "You can check this float dashboard while we prepare the prediction: %s" % url
     log_this.info(txt)
 
-    # Load observed float profiles index
+    # Load observed float profiles index:
     log_this.debug("Loading float profiles index ...")
-    df_obs = ArgoIndex2df(wmo, cyc)
-    P_obs = df_obs2jsProfile(df_obs)
-    # P_obs = ArgoIndex2JsProfile(wmo, cyc)
+    # df_obs = ArgoIndex2df_obs(wmo, cyc)
+    # P_obs = df_obs2jsProfile(df_obs)
+    P_obs, df_obs = ArgoIndex2jsProfile(wmo, cyc)
     # THIS_DATE = P_obs[0].location.time
-    # CENTER = [P_obs[0].location.longitude, P_obs[0].location.latitude]
 
-    log_this.debug("Profiles to work with:\n%s" % df_obs[['date', 'latitude', 'longitude', 'wmo', 'cyc', 'institution']].to_string(max_colwidth=35))
-    if df_obs.shape[0] == 1:
+    # log_this.debug(
+    #     "Profiles to work with:\n%s" % df_obs[['date', 'latitude', 'longitude', 'wmo', 'cyc', 'institution']].to_string(
+    #         max_colwidth=35))
+    [log_this.debug("Observed %s" % p) for p in P_obs]
+    if len(P_obs) == 1:
         log_this.info('Real-case scenario: True position unknown !')
     else:
-        log_this.info('Evaluation scenario: historical position known')
+        log_this.info('Evaluation scenario: Historical position known')
 
-    # Load real float configuration at the previous cycle:
-    log_this.debug("\nLoading float configuration...")
-    try:
-        CFG = FloatConfiguration([wmo, cyc[0]])
-    except:
-        log_this.info("Can't load this profile config, falling back on default values")
-        CFG = FloatConfiguration('default')
+    # Load real float configuration at the previous cycle, to be used for the simulation as initial conditions.
+    # (the loaded config is possibly overwritten with user defined cfg_* parameters)
+    CFG = setup_floats_config(wmo, cyc[0],
+                              cfg_parking_depth,
+                              cfg_cycle_duration,
+                              cfg_profile_depth,
+                              cfg_free_surface_drift)
+    MD.vfconfig = CFG  # Register floats configuration to the simulation meta-data class
 
-    if cfg_parking_depth is not None:
-        log_this.debug("parking_depth=%i is overwritten with %i" % (CFG.mission['parking_depth'],
-                                                          float(cfg_parking_depth)))
-        CFG.update('parking_depth', float(cfg_parking_depth))
+    # and save the final virtual float configuration on file:
+    CFG.to_json(Path(os.path.join(output_path, "floats_configuration_%s.json" % get_simulation_suffix(MD))))
+    log_this.info("\n".join(["\t%s" % line for line in CFG.__repr__().split("\n")]))
 
-    if cfg_cycle_duration is not None:
-        log_this.debug("cycle_duration=%i is overwritten with %i" % (CFG.mission['cycle_duration'],
-                                                          float(cfg_cycle_duration)))
-        CFG.update('cycle_duration', float(cfg_cycle_duration))
-
-    if cfg_profile_depth is not None:
-        log_this.debug("profile_depth=%i is overwritten with %i" % (CFG.mission['profile_depth'],
-                                                          float(cfg_profile_depth)))
-        CFG.update('profile_depth', float(cfg_profile_depth))
-
-    CFG.params = ConfigParam(key='reco_free_surface_drift',
-                             value=int(cfg_free_surface_drift),
-                             unit='cycle',
-                             description='First cycle with free surface drift',
-                             dtype=int)
-    MD.vfconfig = CFG  # Register floats configuration to simulation meta-data class
-
-    # Save virtual float configuration on file:
-    log_this.debug("Sim suffix: %s" % get_simulation_suffix(MD))
-    # CFG.to_json(os.path.join(output_path, "floats_configuration_%s.json" % get_simulation_suffix(MD)))
-
-    #     if not args.json:
-    #         puts("\n".join(["\t%s" % line for line in CFG.__repr__().split("\n")]), color=COLORS.green)
     #
+    log_this.debug("Simulation data will be registered with file suffix: '%s'" % get_simulation_suffix(MD))
 
+    # Define domain to load velocity for:
+    # In space:
+    domain, domain_center = get_domain(P_obs, domain_min_size)
+    # and time:
+    CYCLING_PERIOD = int(np.round(CFG.mission['cycle_duration']/24))  # Get the float cycle period (in days)
+    N_DAYS = (len(cyc)-1)*CYCLING_PERIOD+1
+
+    # log_this.info((domain_min_size, N_DAYS))
+    # log_this.info((domain_center, domain))
+    log_this.info("Loading %s velocity field to cover %i days starting on %s ..." % (MD.velocity_field, N_DAYS, P_obs[0].location.time))
+
+    ds_vel, velocity_file = get_velocity_field(domain, P_obs[0].location.time,
+                                           n_days=N_DAYS,
+                                           output=output_path,
+                                           dataset=MD.velocity_field)
+    VEL = Velocity(model='GLORYS12V1' if MD.velocity_field == 'GLORYS' else MD.velocity_field, src=ds_vel)
+    # if not args.json:
+    #     puts("\n\t%s" % str(ds_vel), color=COLORS.green)
+    #     puts("\n\tLoaded velocity field from %s to %s" %
+    #          (pd.to_datetime(ds_vel['time'][0].values).strftime("%Y-%m-%dT%H:%M:%S"),
+    #           pd.to_datetime(ds_vel['time'][-1].values).strftime("%Y-%m-%dT%H:%M:%S")), color=COLORS.green)
+    # figure_velocity(VBOX, VEL, VEL_NAME, THIS_PROFILE, WMO, CYC, save_figure=args.save_figure, workdir=WORKDIR)
+    #
 
     #
     return MD.to_json()
@@ -197,9 +254,6 @@ def predict_function(
     #     output, sort_keys=False, indent=2
     # )
     # return json_dump
-
-
-
 
 # def predictor(args):
 #     """Prediction manager"""
@@ -234,51 +288,14 @@ def predict_function(
 #         else:
 #             puts('\nEvaluation scenario: historical position known', color=COLORS.yellow)
 #
-#     # Load real float configuration at the previous cycle:
-#     if not args.json:
-#         puts("\nLoading float configuration...")
-#     try:
-#         CFG = FloatConfiguration([WMO, CYC[0]])
-#     except:
-#         if not args.json:
-#             puts("Can't load this profile config, falling back on default values", color=COLORS.red)
-#         CFG = FloatConfiguration('default')
-#
-#     if args.cfg_parking_depth is not None:
-#         puts("parking_depth=%i is overwritten with %i" % (CFG.mission['parking_depth'],
-#                                                           float(args.cfg_parking_depth)))
-#         CFG.update('parking_depth', float(args.cfg_parking_depth))
-#
-#     if args.cfg_cycle_duration is not None:
-#         puts("cycle_duration=%i is overwritten with %i" % (CFG.mission['cycle_duration'],
-#                                                           float(args.cfg_cycle_duration)))
-#         CFG.update('cycle_duration', float(args.cfg_cycle_duration))
-#
-#     if args.cfg_profile_depth is not None:
-#         puts("profile_depth=%i is overwritten with %i" % (CFG.mission['profile_depth'],
-#                                                           float(args.cfg_profile_depth)))
-#         CFG.update('profile_depth', float(args.cfg_profile_depth))
-#
-#     CFG.params = ConfigParam(key='reco_free_surface_drift',
-#                              value=int(args.cfg_free_surface_drift),
-#                              unit='cycle',
-#                              description='First cycle with free surface drift',
-#                              dtype=int)
-#
-#     # Save virtual float configuration on file:
-#     CFG.to_json(os.path.join(WORKDIR, "floats_configuration_%s.json" % get_sim_suffix(args, CFG)))
-#
-#     if not args.json:
-#         puts("\n".join(["\t%s" % line for line in CFG.__repr__().split("\n")]), color=COLORS.green)
-#
 #     # Get the cycling frequency (in days, this is more a period then...):
-#     CYCLING_FREQUENCY = int(np.round(CFG.mission['cycle_duration']/24))
+#     CYCLING_PERIOD = int(np.round(CFG.mission['cycle_duration']/24))
 #
 #     # Define domain to load velocity for, and get it:
 #     width = args.domain_size + np.abs(np.ceil(THIS_PROFILE['longitude'].values[-1] - CENTER[0]))
 #     height = args.domain_size + np.abs(np.ceil(THIS_PROFILE['latitude'].values[-1] - CENTER[1]))
 #     VBOX = [CENTER[0] - width / 2, CENTER[0] + width / 2, CENTER[1] - height / 2, CENTER[1] + height / 2]
-#     N_DAYS = (len(CYC)-1)*CYCLING_FREQUENCY+1
+#     N_DAYS = (len(CYC)-1)*CYCLING_PERIOD+1
 #     if not args.json:
 #         puts("\nLoading %s velocity field to cover %i days..." % (VEL_NAME, N_DAYS))
 #     ds_vel, velocity_file = get_velocity_field(VBOX, THIS_DATE,

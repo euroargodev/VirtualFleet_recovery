@@ -64,7 +64,7 @@ class Armor3d:
             end_date = start_date
         else:
             end_date = \
-            self.time_axis[self.time_axis <= self.start_date + (self.n_days + 1) * pd.Timedelta(1, 'D')].iloc[-1]
+            self.time_axis[self.time_axis <= self.start_date + (self.n_days + 7) * pd.Timedelta(1, 'D')].iloc[-1]
 
         ds = copernicusmarine.open_dataset(
             dataset_id=dataset_id,

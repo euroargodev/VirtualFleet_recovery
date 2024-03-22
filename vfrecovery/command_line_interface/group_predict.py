@@ -26,7 +26,7 @@ def cli_group_predict() -> None:
     """,  # noqa
 )
 @click.option(
-    "--velocity",
+    "-v", "--velocity",
     type=str,
     required=False,
     default='GLORYS',
@@ -50,7 +50,7 @@ def cli_group_predict() -> None:
 #     help="Display verbose information along the execution",
 # )
 @click.option(
-    "--cfg-parking-depth",
+    "--cfg_parking_depth",
     type=float,
     required=False,
     default=None,
@@ -58,7 +58,7 @@ def cli_group_predict() -> None:
     help="Virtual floats parking depth in db [default: previous cycle value]",
 )
 @click.option(
-    "--cfg-cycle-duration",
+    "--cfg_cycle_duration",
     type=float,
     required=False,
     default=None,
@@ -66,7 +66,7 @@ def cli_group_predict() -> None:
     help="Virtual floats cycle duration in hours [default: previous cycle value]",
 )
 @click.option(
-    "--cfg-profile-depth",
+    "--cfg_profile_depth",
     type=float,
     required=False,
     default=None,
@@ -74,7 +74,7 @@ def cli_group_predict() -> None:
     help="Virtual floats profile depth in db [default: previous cycle value]",
 )
 @click.option(
-    "--cfg-free-surface-drift",
+    "--cfg_free_surface_drift",
     type=int,
     required=False,
     default=9999,
@@ -96,6 +96,14 @@ def cli_group_predict() -> None:
     default=100,
     show_default=True,
     help="Number of virtual floats simulated to make predictions",
+)
+@click.option(
+    "-s", "--domain_min_size",
+    type=float,
+    required=False,
+    default=12,
+    show_default=True,
+    help="Minimal size (deg) of the simulation domain around the initial float position",
 )
 @click.option(
     "--log-level",
@@ -120,6 +128,7 @@ def predict(
         cfg_profile_depth,
         cfg_free_surface_drift,
         n_floats,
+        domain_min_size,
         log_level,
 ) -> None:
     if log_level == "QUIET":
@@ -140,5 +149,6 @@ def predict(
                                  cfg_profile_depth=cfg_profile_depth,
                                  cfg_free_surface_drift=cfg_free_surface_drift,
                                  n_floats=n_floats,
+                                 domain_min_size=domain_min_size,
                                  log_level=log_level)
     blank_logger.info(json_dump)
