@@ -18,7 +18,7 @@ from vfrecovery.downloaders import get_velocity_field
 from .utils import df_obs2jsProfile, ArgoIndex2df_obs, ArgoIndex2jsProfile, get_simulation_suffix, get_domain
 from .deployment_plan import setup_deployment_plan
 from .trajfile_handler import Trajectories
-from .simulation_handler import SimPredictor
+from .simulation_handler import RunAnalyser
 
 root_logger = logging.getLogger("vfrecovery_root_logger")
 sim_logger = logging.getLogger("vfrecovery_simulation")
@@ -90,14 +90,15 @@ def setup_floats_config(
     return CFG
 
 
-class Simulator:
+class Simulation:
     """
 
-    >>> S = Simulator(wmo, cyc, n_floats=n_floats, velocity=velocity)
+    >>> S = Simulation(wmo, cyc, n_floats=n_floats, velocity=velocity)
     >>> S.setup()
     >>> S.execute()
     >>> S.predict()
     >>> S.postprocess()
+    >>> S.to_json()
 
     """
 
@@ -105,7 +106,9 @@ class Simulator:
         self.wmo = wmo
         self.cyc = cyc
         self.output_path = kwargs['output_path']
-        log_this.info("\n\nSTARTING NEW SIMULATION: WMO=%i / CYCLE_NUMBER=%i\n" % (wmo, cyc[1]))
+        log_this.info("=" * 55)
+        log_this.info("STARTING NEW SIMULATION: WMO=%i / CYCLE_NUMBER=%i" % (wmo, cyc[1]))
+        log_this.info("=" * 55)
 
         # log_this.info("n_predictions: %i" % n_predictions)
         log_this.info("Working with cycle numbers list: %s" % str(cyc))
@@ -223,26 +226,31 @@ class Simulator:
         # if os.path.exists(output_path):
         #     shutil.rmtree(output_path)
 
-        self.VFleet.simulate(duration=timedelta(hours=self.n_days * 24 + 1),
-                             step=timedelta(minutes=5),
-                             record=timedelta(minutes=30),
-                             output=True,
-                             output_folder=self.output_path,
-                             output_file='trajectories_%s.zarr' % get_simulation_suffix(self.MD),
-                             verbose_progress=True,
-                             )
-        log_this.info("Simulation ended with success")
+        self.traj_file = os.path.join(self.output_path, 'trajectories_%s.zarr' % get_simulation_suffix(self.MD))
+        if os.path.exists(self.traj_file):
+            log_this.info("Using data from a previous similar run (no simulation executed)")
+        else:
+            self.VFleet.simulate(duration=timedelta(hours=self.n_days * 24 + 1),
+                                 step=timedelta(minutes=5),
+                                 record=timedelta(minutes=30),
+                                 output=True,
+                                 output_folder=self.output_path,
+                                 output_file='trajectories_%s.zarr' % get_simulation_suffix(self.MD),
+                                 verbose_progress=True,
+                                 )
+            log_this.info("Simulation ended with success")
 
     def predict_read_trajectories(self):
 
         # Get simulated profiles index:
         log_this.info("Extracting swarm profiles index")
 
-        self.T = Trajectories(self.VFleet.output)
-        self.T.get_index().add_distances(origin=self.P_obs[0])
-        log_this.debug(pp_obj(self.T))
+        # self.traj = Trajectories(self.VFleet.output)
+        self.traj = Trajectories(self.traj_file)
+        self.traj.get_index().add_distances(origin=self.P_obs[0])
+        log_this.debug(pp_obj(self.traj))
 
-        # jsdata, fig, ax = self.T.analyse_pairwise_distances(cycle=1, show_plot=True)
+        # jsdata, fig, ax = self.traj.analyse_pairwise_distances(cycle=1, show_plot=True)
 
         # if not args.json:
         #     puts(str(T), color=COLORS.magenta)
@@ -252,18 +260,18 @@ class Simulator:
 
     def predict_positions(self):
         """Make predictions based on simulated profile density"""
-        self.SP = SimPredictor(self.T.to_index(), self.df_obs)
+        self.run = RunAnalyser(self.traj.to_index(), self.df_obs)
         log_this.info("Predicting float cycle position(s) from swarm simulation")
-        log_this.debug(pp_obj(self.SP))
+        log_this.debug(pp_obj(self.run))
 
-        self.SP.fit_predict()
+        self.run.fit_predict()
         # SP.plot_predictions(VEL,
         #                      CFG,
         #                      sim_suffix=get_sim_suffix(args, CFG),
         #                      save_figure=args.save_figure,
         #                      workdir=WORKDIR,
         #                      orient='portrait')
-        # results = self.SP.predictions
+        # results = self.run.predictions
 
     def predict(self):
         """Make float profile predictions based on the swarm simulation"""
@@ -271,12 +279,12 @@ class Simulator:
         self.predict_positions()
 
     def postprocess_metrics(self):
-        self.SP.add_metrics(self.VEL)
+        self.run.add_metrics(self.VEL)
 
     def postprocess_swarm_metrics(self):
         # Recovery, compute more swarm metrics:
-        for this_cyc in self.T.sim_cycles:
-            jsmetrics = self.T.analyse_pairwise_distances(cycle=this_cyc, show_plot=False)
+        for this_cyc in self.traj.sim_cycles:
+            jsmetrics = self.traj.analyse_pairwise_distances(cycle=this_cyc, show_plot=False)
         #     if 'metrics' in results['predictions'][this_cyc]:
         #         for key in jsmetrics.keys():
         #             results['predictions'][this_cyc]['metrics'].update({key: jsmetrics[key]})
@@ -287,7 +295,12 @@ class Simulator:
 
     def postprocess(self):
         self.postprocess_metrics()
-        self.postprocess_swarm_metrics()
+        # self.postprocess_swarm_metrics()
+
+    def to_json(self, fp=None):
+        y = self.run._jsdata  # Simulation instance
+        y.meta_data = self.MD
+        return y.to_json(fp=fp)
 
 
 def predict_function(
@@ -379,7 +392,7 @@ def predict_function(
     # log_this.error("This is ERROR")
 
     #
-    S = Simulator(wmo, cyc,
+    S = Simulation(wmo, cyc,
                   n_floats=n_floats,
                   velocity=velocity,
                   output_path=output_path,
@@ -400,10 +413,9 @@ def predict_function(
         'wall_time': pd.Timedelta(time.time() - execution_start, 's'),
         'cpu_time': pd.Timedelta(time.process_time() - process_start, 's'),
     })
-    return S.MD.computation.to_json()
-    # return S.MD.to_json()
-
+    # return S.MD.computation.to_json()
     # return MD.to_json()
+    return S.to_json()
 
     # output = {'wmo': wmo, 'cyc': cyc, 'velocity': velocity, 'n_predictions': n_predictions, 'cfg': CFG.to_json(indent=0)}
     # json_dump = json.dumps(
