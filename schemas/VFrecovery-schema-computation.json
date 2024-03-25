@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2019-09/schema",
-  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas/VFrecovery-schema-computation.json",
+  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/refactoring-as-a-clean-module-and-cli/schemas/VFrecovery-schema-computation.json",
   "title": "VirtualFleet-Recovery Simulation Computation",
   "description": "A set of meta-data documenting one computation run",
   "format_version": {

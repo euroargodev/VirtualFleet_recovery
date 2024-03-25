@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2019-09/schema",
-  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas/VFrecovery-schema-metadata.json",
+  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/refactoring-as-a-clean-module-and-cli/schemas/VFrecovery-schema-metadata.json",
   "title": "VirtualFleet-Recovery Simulation Meta-data",
   "description": "A set of meta-data documenting one simulation",
   "format_version": {
@@ -23,10 +23,10 @@
       "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet/json-schemas-FloatConfiguration/schemas/VF-ArgoFloat-Configuration.json"
     },
     "computation": {
-      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas/VFrecovery-schema-computation.json"
+      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/refactoring-as-a-clean-module-and-cli/schemas/VFrecovery-schema-computation.json"
     },
     "system": {
-      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas/VFrecovery-schema-system.json"
+      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/refactoring-as-a-clean-module-and-cli/schemas/VFrecovery-schema-system.json"
     }
   },
   "maxProperties": 5

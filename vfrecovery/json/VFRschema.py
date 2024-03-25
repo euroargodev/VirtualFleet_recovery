@@ -1,6 +1,6 @@
 """
 
-Re-usable base class
+Re-usable base class to handle JSON schema compliance
 
 """
 
@@ -8,9 +8,9 @@ import json
 import numpy as np
 import pandas as pd
 import ipaddress
-from typing import List, Dict, Union, TextIO
+from typing import List, Union, TextIO
 import jsonschema
-from jsonschema import Draft202012Validator
+# from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 from pathlib import Path
 import logging
@@ -19,8 +19,9 @@ log = logging.getLogger("vfrecovery.json.schema")
 
 
 class VFschema:
-    """A base class to export json files following a schema"""
-    schema_root: str = "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas"
+    """A base class to export json files complying to a public schema"""
+    # schema_root: str = "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/main/schemas"
+    schema_root: str = "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/refactoring-as-a-clean-module-and-cli/schemas"
 
     def __init__(self, **kwargs):
         for key in self.required:
@@ -67,6 +68,8 @@ class VFschema:
                 return obj.isoformat()
             if isinstance(obj, pd.Timedelta):
                 return obj.isoformat()
+            if isinstance(obj, np.float32):
+                return float(obj)
             if getattr(type(obj), '__name__') in ['Location', 'Profile',
                                 'Metrics', 'TrajectoryLengths', 'PairwiseDistances', 'PairwiseDistancesState',
                                 'SurfaceDrift', 'Transit', 'Location_error',
