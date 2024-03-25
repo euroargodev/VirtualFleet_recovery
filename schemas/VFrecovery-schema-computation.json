@@ -13,7 +13,7 @@
       "description": "UTC starting datetime of the computation",
       "type": ["string", "null"],
       "format": "date-time"
-    }
+    },
     "cpu_time": {
       "description": "CPU time used by the computation",
       "type": ["string", "null"],

@@ -36,7 +36,7 @@ class VFschema:
         for p in self.properties:
             if p != 'description':
                 v = getattr(self, p)
-                if isinstance(v, (int, float)):
+                if np.asarray(v).dtype.kind in set('buifc'):
                     summary.append("%s=%s" % (p, v))
                 else:
                     summary.append("%s='%s'" % (p, v))
@@ -69,7 +69,7 @@ class VFschema:
                 return obj.isoformat()
             if getattr(type(obj), '__name__') in ['Location', 'Profile',
                                 'Metrics', 'TrajectoryLengths', 'PairwiseDistances', 'PairwiseDistancesState',
-                                'SurfaceDrift', 'Transit',
+                                'SurfaceDrift', 'Transit', 'Location_error',
                                 'MetaDataSystem', 'MetaDataComputation', 'MetaData']:
                 # We use "getattr(type(obj), '__name__')" in order to avoid circular import
                 return obj.__dict__

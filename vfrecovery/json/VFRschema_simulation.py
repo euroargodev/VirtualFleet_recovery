@@ -12,7 +12,7 @@ class Simulation(VFvalidators):
 
     schema: str = "VFrecovery-schema-simulation"
     description: str = "This document records the details of one VirtualFleet-Recovery simulation and Argo float profile predictions"
-    required: List = ["initial_profile", "observations", "predictions"]
+    required: List = ["initial_profile", "predictions"]
     properties: List = ["initial_profile", "observations", "predictions", "meta_data", "description"]
 
     @staticmethod

@@ -5,7 +5,6 @@
         - trajectory_lengths: ArrayMetric
         - pairwise_distances: PairwiseDistances
         - surface_drift: SurfaceDrift
-        - trajectory_lengths: TrajectoryLengths
         - transit: Transit
     ```
 
@@ -21,14 +20,6 @@
     ```
 
     ```
-    SurfaceDrift(VFvalidators)
-        - surface_currents_speed
-        - surface_currents_speed_unit
-        - unit
-        - value
-    ```
-
-    ```
     TrajectoryLengths(ArrayMetric)
         - median
         - std
@@ -39,6 +30,15 @@
         - nPDFpeaks
     ```
 
+
+    ```
+    SurfaceDrift(VFvalidators)
+        - surface_currents_speed
+        - surface_currents_speed_unit
+        - unit
+        - value
+    ```
+
     ```
     Transit(VFvalidators)
         - value
@@ -47,6 +47,7 @@
 
 """
 from typing import List, Dict
+import pandas as pd
 from .VFRschema import VFvalidators
 
 
@@ -138,15 +139,37 @@ class Transit(VFvalidators):
         return Transit(**obj)
 
 
+class Location_error(VFvalidators):
+    distance: float = None
+    bearing: float = None
+    time: pd.Timedelta = None
+
+    description: str = "Location error"
+    properties: List = ["distance", "bearing", "time", "description"]
+    required: List = []
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if 'time' not in kwargs:
+            setattr(self, 'time', pd.NaT)
+        else:
+            self._is_timedelta(kwargs['time'], 'time')
+
+    @staticmethod
+    def from_dict(obj: Dict) -> 'Location_error':
+        return Location_error(**obj)
+
+
 class Metrics(VFvalidators):
+    error: Location_error = None
+    transit: Transit = None
+    surface_drift: SurfaceDrift = None
     trajectory_lengths: TrajectoryLengths = None
     pairwise_distances: PairwiseDistances = None
-    surface_drift: SurfaceDrift = None
-    transit: Transit = None
 
     schema: str = "VFrecovery-schema-metrics"
     description: str = "A set of metrics to describe/interpret one predicted VFrecovery profile location"
-    properties: List = ["trajectory_lengths", "pairwise_distances", "surface_drift", "trajectory_lengths", "transit", "description"]
+    properties: List = ["trajectory_lengths", "pairwise_distances", "surface_drift", "trajectory_lengths", "transit", "error", "description"]
     required: List = []
 
     @staticmethod

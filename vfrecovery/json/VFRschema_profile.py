@@ -58,6 +58,15 @@ class Profile(VFvalidators):
     properties: List = ["location", "cycle_number", "wmo", "url_float", "url_profile", "virtual_cycle_number", "metrics", "description"]
 
     def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._validate_wmo(self.wmo)
+        self._validate_cycle_number(self.cycle_number)
+        self._validate_cycle_number(self.virtual_cycle_number)
+        if isinstance(kwargs['location'], dict):
+            self.location = Location.from_dict(kwargs['location'])
+
+    @staticmethod
+    def from_dict(obj: Dict) -> 'Profile':
         """
 
         Parameters
@@ -71,15 +80,6 @@ class Profile(VFvalidators):
         metrics: Metrics
 
         """
-        super().__init__(**kwargs)
-        self._validate_wmo(self.wmo)
-        self._validate_cycle_number(self.cycle_number)
-        self._validate_cycle_number(self.virtual_cycle_number)
-        if isinstance(kwargs['location'], dict):
-            self.location = Location.from_dict(kwargs['location'])
-
-    @staticmethod
-    def from_dict(obj: Dict) -> 'Profile':
         return Profile(**obj)
 
     @staticmethod

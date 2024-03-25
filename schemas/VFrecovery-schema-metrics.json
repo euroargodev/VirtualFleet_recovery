@@ -86,7 +86,16 @@
         "unit": {"type": "string"},
         "value": {"type": "number"}
       }
+    },
+    "error": {
+      "description": "Error amplitude in space/time",
+      "type": "object",
+      "properties": {
+        "distance": {"type": "number", "unit": "km"},
+        "bearing": {"type": "number", "unit":  "degree"},
+        "time": {"type": ["string", "null"], "format": "time-delta"}
+      }
     }
   },
-  "maxProperties": 4
+  "maxProperties": 5
 }
