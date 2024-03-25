@@ -16,7 +16,7 @@ def cli_group_predict() -> None:
     "predict",
     short_help="Execute VirtualFleet-Recovery predictions",
     help="""
-    Execute VirtualFleet-Recovery predictor and return results as a JSON string
+    Execute VirtualFleet-Recovery predictor
     """,
     epilog="""
     Examples:
@@ -151,4 +151,4 @@ def predict(
                                  n_floats=n_floats,
                                  domain_min_size=domain_min_size,
                                  log_level=log_level)
-    blank_logger.info(json_dump)
+    # blank_logger.info(json_dump)

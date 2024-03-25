@@ -18,7 +18,7 @@ from vfrecovery.downloaders import get_velocity_field
 from .utils import df_obs2jsProfile, ArgoIndex2df_obs, ArgoIndex2jsProfile, get_simulation_suffix, get_domain
 from .deployment_plan import setup_deployment_plan
 from .trajfile_handler import Trajectories
-from .simulation_handler import RunAnalyser
+from .run_handler import RunAnalyser
 
 root_logger = logging.getLogger("vfrecovery_root_logger")
 sim_logger = logging.getLogger("vfrecovery_simulation")
@@ -106,9 +106,9 @@ class Simulation:
         self.wmo = wmo
         self.cyc = cyc
         self.output_path = kwargs['output_path']
-        log_this.info("=" * 55)
-        log_this.info("STARTING NEW SIMULATION: WMO=%i / CYCLE_NUMBER=%i" % (wmo, cyc[1]))
-        log_this.info("=" * 55)
+        log_this.info("=" * 50)
+        log_this.info("STARTING SIMULATION: WMO=%i / CYCLE_NUMBER=%i" % (wmo, cyc[1]))
+        log_this.info("=" * 50)
 
         # log_this.info("n_predictions: %i" % n_predictions)
         log_this.info("Working with cycle numbers list: %s" % str(cyc))
@@ -127,22 +127,19 @@ class Simulation:
             'computation': None,  # will be filled later
         })
 
-    def setup_load_observed_profiles(self):
+    def _setup_load_observed_profiles(self):
         """Load observed float profiles index"""
 
         log_this.info("Loading float profiles index")
-        # df_obs = ArgoIndex2df_obs(wmo, cyc)
-        # P_obs = df_obs2jsProfile(df_obs)
         self.P_obs, self.df_obs = ArgoIndex2jsProfile(self.wmo, self.cyc)
-        # THIS_DATE = P_obs[0].location.time
-
         [log_this.debug("Observed profiles list: %s" % pp_obj(p)) for p in self.P_obs]
+
         if len(self.P_obs) == 1:
-            log_this.info('Real-case scenario: True position unknown !')
+            log_this.info('Real-time scenario: True position unknown !')
         else:
             log_this.info('Evaluation scenario: Historical position known')
 
-    def setup_float_config(self, **kwargs):
+    def _setup_float_config(self, **kwargs):
         """Load and setup float configuration"""
 
         # Load real float configuration at the previous cycle, to be used for the simulation as initial conditions.
@@ -159,7 +156,7 @@ class Simulation:
             Path(os.path.join(self.output_path, "floats_configuration_%s.json" % get_simulation_suffix(self.MD))))
         log_this.debug(pp_obj(self.CFG))
 
-    def setup_load_velocity_data(self, **kwargs):
+    def _setup_load_velocity_data(self, **kwargs):
         # Define domain to load velocity for:
         # In space:
         domain, domain_center = get_domain(self.P_obs, kwargs['domain_min_size'])
@@ -185,12 +182,13 @@ class Simulation:
 
     def setup(self, **kwargs):
         """Fulfill all requirements for the simulation"""
-        self.setup_load_observed_profiles()
-        self.setup_float_config(**kwargs)
-        self.setup_load_velocity_data(**kwargs)
+        self._setup_load_observed_profiles()
+        self._setup_float_config(**kwargs)
+        self._setup_load_velocity_data(**kwargs)
         log_this.info("Simulation data will be registered with file suffix: '%s'" % get_simulation_suffix(self.MD))
+        return self
 
-    def execute_get_plan(self):
+    def _execute_get_plan(self):
         # VirtualFleet, get a deployment plan:
         log_this.info("Deployment plan setup")
         df_plan = setup_deployment_plan(self.P_obs[0], nfloats=self.MD.n_floats)
@@ -201,16 +199,16 @@ class Simulation:
                      'time': np.array([np.datetime64(t) for t in df_plan['date'].dt.strftime('%Y-%m-%d %H:%M').array]),
                      }
 
-    def execute_get_velocity(self):
+    def _execute_get_velocity(self):
         self.VEL = Velocity(model='GLORYS12V1' if self.MD.velocity_field == 'GLORYS' else self.MD.velocity_field,
                             src=self.ds_vel)
         # figure_velocity(VBOX, VEL, VEL_NAME, THIS_PROFILE, WMO, CYC, save_figure=args.save_figure, workdir=WORKDIR)
 
     def execute(self):
-        """Setup a VirtualFleet and execute simulation"""
+        """Execute a VirtualFleet simulation"""
 
-        self.execute_get_velocity()
-        self.execute_get_plan()
+        self._execute_get_velocity()
+        self._execute_get_plan()
 
         # Set up VirtualFleet:
         log_this.info("VirtualFleet instance setup")
@@ -239,8 +237,9 @@ class Simulation:
                                  verbose_progress=True,
                                  )
             log_this.info("Simulation ended with success")
+        return self
 
-    def predict_read_trajectories(self):
+    def _predict_read_trajectories(self):
 
         # Get simulated profiles index:
         log_this.info("Extracting swarm profiles index")
@@ -252,13 +251,10 @@ class Simulation:
 
         # jsdata, fig, ax = self.traj.analyse_pairwise_distances(cycle=1, show_plot=True)
 
-        # if not args.json:
-        #     puts(str(T), color=COLORS.magenta)
-        #     puts(DF_SIM.head().to_string(), color=COLORS.green)
         # figure_positions(args, VEL, DF_SIM, DF_PLAN, THIS_PROFILE, CFG, WMO, CYC, VEL_NAME,
         #                  dd=1, save_figure=args.save_figure, workdir=WORKDIR)
 
-    def predict_positions(self):
+    def _predict_positions(self):
         """Make predictions based on simulated profile density"""
         self.run = RunAnalyser(self.traj.to_index(), self.df_obs)
         log_this.info("Predicting float cycle position(s) from swarm simulation")
@@ -275,30 +271,47 @@ class Simulation:
 
     def predict(self):
         """Make float profile predictions based on the swarm simulation"""
-        self.predict_read_trajectories()
-        self.predict_positions()
+        self._predict_read_trajectories()
+        self._predict_positions()
+        return self
 
-    def postprocess_metrics(self):
+    def _postprocess_metrics(self):
+        log_this.info("Computing prediction metrics for past cycles with observed ground truth (possibly)")
         self.run.add_metrics(self.VEL)
 
-    def postprocess_swarm_metrics(self):
-        # Recovery, compute more swarm metrics:
-        for this_cyc in self.traj.sim_cycles:
-            jsmetrics = self.traj.analyse_pairwise_distances(cycle=this_cyc, show_plot=False)
-        #     if 'metrics' in results['predictions'][this_cyc]:
-        #         for key in jsmetrics.keys():
-        #             results['predictions'][this_cyc]['metrics'].update({key: jsmetrics[key]})
-        #     else:
-        #         results['predictions'][this_cyc].update({'metrics': jsmetrics})
-            log_this.info(pp_obj(jsmetrics))
-        return jsmetrics
+    def _postprocess_swarm_metrics(self):
+        log_this.info("Computing swarm metrics")
+        Plist_updated = []
+        for p in self.run.jsobj.predictions:
+            this_cyc = p.virtual_cycle_number
+            swarm_metrics = self.traj.analyse_pairwise_distances(virtual_cycle_number=this_cyc, show_plot=False)
+            p.metrics.trajectory_lengths = swarm_metrics.trajectory_lengths
+            p.metrics.pairwise_distances = swarm_metrics.pairwise_distances
+            Plist_updated.append(p)
+        self.run.jsobj.predictions = Plist_updated
 
     def postprocess(self):
-        self.postprocess_metrics()
-        # self.postprocess_swarm_metrics()
+        self._postprocess_metrics()
+        self._postprocess_swarm_metrics()
+        return self
+
+    def finish(self, execution_start: float, process_start: float):
+        """Click timers and save results to finish"""
+        self.MD.computation = MetaDataComputation.from_dict({
+            'date': pd.to_datetime('now', utc=True),
+            'wall_time': pd.Timedelta(time.time() - execution_start, 's'),
+            'cpu_time': pd.Timedelta(time.process_time() - process_start, 's'),
+        })
+
+        self.run_file = os.path.join(self.output_path, 'prediction_%s.json' % get_simulation_suffix(self.MD))
+        self.to_json(fp=self.run_file)
+        log_this.info("Simulation results and analysis saved in: %s" % self.run_file)
+
+        log_this.info("VirtualFleet-Recovery simulation finished")
+        return self
 
     def to_json(self, fp=None):
-        y = self.run._jsdata  # Simulation instance
+        y = self.run.jsobj  # :class:`Simulation` instance
         y.meta_data = self.MD
         return y.to_json(fp=fp)
 
@@ -406,13 +419,9 @@ def predict_function(
     S.execute()
     S.predict()
     S.postprocess()
+    S.finish(execution_start, process_start)
 
     #
-    S.MD.computation = MetaDataComputation.from_dict({
-        'date': pd.to_datetime('now', utc=True),
-        'wall_time': pd.Timedelta(time.time() - execution_start, 's'),
-        'cpu_time': pd.Timedelta(time.process_time() - process_start, 's'),
-    })
     # return S.MD.computation.to_json()
     # return MD.to_json()
     return S.to_json()
@@ -430,31 +439,6 @@ def predict_function(
 #         mplbackend = matplotlib.get_backend()
 #         matplotlib.use('Agg')
 
-#     # VirtualFleet, get simulated profiles index:
-#     if not args.json:
-#         puts("\nExtract swarm profiles index...")
-#
-
-
-#     # Recovery, finalize JSON output:
-#     execution_end = time.time()
-#     process_end = time.process_time()
-#     computation = {
-#         'Date': pd.to_datetime('now', utc=True),
-#         'Wall-time': pd.Timedelta(execution_end - execution_start, 's'),
-#         'CPU-time': pd.Timedelta(process_end - process_start, 's'),
-#         'system': getSystemInfo()
-#     }
-#     results['meta'] = {'Velocity field': VEL_NAME,
-#                        'Nfloats': args.nfloats,
-#                        'Computation': computation,
-#                        'VFloats_config': CFG.to_json(),
-#                        }
-#
-#     if not args.json:
-#         puts("\nPredictions:")
-#     results_js = json.dumps(results, indent=4, sort_keys=True, default=str)
-#
 #     with open(os.path.join(WORKDIR, 'prediction_%s.json' % get_sim_suffix(args, CFG)), 'w', encoding='utf-8') as f:
 #         json.dump(results, f, ensure_ascii=False, indent=4, default=str, sort_keys=True)
 #

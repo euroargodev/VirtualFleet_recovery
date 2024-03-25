@@ -222,29 +222,46 @@ class Trajectories:
         return self._index
 
     def analyse_pairwise_distances(self,
-                                   cycle: int = 1,
-                                   show_plot: bool = True,
+                                   virtual_cycle_number: int = 1,
+                                   show_plot: bool = False,
                                    save_figure: bool = False,
                                    workdir: str = '.',
                                    sim_suffix=None,
                                    this_cfg=None,
                                    this_args: dict = None):
 
-        def get_hist_and_peaks(this_d):
-            x = this_d.flatten()
-            x = x[~np.isnan(x)]
-            x = x[:, np.newaxis]
-            hist, bin_edges = np.histogram(x, bins=100, density=1)
-            # dh = np.diff(bin_edges[0:2])
-            peaks, _ = find_peaks(hist / np.max(hist), height=.4, distance=20)
-            return {'pdf': hist, 'bins': bin_edges[0:-1], 'Npeaks': len(peaks)}
+        def pairs_pdf(longitude, latitude):
+            Xi = np.array((longitude, latitude)).T
+            di = pairwise_distances(Xi, n_jobs=-1)
+            di = np.triu(di)
+            di[di == 0] = np.nan
 
-        # Squeeze traj file to the first predicted cycle (sim can have more than 1 cycle)
-        ds = self.obj.where((self.obj['cycle_number'] == cycle).compute(), drop=True)
+            xi = di.flatten()
+            xi = xi[~np.isnan(xi)]
+            xi = xi[:, np.newaxis]
+
+            histi, bin_edgesi = np.histogram(xi, bins=100, density=1)
+            dhi = np.diff(bin_edgesi[0:2])
+            peaksi, _ = find_peaks(histi / np.max(histi), height=.4, distance=20)
+
+            return histi, bin_edgesi, peaksi, dhi, di
+
+        # def get_hist_and_peaks(this_d):
+        #     x = this_d.flatten()
+        #     x = x[~np.isnan(x)]
+        #     x = x[:, np.newaxis]
+        #     hist, bin_edges = np.histogram(x, bins=100, density=1)
+        #     # dh = np.diff(bin_edges[0:2])
+        #     peaks, _ = find_peaks(hist / np.max(hist), height=.4, distance=20)
+        #     return {'pdf': hist, 'bins': bin_edges[0:-1], 'Npeaks': len(peaks)}
+
+        # Squeeze traj file to virtual_cycle_number (sim can have more than 1 cycle):
+        ds = self.obj.where((self.obj['cycle_number'] == virtual_cycle_number).compute(), drop=True)
         ds = ds.compute()
 
-        # Compute trajectories relative to the single/only real float initial position:
-        lon0, lat0 = self.obj.isel(obs=0)['lon'].values[0], self.obj.isel(obs=0)['lat'].values[0]
+        # Compute swarm trajectories relative to the single/only real float initial position:
+        # (Make all swarm trajectories to start at the same first position)
+        lon0, lat0 = self.obj.isel(obs=0)['lon'].values[0], self.obj.isel(obs=0)['lat'].values[0]  # deployment locations
         lon, lat = ds['lon'].values, ds['lat'].values
         ds['lonc'] = xr.DataArray(lon - np.broadcast_to(lon[:, 0][:, np.newaxis], lon.shape) + lon0,
                                   dims=['trajectory', 'obs'])
@@ -258,52 +275,19 @@ class Trajectories:
         # Compute initial points pairwise distances, PDF and nb of peaks:
         X = ds.isel(obs=0)
         X = X.isel(trajectory=~np.isnan(X['lon']))
-        X0 = np.array((X['lon'].values, X['lat'].values)).T
-        d0 = pairwise_distances(X0, n_jobs=-1)
-        d0 = np.triu(d0)
-        d0[d0 == 0] = np.nan
-
-        x0 = d0.flatten()
-        x0 = x0[~np.isnan(x0)]
-        x0 = x0[:, np.newaxis]
-
-        hist0, bin_edges0 = np.histogram(x0, bins=100, density=1)
-        dh0 = np.diff(bin_edges0[0:2])
-        peaks0, _ = find_peaks(hist0 / np.max(hist0), height=.4, distance=20)
+        hist0, bin_edges0, peaks0, dh0, d0 = pairs_pdf(X['lon'].values, X['lat'].values)
 
         # Compute final points pairwise distances, PDF and nb of peaks:
         X = ds.isel(obs=-1)
         X = X.isel(trajectory=~np.isnan(X['lon']))
         dsf = X
-        X = np.array((X['lon'].values, X['lat'].values)).T
-        d = pairwise_distances(X, n_jobs=-1)
-        d = np.triu(d)
-        d[d == 0] = np.nan
-
-        x = d.flatten()
-        x = x[~np.isnan(x)]
-        x = x[:, np.newaxis]
-
-        hist, bin_edges = np.histogram(x, bins=100, density=1)
-        dh = np.diff(bin_edges[0:2])
-        peaks, _ = find_peaks(hist / np.max(hist), height=.4, distance=20)
+        hist, bin_edges, peaks, dh, d = pairs_pdf(X['lon'].values, X['lat'].values)
 
         # Compute final points pairwise distances (relative traj), PDF and nb of peaks:
         X1 = ds.isel(obs=-1)
         X1 = X1.isel(trajectory=~np.isnan(X1['lonc']))
         dsfc = X1
-        X1 = np.array((X1['lonc'].values, X1['latc'].values)).T
-        d1 = pairwise_distances(X1, n_jobs=-1)
-        d1 = np.triu(d1)
-        d1[d1 == 0] = np.nan
-
-        x1 = d1.flatten()
-        x1 = x1[~np.isnan(x1)]
-        x1 = x1[:, np.newaxis]
-
-        hist1, bin_edges1 = np.histogram(x1, bins=100, density=1)
-        dh1 = np.diff(bin_edges1[0:2])
-        peaks1, _ = find_peaks(hist1 / np.max(hist1), height=.4, distance=20)
+        hist1, bin_edges1, peaks1, dh1, d1 = pairs_pdf(X1['lonc'].values, X1['latc'].values)
 
         # Compute the overlapping between the initial and relative state PDFs:
         bin_unif = np.arange(0, np.max([bin_edges0, bin_edges1]), np.min([dh0, dh1]))
@@ -394,7 +378,7 @@ class Trajectories:
                         (this_args.wmo, this_args.cyc[0] - 1, this_args.cyc[0], get_cfg_str(this_cfg))
                 line1 = "Simulation made with %s and %i virtual floats" % (this_args.velocity, this_args.nfloats)
             else:
-                line0 = "VirtualFleet recovery swarm simulation for cycle %i" % cycle
+                line0 = "VirtualFleet recovery swarm simulation for cycle %i" % virtual_cycle_number
                 line1 = "Simulation made with %i virtual floats" % (self.n_floats)
 
             fig.suptitle("%s\n%s" % (line0, line1), fontsize=15)
@@ -402,9 +386,9 @@ class Trajectories:
 
             if save_figure:
                 if sim_suffix is not None:
-                    filename = 'vfrecov_metrics01_%s_cyc%i' % (sim_suffix, cycle)
+                    filename = 'vfrecov_metrics01_%s_cyc%i' % (sim_suffix, virtual_cycle_number)
                 else:
-                    filename = 'vfrecov_metrics01_cyc%i' % (cycle)
+                    filename = 'vfrecov_metrics01_cyc%i' % (virtual_cycle_number)
                 save_figurefile(fig, filename, workdir)
 
             if this_args is not None and this_args.json:

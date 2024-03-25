@@ -1,25 +1,21 @@
+import xarray as xr
 import pandas as pd
 import numpy as np
-from typing import List
-
+import json
+import matplotlib
 from sklearn.neighbors import KernelDensity
 from scipy.signal import find_peaks
 from sklearn.metrics import pairwise_distances
-
-import matplotlib
 import matplotlib.pyplot as plt
 import argopy.plot as argoplot
 import cartopy.crs as ccrs
 
+from vfrecovery.utils.misc import get_cfg_str, get_ea_profile_page_url
 from vfrecovery.plots.utils import save_figurefile, map_add_features
 from vfrecovery.utils.geo import haversine, bearing
-from vfrecovery.json import Simulation, Profile, Location, Metrics, Transit, SurfaceDrift, Location_error
 
 
-pp_obj = lambda x: "\n%s" % "\n".join(["\t%s" % line for line in x.__repr__().split("\n")])
-
-
-class RunAnalyserCore:
+class SimPredictor_0:
     """
 
     Examples
@@ -27,7 +23,7 @@ class RunAnalyserCore:
     T = Trajectories(traj_zarr_file)
     df = T.get_index().add_distances()
 
-    SP = RunAnalyser(df)
+    SP = SimPredictor(df)
     SP.fit_predict()
     SP.add_metrics(VFvelocity)
     SP.bbox()
@@ -35,6 +31,7 @@ class RunAnalyserCore:
     SP.plan
     SP.n_cycles
     SP.trajectory
+    SP.prediction
     """
 
     def __init__(self, df_sim: pd.DataFrame, df_obs: pd.DataFrame):
@@ -42,16 +39,16 @@ class RunAnalyserCore:
         self.obs = df_obs
         # self.set_weights()
         self.WMO = np.unique(df_obs['wmo'])[0]
-        self.jsobj = []
+        self._json = None
 
     def __repr__(self):
         summary = ["<VFRecovery.Predictor>"]
         summary.append("Simulation target: %i / %i" % (self.WMO, self.sim_cycles[0]))
         summary.append("Swarm size: %i floats" % len(np.unique(self.swarm['wmo'])))
         summary.append("Number of simulated cycles: %i profile(s) for cycle number(s): [%s]" % (
-            self.n_cycles, ",".join([str(c) for c in self.sim_cycles])))
+        self.n_cycles, ",".join([str(c) for c in self.sim_cycles])))
         summary.append("Observed reference: %i profile(s) for cycle number(s): [%s]" % (
-            self.obs.shape[0], ",".join([str(c) for c in self.obs_cycles])))
+        self.obs.shape[0], ",".join([str(c) for c in self.obs_cycles])))
         return "\n".join(summary)
 
     @property
@@ -87,24 +84,32 @@ class RunAnalyserCore:
         Return
         ------
         :class:`np.array`
+
         """
-        if len(self.jsobj.predictions) == 0:
+        if self._json is None:
             raise ValueError("Please call `fit_predict` first")
 
         traj_prediction = np.array([self.obs['longitude'].values[0],
                                     self.obs['latitude'].values[0],
                                     self.obs['date'].values[0]])[
             np.newaxis]  # Starting point where swarm was deployed
-        for p in self.jsobj.predictions:
-            xpred, ypred, tpred = p.location.longitude, p.location.latitude, p.location.time
+        for cyc in self._json['predictions'].keys():
+            xpred = self._json['predictions'][cyc]['location']['longitude']
+            ypred = self._json['predictions'][cyc]['location']['latitude']
+            tpred = pd.to_datetime(self._json['predictions'][cyc]['location']['time'])
             traj_prediction = np.concatenate((traj_prediction,
                                               np.array([xpred, ypred, tpred])[np.newaxis]),
                                              axis=0)
         return traj_prediction
 
+    @property
+    def predictions(self):
+        if self._json is None:
+            raise ValueError("Please call `fit_predict` first")
+        return self._json
 
     def bbox(self, s: float = 1) -> list:
-        """Get a simulation bounding box
+        """Get a bounding box for maps
 
         Parameters
         ----------
@@ -140,7 +145,7 @@ class RunAnalyserCore:
         return ebox
 
 
-class RunAnalyserPredictor(RunAnalyserCore):
+class SimPredictor_1(SimPredictor_0):
 
     def set_weights(self, scale: float = 20):
         """Compute weights for predictions
@@ -160,7 +165,7 @@ class RunAnalyserPredictor(RunAnalyserCore):
         self.swarm['weights'] = weights
         return self
 
-    def fit_predict(self, weights_scale: float = 20.) -> List[Profile]:
+    def fit_predict(self, weights_scale: float = 20.) -> dict:
         """Predict profile positions from simulated float swarm
 
         Prediction is based on a :class:`klearn.neighbors._kde.KernelDensity` estimate of the N_FLOATS
@@ -173,16 +178,25 @@ class RunAnalyserPredictor(RunAnalyserCore):
 
         Returns
         -------
-        List[Profile]
+        dict
         """
+
+        def blank_prediction() -> dict:
+            return {'location': {
+                        'longitude': None,
+                        'latitude': None,
+                        'time': None},
+                    'cycle_number': None,
+                    'wmo': int(self.WMO),
+                    }
 
         # Compute weights of the swarm float profiles locations
         self.set_weights(scale=weights_scale)
 
-        # self._prediction_data = {'weights_scale': weights_scale, 'cyc': {}}
+        self._prediction_data = {'weights_scale': weights_scale, 'cyc': {}}
 
         cycles = np.unique(self.swarm['cyc']).astype(int)  # 1, 2, ...
-        Plist = []
+        recovery_predictions = {}
         for icyc, this_sim_cyc in enumerate(cycles):
             this_cyc_df = self.swarm[self.swarm['cyc'] == this_sim_cyc]
             weights = this_cyc_df['weights']
@@ -201,160 +215,177 @@ class RunAnalyserPredictor(RunAnalyserCore):
             ypred = Xg[np.argmax(llh), 1]
             tpred = this_cyc_df['date'].mean()
 
-            # Store results in a Profile instance:
-            p = Profile.from_dict({
-                'location': Location.from_dict({
-                    'longitude': xpred,
-                    'latitude': ypred,
-                    'time': tpred,
-                    'description': None,
-                }),
-                'wmo': int(self.WMO),
-                'cycle_number': int(self.sim_cycles[icyc]),
-                'virtual_cycle_number': int(this_sim_cyc),
-                'description': "Simulated profile #%i" % this_sim_cyc,
-                'metrics': Metrics.from_dict({'description': None}),
-                'url_float': argoplot.dashboard(self.WMO, url_only=True),
-            })
-            Plist.append(p)
+            # Store results
+            recovery = blank_prediction()
+            recovery['location']['longitude'] = xpred
+            recovery['location']['latitude'] = ypred
+            recovery['location']['time'] = tpred.isoformat()
+            recovery['cycle_number'] = int(self.sim_cycles[icyc])
+            recovery['virtual_cycle_number'] = int(self.sim_cycles[icyc])
+            recovery_predictions.update({int(this_sim_cyc): recovery})
+
+            #
+            self._prediction_data['cyc'].update({this_sim_cyc: {'weights': this_cyc_df['weights']}})
 
         # Store results internally
-        obs_cyc = self.obs_cycles[0]
-        this_df = self.obs[self.obs['cyc'] == obs_cyc]
-
-        self.jsobj = Simulation.from_dict({
-            "initial_profile": Profile.from_dict({
-                'location': Location.from_dict({
-                    'longitude': this_df['longitude'].iloc[0],
-                    'latitude': this_df['latitude'].iloc[0],
-                    'time': this_df['date'].iloc[0],
-                    'description': None,
-                }),
-                'wmo': int(self.WMO),
-                'cycle_number': int(obs_cyc),
-                'description': "Initial profile (observed)",
-                'url_float': argoplot.dashboard(self.WMO, url_only=True),
-                'url_profile': argoplot.dashboard(self.WMO, obs_cyc, url_only=True),
-            }),
-            "predictions": Plist,
-            "observations": None,
-            "meta_data": None,
-        })
+        self._json = {'predictions': recovery_predictions}
 
         # Add more stuff to internal storage:
-        self._add_ref()  # Fill: self.jsobj.observations
-        self._predict_errors()  # Fill: self.jsobj.predictions.Metrics.error and self.jsobj.predictions.Metrics.transit
+        self._predict_errors()
+        self._add_ref()
+        self.add_metrics()
+
         #
         return self
 
 
-class RunAnalyserDiagnostics(RunAnalyserPredictor):
+class SimPredictor_2(SimPredictor_1):
 
-    def _add_ref(self):
-        """Possibly add observations data to internal data structure
-
-        This is for past cycles, for which we have observed positions of the predicted profiles
-
-        This populates the ``self.jsobj.observations`` property (``self.jsobj`` was created by the ``fit_predict`` method)
-
-        """
-        if len(self.jsobj.predictions) == 0:
-            raise ValueError("Please call `fit_predict` first")
-
-        # Observed profiles that were simulated:
-        Plist = []
-        for cyc in self.sim_cycles:
-            if cyc in self.obs_cycles:
-                this_df = self.obs[self.obs['cyc'] == cyc]
-                p = Profile.from_dict({
-                    'wmo': int(self.WMO),
-                    'cycle_number': int(cyc),
-                    'url_float': argoplot.dashboard(self.WMO, url_only=True),
-                    'url_profile': argoplot.dashboard(self.WMO, cyc, url_only=True),
-                    'location': Location.from_dict({'longitude': this_df['longitude'].iloc[0],
-                                                    'latitude': this_df['latitude'].iloc[0],
-                                                    'time': this_df['date'].iloc[0]})
-                })
-                Plist.append(p)
-
-        self.jsobj.observations = Plist
-
-        return self
-
-    def _predict_errors(self):
-        """Possibly compute error metrics for the predicted positions
+    def _predict_errors(self) -> dict:
+        """Compute error metrics for the predicted positions
 
         This is for past cycles, for which we have observed positions of the predicted profiles
 
-        This populates the ``self.jsobj.predictions.Metrics.error`` and ``self.jsobj.predictions.Metrics.transit`` properties (``self.jsobj`` was created by the ``fit_predict`` method)
+        This adds more keys to self._json['predictions'] created by the fit_predict method
 
-        A transit time to cover the distance error is also calculated
-        (assume a 12 kts boat speed with 1 kt = 1.852 km/h)
-
+        Returns
+        -------
+        dict
         """
-        if len(self.jsobj.predictions) == 0:
-            raise ValueError("Please call `fit_predict` first")
 
-        Plist_updated = []
-        for p in self.jsobj.predictions:
-            if p.cycle_number in self.obs_cycles:
-                this_obs_profile = self.obs[self.obs['cyc'] == p.cycle_number]
+        def blank_error():
+            return {'distance': {'value': None,
+                                 'unit': 'km'},
+                    'bearing': {'value': None,
+                                'unit': 'degree'},
+                    'time': {'value': None,
+                             'unit': 'hour'}
+                    }
+
+        cyc0 = self.obs_cycles[0]
+        if self._json is None:
+            raise ValueError("Please call `fit_predict` first")
+        recovery_predictions = self._json['predictions']
+
+        for sim_c in recovery_predictions.keys():
+            this_prediction = recovery_predictions[sim_c]
+            if sim_c + cyc0 in self.obs_cycles:
+                error = blank_error()
+
+                this_obs_profile = self.obs[self.obs['cyc'] == sim_c + cyc0]
                 xobs = this_obs_profile['longitude'].iloc[0]
                 yobs = this_obs_profile['latitude'].iloc[0]
                 tobs = this_obs_profile['date'].iloc[0]
 
-                prev_obs_profile = self.obs[self.obs['cyc'] == p.cycle_number - 1]
+                prev_obs_profile = self.obs[self.obs['cyc'] == sim_c + cyc0 - 1]
                 xobs0 = prev_obs_profile['longitude'].iloc[0]
                 yobs0 = prev_obs_profile['latitude'].iloc[0]
 
-                xpred = p.location.longitude
-                ypred = p.location.latitude
-                tpred = p.location.time
+                xpred = this_prediction['location']['longitude']
+                ypred = this_prediction['location']['latitude']
+                tpred = pd.to_datetime(this_prediction['location']['time'])
 
                 dd = haversine(xobs, yobs, xpred, ypred)
+                error['distance']['value'] = dd
 
                 observed_bearing = bearing(xobs0, yobs0, xobs, yobs)
                 sim_bearing = bearing(xobs0, yobs0, xpred, ypred)
+                error['bearing']['value'] = sim_bearing - observed_bearing
 
                 dt = pd.Timedelta(tpred - tobs) / np.timedelta64(1, 's')
+                # print(tpred, tobs, pd.Timedelta(tpred - tobs))
+                error['time']['value'] = dt / 3600  # From seconds to hours
 
-                p.metrics.error = Location_error.from_dict({
-                    'distance': np.round(dd, 3),
-                    'bearing': np.round(sim_bearing - observed_bearing, 3),
-                    'time': pd.Timedelta(dt / 3600, 'h')  # From seconds to hours
-                })
+                this_prediction['location_error'] = error
+                recovery_predictions.update({sim_c: this_prediction})
 
-                # also compute a transit time to cover the distance error:
-                p.metrics.transit = Transit.from_dict({
-                    'value':
-                        pd.Timedelta(p.metrics.error.distance / (12 * 1.852), 'h').seconds / 3600.
-                })
+        self._json.update({'predictions': recovery_predictions})
+        return self
 
-            Plist_updated.append(p)
+    def _add_ref(self):
+        """Add observations data to internal data structure
 
-        self.jsobj.predictions = Plist_updated
+        This adds more keys to self._json['predictions'] created by the fit_predict method
+
+        """
+        if self._json is None:
+            raise ValueError("Please call `predict` first")
+
+        # Observed profiles that were simulated:
+        profiles_to_predict = []
+        for cyc in self.sim_cycles:
+            this = {'wmo': int(self.WMO),
+                    'cycle_number': int(cyc),
+                    'url_float': argoplot.dashboard(self.WMO, url_only=True),
+                    'url_profile': "",
+                    'location': {'longitude': None,
+                                 'latitude': None,
+                                 'time': None}
+                    }
+            if cyc in self.obs_cycles:
+                this['url_profile'] = get_ea_profile_page_url(self.WMO, cyc)
+                this_df = self.obs[self.obs['cyc'] == cyc]
+                this['location']['longitude'] = this_df['longitude'].iloc[0]
+                this['location']['latitude'] = this_df['latitude'].iloc[0]
+                this['location']['time'] = this_df['date'].iloc[0].isoformat()
+            profiles_to_predict.append(this)
+
+        self._json.update({'observations': profiles_to_predict})
+
+        # Observed profile used as initial conditions to the simulation:
+        cyc = self.obs_cycles[0]
+        this_df = self.obs[self.obs['cyc'] == cyc]
+        self._json.update({'initial_profile': {'wmo': int(self.WMO),
+                                               'cycle_number': int(cyc),
+                                               'url_float': argoplot.dashboard(self.WMO, url_only=True),
+                                               'url_profile': get_ea_profile_page_url(self.WMO, cyc),
+                                               'location': {'longitude': this_df['longitude'].iloc[0],
+                                                            'latitude': this_df['latitude'].iloc[0],
+                                                            'time': this_df['date'].iloc[0].isoformat()
+                                                            }
+                                               }})
+
+        #
         return self
 
     def add_metrics(self, VFvel=None):
-        """Possibly compute more metrics to interpret the prediction error
+        """Compute more metrics to understand the prediction error
 
-        This is for past cycles, for which we have observed positions of the predicted profiles
+        1. Compute a transit time to cover the distance error
+        (assume a 12 kts boat speed with 1 kt = 1.852 km/h)
 
-        This populates the ``self.jsobj.predictions.Metrics.surface_drift`` property (``self.jsobj`` was created by the ``fit_predict`` method)
+        1. Compute the possible drift due to the time lag between the predicted profile timing and the expected one
 
-        1. Compute surface drift due to the time lag between the predicted profile timing and the expected one
+        This adds more keys to self._json['predictions'] created by the fit_predict method
 
         """
-        # cyc0 = self.obs_cycles[0]
-        if len(self.jsobj.predictions) == 0:
+        cyc0 = self.obs_cycles[0]
+        if self._json is None:
             raise ValueError("Please call `predict` first")
+        recovery_predictions = self._json['predictions']
 
-        Plist_updated = []
-        for p in self.jsobj.predictions:
-            if p.cycle_number in self.obs_cycles and isinstance(p.metrics.error, Location_error):
+        for sim_c in recovery_predictions.keys():
+            this_prediction = recovery_predictions[sim_c]
+            if sim_c + cyc0 in self.obs_cycles and 'location_error' in this_prediction.keys():
+
+                error = this_prediction['location_error']
+                metrics = {}
+
+                # Compute a transit time to cover the distance error:
+                metrics['transit'] = {'value': None,
+                                      'unit': 'hour',
+                                      'comment': 'Transit time to cover the distance error '
+                                                 '(assume a 12 kts boat speed with 1 kt = 1.852 km/h)'}
+
+                if error['distance']['value'] is not None:
+                    metrics['transit']['value'] = pd.Timedelta(error['distance']['value'] / (12 * 1.852),
+                                                               'h').seconds / 3600.
+
                 # Compute the possible drift due to the time lag between the predicted profile timing and the expected one:
                 if VFvel is not None:
-                    xpred, ypred, tpred = p.location.longitude, p.location.latitude, p.location.time
+                    xpred = this_prediction['location']['longitude']
+                    ypred = this_prediction['location']['latitude']
+                    tpred = this_prediction['location']['time']
                     dsc = VFvel.field.interp(
                         {VFvel.dim['lon']: xpred,
                          VFvel.dim['lat']: ypred,
@@ -363,18 +394,25 @@ class RunAnalyserDiagnostics(RunAnalyserPredictor):
                              VFvel.field[{VFvel.dim['depth']: 0}][VFvel.dim['depth']].values[np.newaxis][0]}
                     )
                     velc = np.sqrt(dsc[VFvel.var['U']] ** 2 + dsc[VFvel.var['V']] ** 2).values[np.newaxis][0]
-                    p.metrics.surface_drift = SurfaceDrift.from_dict({
-                        "surface_currents_speed": velc,  # m/s by default
-                        "value": (p.metrics.error.time * 3600 * velc / 1e3)  # km by default
-                    })
+                    metrics['surface_drift'] = {'value': None,
+                                                'unit': 'km',
+                                                'surface_currents_speed': None,
+                                                'surface_currents_speed_unit': 'm/s',
+                                                'comment': 'Drift by surface currents due to the float ascent time error '
+                                                           '(difference between simulated profile time and the observed one).'}
+                    if error['time']['value'] is not None:
+                        metrics['surface_drift']['value'] = (error['time']['value'] * 3600 * velc / 1e3)
+                        metrics['surface_drift']['surface_currents_speed'] = velc
 
-            Plist_updated.append(p)
+                #
+                this_prediction['metrics'] = metrics
+                recovery_predictions.update({sim_c: this_prediction})
 
-        self.jsobj.predictions = Plist_updated
+        self._json.update({"predictions": recovery_predictions})
         return self
 
 
-class RunAnalyserView(RunAnalyserDiagnostics):
+class SimPredictor_3(SimPredictor_2):
 
     def plot_predictions(self,
                          VFvel,
@@ -398,14 +436,14 @@ class RunAnalyserView(RunAnalyserDiagnostics):
             else:
                 nrows, ncols = self.n_cycles, 2
                 if figsize is None:
-                    figsize = (5, (self.n_cycles - 1) * 5)
+                    figsize = (5, (self.n_cycles-1)*5)
         else:
             if self.n_cycles == 1:
                 nrows, ncols = 1, 2
             else:
                 nrows, ncols = 2, self.n_cycles
             if figsize is None:
-                figsize = (ncols * 5, 5)
+                figsize = (ncols*5, 5)
 
         def plot_this(this_ax, i_cycle, ip):
             df_sim = self.swarm[self.swarm['cyc'] == i_cycle + 1]
@@ -510,6 +548,29 @@ class RunAnalyserView(RunAnalyserDiagnostics):
                     ix += 1
                     plot_this(ax[ix], i_cycle, ip)
 
+        # log.debug("Start to write metrics string")
+        #
+        # xpred = SP.prediction[i_cycle + 1]['location']['longitude']['value']
+        #
+        # err = recovery['prediction_location_error']
+        # met = recovery['prediction_metrics']
+        # if this_profile.shape[0] > 1:
+        #     # err_str = "Prediction vs Truth: [%0.2fkm, $%0.2f^o$]" % (err['distance'], err['bearing'])
+        #     err_str = "Prediction errors: [dist=%0.2f%s, bearing=$%0.2f^o$, time=%s]\n" \
+        #               "Distance error represents %s of transit at 12kt" % (err['distance']['value'],
+        #                                               err['distance']['unit'],
+        #                                               err['bearing']['value'],
+        #                                               strfdelta(pd.Timedelta(err['time']['value'], 'h'),
+        #                                                         "{hours}H{minutes:02d}"),
+        #                                               strfdelta(pd.Timedelta(met['transit']['value'], 'h'),
+        #                                                         "{hours}H{minutes:02d}"))
+        # else:
+        #     err_str = ""
+        #
+        # fig.suptitle("VirtualFleet recovery prediction for WMO %i: \
+        # starting from cycle %i, predicting cycle %i\n%s\n%s\n%s" %
+        #              (wmo, cyc[0], cyc[1], get_cfg_str(cfg), err_str, "Prediction based on %s" % vel_name), fontsize=15)
+
         plt.tight_layout()
         if save_figure:
             save_figurefile(fig, 'vfrecov_predictions_%s' % sim_suffix, workdir)
@@ -517,7 +578,18 @@ class RunAnalyserView(RunAnalyserDiagnostics):
         return fig, ax
 
 
-class RunAnalyser(RunAnalyserView):
+class SimPredictor(SimPredictor_3):
 
     def to_json(self, fp=None):
-        return self.jsobj.to_json(fp=fp)
+        kw = {'indent': 4, 'sort_keys': True, 'default': str}
+        if fp is not None:
+            if hasattr(fp, 'write'):
+                json.dump(self._json, fp, **kw)
+            else:
+                with open(fp, 'w') as f:
+                    json.dump(self._json, f, **kw)
+        else:
+            results_js = json.dumps(self._json, **kw)
+            return results_js
+
+
