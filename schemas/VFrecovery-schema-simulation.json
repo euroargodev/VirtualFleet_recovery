@@ -16,7 +16,9 @@
   "properties": {
     "initial_profile": {
       "description": "Argo float profile used as initial conditions to the simulation",
-      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/refactoring-as-a-clean-module-and-cli/schemas/VFrecovery-schema-profile.json"
+      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/refactoring-as-a-clean-module-and-cli/schemas/VFrecovery-schema-profile.json",
+      "minItems": 1,
+      "uniqueItems": true
     },
     "meta_data": {
       "description": "Meta-data of the simulation",
@@ -27,9 +29,7 @@
       "type": "array",
       "items": {
         "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/refactoring-as-a-clean-module-and-cli/schemas/VFrecovery-schema-profile.json"
-      },
-      "minItems": 1,
-      "uniqueItems": true
+      }
     },
     "predictions": {
       "description": "Data from the simulated virtual float profiles",

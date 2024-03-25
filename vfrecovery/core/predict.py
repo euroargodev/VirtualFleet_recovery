@@ -214,7 +214,8 @@ class Simulation:
         log_this.info("VirtualFleet instance setup")
         self.VFleet = VirtualFleet(plan=self.PLAN,
                                    fieldset=self.VEL,
-                                   mission=self.CFG)
+                                   mission=self.CFG,
+                                   verbose_events=True)
 
         # Execute the simulation:
         log_this.info("Starting simulation")
