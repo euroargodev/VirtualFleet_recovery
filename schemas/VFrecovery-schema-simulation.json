@@ -40,6 +40,5 @@
       "minItems": 1,
       "uniqueItems": true
     }
-  },
-  "maxProperties": 5
+  }
 }

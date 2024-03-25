@@ -41,6 +41,5 @@
       "type":["string", "null"],
       "description": ""
     }
-    },
-  "maxProperties": 8
+  }
 }

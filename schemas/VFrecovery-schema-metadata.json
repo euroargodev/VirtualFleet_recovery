@@ -28,6 +28,5 @@
     "system": {
       "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/refactoring-as-a-clean-module-and-cli/schemas/VFrecovery-schema-system.json"
     }
-  },
-  "maxProperties": 5
+  }
 }

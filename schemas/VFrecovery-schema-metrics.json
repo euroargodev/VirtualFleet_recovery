@@ -96,6 +96,5 @@
         "time": {"type": ["string", "null"], "format": "time-delta"}
       }
     }
-  },
-  "maxProperties": 5
+  }
 }

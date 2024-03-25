@@ -26,6 +26,5 @@
       "format": "date-time",
       "description": "Date and time of the geo-location"
     }
-  },
-  "maxProperties": 3
+  }
 }

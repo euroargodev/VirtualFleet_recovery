@@ -106,9 +106,9 @@ class Simulation:
         self.wmo = wmo
         self.cyc = cyc
         self.output_path = kwargs['output_path']
-        log_this.info("=" * 50)
+        log_this.info("=" * 55)
         log_this.info("STARTING SIMULATION: WMO=%i / CYCLE_NUMBER=%i" % (wmo, cyc[1]))
-        log_this.info("=" * 50)
+        log_this.info("=" * 55)
 
         # log_this.info("n_predictions: %i" % n_predictions)
         log_this.info("Working with cycle numbers list: %s" % str(cyc))
@@ -307,7 +307,7 @@ class Simulation:
         self.to_json(fp=self.run_file)
         log_this.info("Simulation results and analysis saved in: %s" % self.run_file)
 
-        log_this.info("VirtualFleet-Recovery simulation finished")
+        log_this.info("VirtualFleet-Recovery prediction finished")
         return self
 
     def to_json(self, fp=None):

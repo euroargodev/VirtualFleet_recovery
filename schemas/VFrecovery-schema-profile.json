@@ -40,6 +40,5 @@
     },
     "dependencies": {
       "virtual_cycle_number": ["metrics"]}
-  },
-  "maxProperties": 8
+  }
 }
