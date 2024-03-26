@@ -16,13 +16,16 @@ def cli_group_predict() -> None:
     "predict",
     short_help="Execute VirtualFleet-Recovery predictions",
     help="""
-    Execute VirtualFleet-Recovery predictor
+    Execute the VirtualFleet-Recovery predictor
+    
+    WMO is the float World Meteorological Organisation number.
+    
+    CYC is the cycle number location to predict. If you want to simulate more than 1 cycle, use the `n_predictions` option (see below).
     """,
     epilog="""
-    Examples:
-
-    \b
-    vfrecovery predict 6903091 112
+Examples:
+\b
+\n\tvfrecovery predict 6903091 112
     """,  # noqa
 )
 @click.option(
@@ -131,6 +134,9 @@ def predict(
         domain_min_size,
         log_level,
 ) -> None:
+    """
+
+    """
     if log_level == "QUIET":
         root_logger.disabled = True
         log_level = "CRITICAL"

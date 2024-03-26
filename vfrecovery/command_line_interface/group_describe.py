@@ -19,7 +19,7 @@ def cli_group_describe() -> None:
 
 @cli_group_describe.command(
     "describe",
-    short_help="Describe VirtualFleet-Recovery predictions",
+    short_help="Describe VirtualFleet-Recovery simulation results",
     help="""
     Returns data about an existing VirtualFleet-Recovery prediction
     
