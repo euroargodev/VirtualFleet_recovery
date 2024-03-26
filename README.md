@@ -16,7 +16,7 @@ More about Argo floats recovery in here:
 Primary groups of commands are ``predict`` and ``describe``.
 
 ### vfrecovery predict
-```bash
+```
 Usage: vfrecovery predict [OPTIONS] WMO CYC
 
   Execute VirtualFleet-Recovery predictor
@@ -55,7 +55,7 @@ Options:
 
 ### vfrecovery describe
 
-```bash
+```
 Usage: vfrecovery describe [OPTIONS] WMO [CYC]...
 
   Returns data about an existing VirtualFleet-Recovery prediction
