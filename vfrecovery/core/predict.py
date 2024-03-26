@@ -59,25 +59,24 @@ def setup_floats_config(
         cfg_free_surface_drift: int,
 ) -> FloatConfiguration:
     """Load float configuration at a given cycle number and possibly overwrite data with user parameters"""
-    log_this.debug("Loading float configuration...")
     try:
         CFG = FloatConfiguration([wmo, cyc])
     except:
-        log_this.debug("Can't load this profile configuration, fall back on default values")
+        log_this.error("Can't load this profile configuration, fall back on default values")
         CFG = FloatConfiguration('default')
 
     if cfg_parking_depth is not None:
-        log_this.info("parking_depth=%i is overwritten with %i" % (CFG.mission['parking_depth'],
+        log_this.debug("parking_depth=%i is overwritten with %i" % (CFG.mission['parking_depth'],
                                                                    float(cfg_parking_depth)))
         CFG.update('parking_depth', float(cfg_parking_depth))
 
     if cfg_cycle_duration is not None:
-        log_this.info("cycle_duration=%i is overwritten with %i" % (CFG.mission['cycle_duration'],
+        log_this.debug("cycle_duration=%i is overwritten with %i" % (CFG.mission['cycle_duration'],
                                                                     float(cfg_cycle_duration)))
         CFG.update('cycle_duration', float(cfg_cycle_duration))
 
     if cfg_profile_depth is not None:
-        log_this.info("profile_depth=%i is overwritten with %i" % (CFG.mission['profile_depth'],
+        log_this.debug("profile_depth=%i is overwritten with %i" % (CFG.mission['profile_depth'],
                                                                    float(cfg_profile_depth)))
         CFG.update('profile_depth', float(cfg_profile_depth))
 
@@ -106,9 +105,8 @@ class Simulation:
         self.wmo = wmo
         self.cyc = cyc
         self.output_path = kwargs['output_path']
-        log_this.info("=" * 55)
-        log_this.info("STARTING SIMULATION: WMO=%i / CYCLE_NUMBER=%i" % (wmo, cyc[1]))
-        log_this.info("=" * 55)
+        log_this.info("%s \\" % ("=" * 55))
+        log_this.info("STARTING SIMULATION: WMO=%i / CYCLE_NUMBER=%i" % (self.wmo, self.cyc[1]))
 
         # log_this.info("n_predictions: %i" % n_predictions)
         log_this.info("Working with cycle numbers list: %s" % str(cyc))
@@ -131,7 +129,7 @@ class Simulation:
         """Load observed float profiles index"""
 
         log_this.info("Loading float profiles index")
-        self.P_obs, self.df_obs = ArgoIndex2jsProfile(self.wmo, self.cyc)
+        self.P_obs, self.df_obs = ArgoIndex2jsProfile(self.wmo, self.cyc, cache=False, cachedir=str(self.output_path))
         [log_this.debug("Observed profiles list: %s" % pp_obj(p)) for p in self.P_obs]
 
         if len(self.P_obs) == 1:
@@ -141,6 +139,7 @@ class Simulation:
 
     def _setup_float_config(self, **kwargs):
         """Load and setup float configuration"""
+        log_this.info("Loading float configuration")
 
         # Load real float configuration at the previous cycle, to be used for the simulation as initial conditions.
         # (the loaded config is possibly overwritten with user defined cfg_* parameters)
@@ -185,12 +184,20 @@ class Simulation:
         self._setup_load_observed_profiles()
         self._setup_float_config(**kwargs)
         self._setup_load_velocity_data(**kwargs)
-        log_this.info("Simulation data will be registered with file suffix: '%s'" % get_simulation_suffix(self.MD))
+        log_this.info("Simulation data will be registered under: %s%s*%s*" % (self.output_path,
+                                                                                os.path.sep,
+                                                                                get_simulation_suffix(self.MD)))
+        log_this.debug("Setup terminated")
         return self
+
+    def _execute_get_velocity(self):
+        self.VEL = Velocity(model='GLORYS12V1' if self.MD.velocity_field == 'GLORYS' else self.MD.velocity_field,
+                            src=self.ds_vel)
+        # figure_velocity(VBOX, VEL, VEL_NAME, THIS_PROFILE, WMO, CYC, save_figure=args.save_figure, workdir=WORKDIR)
 
     def _execute_get_plan(self):
         # VirtualFleet, get a deployment plan:
-        log_this.info("Deployment plan setup")
+        log_this.info("Create a deployment plan")
         df_plan = setup_deployment_plan(self.P_obs[0], nfloats=self.MD.n_floats)
         log_this.info("Set %i virtual floats to deploy (i.e. swarm size = %i)" % (df_plan.shape[0], df_plan.shape[0]))
 
@@ -198,12 +205,6 @@ class Simulation:
                      'lat': df_plan['latitude'],
                      'time': np.array([np.datetime64(t) for t in df_plan['date'].dt.strftime('%Y-%m-%d %H:%M').array]),
                      }
-
-    def _execute_get_velocity(self):
-        self.VEL = Velocity(model='GLORYS12V1' if self.MD.velocity_field == 'GLORYS' else self.MD.velocity_field,
-                            src=self.ds_vel)
-        # figure_velocity(VBOX, VEL, VEL_NAME, THIS_PROFILE, WMO, CYC, save_figure=args.save_figure, workdir=WORKDIR)
-
     def execute(self):
         """Execute a VirtualFleet simulation"""
 
@@ -211,11 +212,11 @@ class Simulation:
         self._execute_get_plan()
 
         # Set up VirtualFleet:
-        log_this.info("VirtualFleet instance setup")
+        log_this.info("Create a VirtualFleet instance")
         self.VFleet = VirtualFleet(plan=self.PLAN,
                                    fieldset=self.VEL,
                                    mission=self.CFG,
-                                   verbose_events=True)
+                                   verbose_events=False)
 
         # Execute the simulation:
         log_this.info("Starting simulation")
@@ -227,7 +228,7 @@ class Simulation:
 
         self.traj_file = os.path.join(self.output_path, 'trajectories_%s.zarr' % get_simulation_suffix(self.MD))
         if os.path.exists(self.traj_file):
-            log_this.info("Using data from a previous similar run (no simulation executed)")
+            log_this.warning("Using data from a previous similar run (no simulation executed)")
         else:
             self.VFleet.simulate(duration=timedelta(hours=self.n_days * 24 + 1),
                                  step=timedelta(minutes=5),
@@ -277,7 +278,8 @@ class Simulation:
         return self
 
     def _postprocess_metrics(self):
-        log_this.info("Computing prediction metrics for past cycles with observed ground truth (possibly)")
+        if self.run.has_ref:
+            log_this.info("Computing prediction metrics for past cycles with observed ground truth")
         self.run.add_metrics(self.VEL)
 
     def _postprocess_swarm_metrics(self):
@@ -304,11 +306,12 @@ class Simulation:
             'cpu_time': pd.Timedelta(time.process_time() - process_start, 's'),
         })
 
-        self.run_file = os.path.join(self.output_path, 'prediction_%s.json' % get_simulation_suffix(self.MD))
+        self.run_file = os.path.join(self.output_path, 'results_%s.json' % get_simulation_suffix(self.MD))
         self.to_json(fp=self.run_file)
         log_this.info("Simulation results and analysis saved in: %s" % self.run_file)
 
-        log_this.info("VirtualFleet-Recovery prediction finished")
+        log_this.info("END OF SIMULATION: WMO=%i / CYCLE_NUMBER=%i" % (self.wmo, self.cyc[1]))
+        log_this.info("%s /" % ("=" * 55))
         return self
 
     def to_json(self, fp=None):

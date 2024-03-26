@@ -8,7 +8,7 @@ from argopy.errors import DataNotFound
 from vfrecovery.json import Profile, MetaData
 
 
-def ArgoIndex2df_obs(a_wmo, a_cyc) -> pd.DataFrame:
+def ArgoIndex2df_obs(a_wmo, a_cyc, cache:bool=False, cachedir:str='.') -> pd.DataFrame:
     """Retrieve WMO/CYC Argo index entries as :class:`pd.DataFrame`
 
     Parameters
@@ -23,7 +23,7 @@ def ArgoIndex2df_obs(a_wmo, a_cyc) -> pd.DataFrame:
     host = "https://data-argo.ifremer.fr"
     # host = "/home/ref-argo/gdac" if os.uname()[0] == 'Darwin' else "https://data-argo.ifremer.fr"
     # host = "/home/ref-argo/gdac" if not os.uname()[0] == 'Darwin' else "~/data/ARGO"
-    idx = ArgoIndex(host=host).search_wmo_cyc(a_wmo, a_cyc)
+    idx = ArgoIndex(host=host, cache=cache, cachedir=cachedir).search_wmo_cyc(a_wmo, a_cyc)
     if idx.N_MATCH == 0:
         raise DataNotFound("This float has no cycle %i usable as initial conditions for a simulation of %i" % (a_cyc[0], a_cyc[1]))
     else:
@@ -40,7 +40,7 @@ def df_obs2jsProfile(df_obs) -> List[Profile]:
     return Plist
 
 
-def ArgoIndex2jsProfile(a_wmo, a_cyc) -> List[Profile]:
+def ArgoIndex2jsProfile(a_wmo, a_cyc, cache:bool=False, cachedir:str='.') -> List[Profile]:
     """Retrieve WMO/CYC Argo index entries as a list of :class:`vfrecovery.json.Profile`
 
     Parameters
@@ -52,7 +52,7 @@ def ArgoIndex2jsProfile(a_wmo, a_cyc) -> List[Profile]:
     -------
     :class:`vfrecovery.json.Profile`
     """
-    df_obs = ArgoIndex2df_obs(a_wmo, a_cyc)
+    df_obs = ArgoIndex2df_obs(a_wmo, a_cyc, cache=cache, cachedir=cachedir)
     return df_obs2jsProfile(df_obs), df_obs
 
 

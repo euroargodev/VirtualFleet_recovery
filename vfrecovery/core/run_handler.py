@@ -66,6 +66,10 @@ class RunAnalyserCore:
         return np.unique(self.obs['cyc'])
 
     @property
+    def has_ref(self):
+        return len(self.obs_cycles) > 1
+
+    @property
     def sim_cycles(self):
         """Simulated cycle numbers"""
         return self.obs_cycles[0] + 1 + range(self.n_cycles)
@@ -316,12 +320,12 @@ class RunAnalyserDiagnostics(RunAnalyserPredictor):
                 observed_bearing = bearing(xobs0, yobs0, xobs, yobs)
                 sim_bearing = bearing(xobs0, yobs0, xpred, ypred)
 
-                dt = pd.Timedelta(tpred - tobs) / np.timedelta64(1, 's')
+                dt = pd.Timedelta(tpred - tobs)# / np.timedelta64(1, 's')
 
                 p.metrics.error = Location_error.from_dict({
                     'distance': np.round(dd, 3),
                     'bearing': np.round(sim_bearing - observed_bearing, 3),
-                    'time': pd.Timedelta(dt / 3600, 'h')  # From seconds to hours
+                    'time': pd.Timedelta(dt, 'h')
                 })
 
                 # also compute a transit time to cover the distance error:
@@ -362,10 +366,10 @@ class RunAnalyserDiagnostics(RunAnalyserPredictor):
                          VFvel.dim['depth']:
                              VFvel.field[{VFvel.dim['depth']: 0}][VFvel.dim['depth']].values[np.newaxis][0]}
                     )
-                    velc = np.sqrt(dsc[VFvel.var['U']] ** 2 + dsc[VFvel.var['V']] ** 2).values[np.newaxis][0]
+                    velc = np.sqrt(dsc[VFvel.var['U']] ** 2 + dsc[VFvel.var['V']] ** 2).values[np.newaxis][0]  # m/s
                     p.metrics.surface_drift = SurfaceDrift.from_dict({
                         "surface_currents_speed": velc,  # m/s by default
-                        "value": (p.metrics.error.time * 3600 * velc / 1e3)  # km by default
+                        "value": (np.abs(p.metrics.error.time.total_seconds()) * velc / 1e3)  # km
                     })
 
             Plist_updated.append(p)
