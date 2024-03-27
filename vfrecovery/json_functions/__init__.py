@@ -1,2 +1,0 @@
-from VFRschema_simulation import Simulation
-from VFRschema_profile import Profile

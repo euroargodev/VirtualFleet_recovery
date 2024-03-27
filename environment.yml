@@ -7,7 +7,7 @@ dependencies:
   - parcels>=3.0.0
   - dask
   - distributed
-  - dask-kubernetes
+#  - dask-kubernetes
   - bottleneck
   - gcsfs
   - zarr
@@ -57,4 +57,4 @@ dependencies:
     - geojson
     - dominate
     - copernicusmarine>=1.0<=2.0
-    - git+https://github.com/euroargodev/VirtualFleet.git@master
+#    - git+https://github.com/euroargodev/VirtualFleet.git@master  # better with `pip install --editable`

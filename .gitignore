@@ -143,3 +143,4 @@ cli/build-pypi
 *.npi*
 cli/vfrecov/
 webapi/myapp/static/data
+vfrecovery_simulations_data/

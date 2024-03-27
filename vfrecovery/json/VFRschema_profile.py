@@ -1,7 +1,10 @@
 import pandas as pd
+import numpy as np
 from typing import List, Dict
-from VFRschema import VFvalidators
-from VFRschema_metrics import Metrics
+import argopy.plot as argoplot
+
+from .VFRschema import VFvalidators
+from .VFRschema_metrics import Metrics
 
 
 class Location(VFvalidators):
@@ -15,6 +18,13 @@ class Location(VFvalidators):
     required: List = ["longitude", "latitude"]
 
     def __init__(self, **kwargs):
+        """
+        Parameters
+        ----------
+        longitude: float
+        latitude: float
+        time: pd.Timestamp
+        """
         super().__init__(**kwargs)
         if 'time' not in kwargs:
             # setattr(self, 'time', pd.to_datetime('now', utc=True))
@@ -23,6 +33,10 @@ class Location(VFvalidators):
         self._validate_longitude(self.longitude)
         self._validate_latitude(self.latitude)
         self._validate_time(self.time)
+
+        self.longitude = np.round(self.longitude, 3)
+        self.latitude = np.round(self.latitude, 3)
+
 
     @staticmethod
     def from_dict(obj: Dict) -> 'Location':
@@ -48,7 +62,40 @@ class Profile(VFvalidators):
         self._validate_wmo(self.wmo)
         self._validate_cycle_number(self.cycle_number)
         self._validate_cycle_number(self.virtual_cycle_number)
+        if isinstance(kwargs['location'], dict):
+            self.location = Location.from_dict(kwargs['location'])
 
     @staticmethod
     def from_dict(obj: Dict) -> 'Profile':
+        """
+
+        Parameters
+        ----------
+        location: Location
+        wmo: int
+        cycle_number: int
+        url_float: str
+        url_profile: str
+        virtual_cycle_number: int
+        metrics: Metrics
+
+        """
         return Profile(**obj)
+
+    @staticmethod
+    def from_ArgoIndex(df: pd.DataFrame) -> List['Profile']:
+        Plist = []
+        df = df.sort_values(by='date')
+        for irow, this_obs in df.iterrows():
+            p = Profile.from_dict({
+                'location': Location.from_dict({'longitude': this_obs['longitude'],
+                                                'latitude': this_obs['latitude'],
+                                                'time': this_obs['date'].tz_localize('UTC')
+                                                }),
+                'wmo': this_obs['wmo'],
+                'cycle_number': this_obs['cyc'],
+                'url_float': argoplot.dashboard(wmo=this_obs['wmo'], url_only=True),
+                'url_profile': argoplot.dashboard(wmo=this_obs['wmo'], cyc=this_obs['cyc'], url_only=True),
+            })
+            Plist.append(p)
+        return Plist
