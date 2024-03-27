@@ -4,11 +4,8 @@ from typing import List
 from pathlib import Path
 
 from sklearn.neighbors import KernelDensity
-from scipy.signal import find_peaks
-from sklearn.metrics import pairwise_distances
 from virtualargofleet import VelocityField
 
-import matplotlib
 import matplotlib.pyplot as plt
 import argopy.plot as argoplot
 import cartopy.crs as ccrs
@@ -16,9 +13,6 @@ import cartopy.crs as ccrs
 from vfrecovery.plots.utils import save_figurefile, map_add_features
 from vfrecovery.utils.geo import haversine, bearing
 from vfrecovery.json import Simulation, Profile, Location, Metrics, Transit, SurfaceDrift, Location_error
-
-
-pp_obj = lambda x: "\n%s" % "\n".join(["\t%s" % line for line in x.__repr__().split("\n")])
 
 
 class RunAnalyserCore:

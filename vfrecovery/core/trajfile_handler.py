@@ -9,7 +9,7 @@ from virtualargofleet import VelocityField
 from pathlib import Path
 
 from vfrecovery.utils.misc import get_cfg_str
-from vfrecovery.plots.utils import get_HBOX, map_add_features, map_add_profiles, save_figurefile
+from vfrecovery.plots.utils import map_add_features, save_figurefile
 from vfrecovery.json import Profile
 from vfrecovery.json import Metrics, TrajectoryLengths, PairwiseDistances, PairwiseDistancesState
 

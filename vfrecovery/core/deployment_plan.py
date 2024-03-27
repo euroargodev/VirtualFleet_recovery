@@ -3,8 +3,11 @@ import pandas as pd
 from vfrecovery.json import Profile
 
 
-def setup_deployment_plan(P: Profile, nfloats: int = 120):
-    # We will deploy a collection of virtual floats that are located around the real float with random perturbations in space and time
+def setup_deployment_plan(P: Profile, nfloats: int = 120) -> pd.DataFrame:
+    """Create a deployment plan as a :class:`pandas.DataFrame`
+
+    We will deploy a collection of virtual floats that are located around the real float with random perturbations in space and time
+    """
 
     # Amplitude of the profile position perturbations in the zonal (deg), meridional (deg), and temporal (hours) directions:
     rx = 0.5

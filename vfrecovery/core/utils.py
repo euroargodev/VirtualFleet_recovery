@@ -7,6 +7,8 @@ from argopy.errors import DataNotFound
 
 from vfrecovery.json import Profile, MetaData
 
+pp_obj = lambda x: "\n%s" % "\n".join(["\t%s" % line for line in x.__repr__().split("\n")])
+
 
 def ArgoIndex2df_obs(a_wmo, a_cyc, cache:bool=False, cachedir:str='.') -> pd.DataFrame:
     """Retrieve WMO/CYC Argo index entries as :class:`pd.DataFrame`

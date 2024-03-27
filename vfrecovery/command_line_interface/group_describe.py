@@ -2,11 +2,7 @@ import click
 import logging
 from argopy.utils import is_wmo, is_cyc, check_cyc, check_wmo
 import argopy.plot as argoplot
-from argopy.errors import DataNotFound
 from argopy import ArgoIndex
-import os
-from pathlib import Path
-import glob
 
 from vfrecovery.utils.misc import list_float_simulation_folders
 
@@ -25,7 +21,7 @@ def cli_group_describe() -> None:
     short_help="Describe VirtualFleet-Recovery data and simulation results",
     help="""
 
-    TARGET select what is to be described. A string in: 'all', 'obs', 'velocity'.
+    TARGET select what is to be described. A string in: ['obs', 'velocity'].
     
     WMO is the float World Meteorological Organisation number
     
@@ -35,10 +31,10 @@ def cli_group_describe() -> None:
     Examples:
 
     \b
-    vfrecovery describe 6903091
+    vfrecovery describe velocity 6903091
 
     \b
-    vfrecovery describe 6903091 112
+    vfrecovery describe obs 6903091 112
     """,  # noqa
 )
 @click.option(
@@ -79,11 +75,6 @@ def describe(
         assert is_cyc(cyc)
         cyc = check_cyc(cyc)
 
-    # json_dump = describe_function(wmo,
-    #                               cyc=cyc,
-    #                              log_level=log_level)
-    # blank_logger.info(json_dump)
-
     if target == 'obs':
         describe_obs(wmo, cyc)
 
@@ -99,12 +90,21 @@ def describe_velocity(wmo, cyc):
     # List all available velocity files:
     for c in plist.keys():
         p = plist[c]
-        click.secho("Velocity file(s) for WMO=%s / CYC=%s:" % (wmo, c), fg='green')
+        click.secho("Velocity data for WMO=%s / CYC=%s:" % (wmo, c), fg='blue')
+
+        click.secho("\tNetcdf files:")
         vlist = sorted(p.glob("velocity_*.nc"))
         if len(vlist) > 0:
-            [click.secho("\t- %s" % v) for v in vlist]
+            [click.secho("\t\t- %s" % v, fg='green') for v in vlist]
         else:
             click.secho("\tNo velocity file", fg='red')
+
+        click.secho("\tFigures:")
+        vlist = sorted(p.glob("velocity_*.png"))
+        if len(vlist) > 0:
+            [click.secho("\t\t- %s" % v, fg='green') for v in vlist]
+        else:
+            click.secho("\tNo velocity figures", fg='red')
 
 
 def describe_obs(wmo, cyc):
