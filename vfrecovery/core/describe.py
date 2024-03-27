@@ -11,15 +11,7 @@ from .utils import ArgoIndex2df_obs
 root_logger = logging.getLogger("vfrecovery_root_logger")
 
 
-def describe_function(
-        wmo: int,
-        cyc: Union[int, None],
-        log_level: str,
-) -> str:
-    if log_level == "QUIET":
-        root_logger.disabled = True
-        log_level = "CRITICAL"
-    root_logger.setLevel(level=getattr(logging, log_level.upper()))
+def describe_obs(wmo, cyc):
 
     # Validate arguments:
     assert is_wmo(wmo)
@@ -27,7 +19,6 @@ def describe_function(
     if cyc is not None:
         assert is_cyc(cyc)
         cyc = check_cyc(cyc)[0]
-
 
     #
     url = argoplot.dashboard(wmo, url_only=True)
@@ -48,8 +39,23 @@ def describe_function(
     df = df.sort_values(by='date')
     root_logger.info("\n%s" % df.to_string(max_colwidth=15))
 
-    output = {'wmo': wmo, 'cyc': cyc}
-    json_dump = json.dumps(
-        output, sort_keys=False, indent=2
-    )
-    return json_dump
+    # output = {'wmo': wmo, 'cyc': cyc}
+    # json_dump = json.dumps(
+    #     output, sort_keys=False, indent=2
+    # )
+    # return json_dump
+
+
+def describe_function(
+        wmo: int,
+        cyc: Union[int, None],
+        target: str,
+        log_level: str,
+) -> str:
+    if log_level == "QUIET":
+        root_logger.disabled = True
+        log_level = "CRITICAL"
+    root_logger.setLevel(level=getattr(logging, log_level.upper()))
+
+    if target == 'obs':
+        describe_obs(wmo, cyc)

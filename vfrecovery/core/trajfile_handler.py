@@ -5,9 +5,11 @@ import matplotlib
 from scipy.signal import find_peaks
 from sklearn.metrics import pairwise_distances
 import matplotlib.pyplot as plt
+from virtualargofleet import VelocityField
+from pathlib import Path
 
 from vfrecovery.utils.misc import get_cfg_str
-from vfrecovery.plots.utils import save_figurefile
+from vfrecovery.plots.utils import get_HBOX, map_add_features, map_add_profiles, save_figurefile
 from vfrecovery.json import Profile
 from vfrecovery.json import Metrics, TrajectoryLengths, PairwiseDistances, PairwiseDistancesState
 
@@ -169,6 +171,11 @@ class Trajectories:
         self.to_index()
         return self
 
+    @property
+    def index(self):
+        self.get_index()
+        return self._index
+
     def add_distances(self, origin: Profile = None) -> pd.DataFrame:
         """Compute profiles distance to some origin
 
@@ -261,7 +268,8 @@ class Trajectories:
 
         # Compute swarm trajectories relative to the single/only real float initial position:
         # (Make all swarm trajectories to start at the same first position)
-        lon0, lat0 = self.obj.isel(obs=0)['lon'].values[0], self.obj.isel(obs=0)['lat'].values[0]  # deployment locations
+        lon0, lat0 = self.obj.isel(obs=0)['lon'].values[0], self.obj.isel(obs=0)['lat'].values[
+            0]  # deployment locations
         lon, lat = ds['lon'].values, ds['lat'].values
         ds['lonc'] = xr.DataArray(lon - np.broadcast_to(lon[:, 0][:, np.newaxis], lon.shape) + lon0,
                                   dims=['trajectory', 'obs'])
@@ -398,3 +406,88 @@ class Trajectories:
             return M, fig, ax
         else:
             return M
+
+    def HBOX(self, s: float = 1.):
+        """Swarm bounding box
+
+        Parameters
+        ----------
+        s: float
+            Set how much to extend maps outward the deployment 'box'
+
+        Returns
+        -------
+        list
+        """
+        df_plan = self.index.iloc[0]
+
+        box = [np.min([self.index['deploy_lon'].min(), self.index['longitude'].min(), self.index['rel_lon'].min()]),
+               np.max([self.index['deploy_lon'].max(), self.index['longitude'].max(), self.index['rel_lon'].max()]),
+               np.min([self.index['deploy_lat'].min(), self.index['latitude'].min(), self.index['rel_lat'].min()]),
+               np.max([self.index['deploy_lat'].max(), self.index['latitude'].max(), self.index['rel_lat'].max()])]
+        rx, ry = df_plan['longitude'].max() - df_plan['longitude'].min(), df_plan['latitude'].max() - df_plan[
+            'latitude'].min()
+        r = np.min([rx, ry])
+        ebox = [box[0] - s * r, box[1] + s * r, box[2] - s * r, box[3] + s * r]
+        return ebox
+
+    def plot_positions(self,
+                       domain_scale: float = 1,
+                       vel: VelocityField = None,
+                       vel_depth: float = 0.,
+                       save: bool = True,
+                       workdir: Path = Path('.'),
+                       fname: str = 'swarm_positions',
+                       ):
+        """
+
+        >>> T = Trajectories(traj_file)
+        >>> T.plot_positions(vel_depth=cfg.mission['parking_depth'])
+        """
+        import cartopy.crs as ccrs
+
+        ebox = self.HBOX(s=domain_scale)
+
+        fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(25, 7), dpi=120,
+                               subplot_kw={'projection': ccrs.PlateCarree()},
+                               sharex=True, sharey=True)
+        ax = ax.flatten()
+
+        for ix in [0, 1, 2]:
+            ax[ix].set_extent(ebox)
+            ax[ix] = map_add_features(ax[ix])
+
+            if vel is not None:
+                vel.field.isel(time=0 if ix == 0 else -1).interp(depth=vel_depth).plot.quiver(x="longitude",
+                                                                           y="latitude",
+                                                                           u=vel.var['U'],
+                                                                           v=vel.var['V'],
+                                                                           ax=ax[ix],
+                                                                           color='grey',
+                                                                           alpha=1 if ix == 0 else 0.5,
+                                                                           add_guide=False)
+
+            ax[ix].plot(self.index['deploy_lon'], self.index['deploy_lat'], '.',
+                        markersize=3, color='grey', alpha=0.1, markeredgecolor=None, zorder=0)
+            if ix == 0:
+                title = 'Initial Velocity field at %0.2fm and deployment plan' % vel_depth
+            elif ix == 1:
+                x, y, c = self.index['longitude'], self.index['latitude'], self.index['cyc']
+                title = 'Final float positions'
+                # sc = ax[ix].plot(x, y, '.', markersize=3, color='cyan', alpha=0.9, markeredgecolor=None)
+                sc = ax[ix].scatter(x, y, c=c, s=3, alpha=0.9, edgecolors=None)
+            elif ix == 2:
+                x, y, c = self.index['rel_lon'], self.index['rel_lat'], self.index['cyc']
+                title = 'Final floats position relative to last float position'
+                # sc = ax[ix].plot(x, y, '.', markersize=3, color='cyan', alpha=0.9, markeredgecolor=None)
+                sc = ax[ix].scatter(x, y, c=c, s=3, alpha=0.9, edgecolors=None)
+
+            # ax[ix] = map_add_profiles(ax[ix], this_profile)
+            ax[ix].set_title(title)
+
+        # fig.suptitle("VirtualFleet recovery prediction for WMO %i: starting from cycle %i, predicting cycle %s\n%s" %
+        #              (wmo, cyc[0], cyc[1:], get_cfg_str(cfg)), fontsize=15)
+        plt.tight_layout()
+        if save:
+            save_figurefile(fig, fname, workdir)
+        return fig, ax

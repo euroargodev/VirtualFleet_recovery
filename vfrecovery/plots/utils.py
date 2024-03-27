@@ -1,25 +1,24 @@
 import os
 import numpy as np
 import argopy.plot as argoplot
+from pathlib import Path
 
 
-def save_figurefile(this_fig, a_name, folder='.'):
+def save_figurefile(this_fig, a_name, folder: Path = Path('.')):
     """
-
     Parameters
     ----------
     this_fig
     a_name
+    Path
 
     Returns
     -------
     path
     """
-    figname = os.path.join(folder, "%s.png" % a_name)
-    # log.debug("Saving %s ..." % figname)
+    figname = folder.joinpath("%s.png" % a_name)
     this_fig.savefig(figname)
     return figname
-
 
 def map_add_profiles(this_ax, this_profile):
     """

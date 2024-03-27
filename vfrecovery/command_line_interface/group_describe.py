@@ -4,26 +4,32 @@ from argopy.utils import is_wmo, is_cyc, check_cyc, check_wmo
 import argopy.plot as argoplot
 from argopy.errors import DataNotFound
 from argopy import ArgoIndex
+import os
+from pathlib import Path
+import glob
 
+from vfrecovery.utils.misc import list_float_simulation_folders
 
-from vfrecovery.core.describe import describe_function
 
 root_logger = logging.getLogger("vfrecovery_root_logger")
 blank_logger = logging.getLogger("vfrecovery_blank_logger")
-
 
 
 @click.group()
 def cli_group_describe() -> None:
     pass
 
+
 @cli_group_describe.command(
     "describe",
-    short_help="Describe VirtualFleet-Recovery simulation results",
+    short_help="Describe VirtualFleet-Recovery data and simulation results",
     help="""
-    Returns data about an existing VirtualFleet-Recovery prediction
+
+    TARGET select what is to be described. A string in: 'all', 'obs', 'velocity'.
     
-    Data could be a JSON file, specific metrics or images
+    WMO is the float World Meteorological Organisation number
+    
+    CYC is the cycle number location to restrict description to
     """,
     epilog="""
     Examples:
@@ -34,7 +40,7 @@ def cli_group_describe() -> None:
     \b
     vfrecovery describe 6903091 112
     """,  # noqa
- )
+)
 @click.option(
     "--log-level",
     type=click.Choice(["DEBUG", "INFO", "WARN", "ERROR", "CRITICAL", "QUIET"]),
@@ -45,9 +51,11 @@ def cli_group_describe() -> None:
             "(based on standard logging library)."
     ),
 )
+@click.argument('TARGET', nargs=1, type=str)
 @click.argument('WMO', nargs=1, type=int)
 @click.argument("CYC", nargs=-1, type=int)
 def describe(
+        target,
         wmo,
         cyc,
         log_level,
@@ -61,6 +69,9 @@ def describe(
         root_logger.debug("DEBUG mode activated")
 
     # Validate arguments:
+    if target.lower() not in ["all", "obs", "velocity"]:
+        raise ValueError("The first argument TARGET must be one in ['all', 'obs', 'velocity']")
+
     assert is_wmo(wmo)
     wmo = check_wmo(wmo)[0]
     cyc = list(cyc)
@@ -68,12 +79,35 @@ def describe(
         assert is_cyc(cyc)
         cyc = check_cyc(cyc)
 
-    #
     # json_dump = describe_function(wmo,
     #                               cyc=cyc,
     #                              log_level=log_level)
     # blank_logger.info(json_dump)
 
+    if target == 'obs':
+        describe_obs(wmo, cyc)
+
+    elif target == 'velocity':
+        describe_velocity(wmo, cyc)
+
+
+def describe_velocity(wmo, cyc):
+
+    # List folders to examine:
+    plist = list_float_simulation_folders(wmo, cyc)
+
+    # List all available velocity files:
+    for c in plist.keys():
+        p = plist[c]
+        click.secho("Velocity file(s) for WMO=%s / CYC=%s:" % (wmo, c), fg='green')
+        vlist = sorted(p.glob("velocity_*.nc"))
+        if len(vlist) > 0:
+            [click.secho("\t- %s" % v) for v in vlist]
+        else:
+            click.secho("\tNo velocity file", fg='red')
+
+
+def describe_obs(wmo, cyc):
     url = argoplot.dashboard(wmo, url_only=True)
     # txt = "You can check this float dashboard while we search for float profiles in the index: %s" % url
     click.secho("\nYou can check this float dashboard while we search for float profile(s) in the index:")

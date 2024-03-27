@@ -15,6 +15,7 @@ from datetime import timedelta
 from vfrecovery.json import Profile, MetaData, MetaDataSystem, MetaDataComputation
 from vfrecovery.utils.formatters import COLORS
 from vfrecovery.downloaders import get_velocity_field
+# from vfrecovery.plots.velocity import VFRvelocity  # Velocity with plotting features
 from .utils import df_obs2jsProfile, ArgoIndex2df_obs, ArgoIndex2jsProfile, get_simulation_suffix, get_domain
 from .deployment_plan import setup_deployment_plan
 from .trajfile_handler import Trajectories
@@ -67,17 +68,17 @@ def setup_floats_config(
 
     if cfg_parking_depth is not None:
         log_this.debug("parking_depth=%i is overwritten with %i" % (CFG.mission['parking_depth'],
-                                                                   float(cfg_parking_depth)))
+                                                                    float(cfg_parking_depth)))
         CFG.update('parking_depth', float(cfg_parking_depth))
 
     if cfg_cycle_duration is not None:
         log_this.debug("cycle_duration=%i is overwritten with %i" % (CFG.mission['cycle_duration'],
-                                                                    float(cfg_cycle_duration)))
+                                                                     float(cfg_cycle_duration)))
         CFG.update('cycle_duration', float(cfg_cycle_duration))
 
     if cfg_profile_depth is not None:
         log_this.debug("profile_depth=%i is overwritten with %i" % (CFG.mission['profile_depth'],
-                                                                   float(cfg_profile_depth)))
+                                                                    float(cfg_profile_depth)))
         CFG.update('profile_depth', float(cfg_profile_depth))
 
     CFG.params = ConfigParam(key='reco_free_surface_drift',
@@ -163,8 +164,6 @@ class Simulation:
         cycle_period = int(np.round(self.CFG.mission['cycle_duration'] / 24))  # Get the float cycle period (in days)
         self.n_days = (len(self.cyc) - 1) * cycle_period + 1
 
-        # log_this.info((domain_min_size, self.n_days))
-        # log_this.info((domain_center, domain))
         log_this.info("Loading %s velocity field to cover %i days starting on %s" % (
             self.MD.velocity_field, self.n_days, self.P_obs[0].location.time))
 
@@ -172,6 +171,7 @@ class Simulation:
                                                         n_days=self.n_days,
                                                         output=self.output_path,
                                                         dataset=self.MD.velocity_field)
+        self.velocity_file = velocity_file
         log_this.debug(pp_obj(self.ds_vel))
         log_this.info("Loaded %s field from %s to %s" % (
             self.MD.velocity_field,
@@ -185,15 +185,22 @@ class Simulation:
         self._setup_float_config(**kwargs)
         self._setup_load_velocity_data(**kwargs)
         log_this.info("Simulation data will be registered under: %s%s*%s*" % (self.output_path,
-                                                                                os.path.sep,
-                                                                                get_simulation_suffix(self.MD)))
+                                                                              os.path.sep,
+                                                                              get_simulation_suffix(self.MD)))
         log_this.debug("Setup terminated")
         return self
 
     def _execute_get_velocity(self):
+        log_this.info("Create a velocity object")
         self.VEL = Velocity(model='GLORYS12V1' if self.MD.velocity_field == 'GLORYS' else self.MD.velocity_field,
                             src=self.ds_vel)
-        # figure_velocity(VBOX, VEL, VEL_NAME, THIS_PROFILE, WMO, CYC, save_figure=args.save_figure, workdir=WORKDIR)
+
+        log_this.info("Plot velocity")
+        for it in [0, -1]:
+            _, _, fname = self.VEL.plot(it=it, iz=0, save=True, workdir=self.output_path)
+            fname.rename(
+                str(fname).replace("velocity_%s" % self.VEL.name, Path(self.velocity_file).name.replace(".nc", ""))
+            )
 
     def _execute_get_plan(self):
         # VirtualFleet, get a deployment plan:
@@ -205,6 +212,7 @@ class Simulation:
                      'lat': df_plan['latitude'],
                      'time': np.array([np.datetime64(t) for t in df_plan['date'].dt.strftime('%Y-%m-%d %H:%M').array]),
                      }
+
     def execute(self):
         """Execute a VirtualFleet simulation"""
 
@@ -244,32 +252,37 @@ class Simulation:
     def _predict_read_trajectories(self):
 
         # Get simulated profiles index:
-        log_this.info("Extracting swarm profiles index")
+        log_this.info("Extract swarm profiles index")
 
-        # self.traj = Trajectories(self.VFleet.output)
         self.traj = Trajectories(self.traj_file)
         self.traj.get_index().add_distances(origin=self.P_obs[0])
         log_this.debug(pp_obj(self.traj))
 
-        # jsdata, fig, ax = self.traj.analyse_pairwise_distances(cycle=1, show_plot=True)
-
-        # figure_positions(args, VEL, DF_SIM, DF_PLAN, THIS_PROFILE, CFG, WMO, CYC, VEL_NAME,
-        #                  dd=1, save_figure=args.save_figure, workdir=WORKDIR)
+        log_this.info("Plot swarm initial and final states")
+        self.traj.plot_positions(domain_scale=2.,
+                                 vel=self.VEL,
+                                 vel_depth=self.CFG.mission['parking_depth'],
+                                 save=True,
+                                 workdir=self.output_path,
+                                 fname='swarm_states_%s' % get_simulation_suffix(self.MD)
+                                 )
 
     def _predict_positions(self):
         """Make predictions based on simulated profile density"""
-        self.run = RunAnalyser(self.traj.to_index(), self.df_obs)
-        log_this.info("Predicting float cycle position(s) from swarm simulation")
+        log_this.info("Predict float cycle position(s) from swarm simulation")
+        self.run = RunAnalyser(self.traj.index, self.df_obs)
+        self.run.fit_predict()
         log_this.debug(pp_obj(self.run))
 
-        self.run.fit_predict()
-        # SP.plot_predictions(VEL,
-        #                      CFG,
-        #                      sim_suffix=get_sim_suffix(args, CFG),
-        #                      save_figure=args.save_figure,
-        #                      workdir=WORKDIR,
-        #                      orient='portrait')
-        # results = self.run.predictions
+        log_this.info("Plot predictions")
+        self.run.plot_predictions(
+            vel=self.VEL,
+            vel_depth=self.CFG.mission['parking_depth'],
+            save=True,
+            workdir=self.output_path,
+            fname='predictions_%s' % get_simulation_suffix(self.MD),
+            orient='portrait'
+        )
 
     def predict(self):
         """Make float profile predictions based on the swarm simulation"""
@@ -410,10 +423,10 @@ def predict_function(
 
     #
     S = Simulation(wmo, cyc,
-                  n_floats=n_floats,
-                  velocity=velocity,
-                  output_path=output_path,
-                  )
+                   n_floats=n_floats,
+                   velocity=velocity,
+                   output_path=output_path,
+                   )
     S.setup(cfg_parking_depth=cfg_parking_depth,
             cfg_cycle_duration=cfg_cycle_duration,
             cfg_profile_depth=cfg_profile_depth,

@@ -143,6 +143,10 @@ vfrecovery describe WMO CYC
 vfrecovery describe WMO CYC1 CYC2 CYC3
 ```
 
+```bash
+vfrecovery describe velocity WMO CYC
+```
+
 ## Other commands
 
 ```bash

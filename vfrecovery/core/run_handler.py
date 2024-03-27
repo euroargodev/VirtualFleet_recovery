@@ -1,10 +1,12 @@
 import pandas as pd
 import numpy as np
 from typing import List
+from pathlib import Path
 
 from sklearn.neighbors import KernelDensity
 from scipy.signal import find_peaks
 from sklearn.metrics import pairwise_distances
+from virtualargofleet import VelocityField
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -44,8 +46,11 @@ class RunAnalyserCore:
         self.WMO = np.unique(df_obs['wmo'])[0]
         self.jsobj = []
 
+        if 'distance_origin' not in df_sim:
+            raise ValueError("Invalid simulation dataframe ! You probably forget to compute distances")
+
     def __repr__(self):
-        summary = ["<VFRecovery.Predictor>"]
+        summary = ["<VFRecovery.RunAnalyser>"]
         summary.append("Simulation target: %i / %i" % (self.WMO, self.sim_cycles[0]))
         summary.append("Swarm size: %i floats" % len(np.unique(self.swarm['wmo'])))
         summary.append("Number of simulated cycles: %i profile(s) for cycle number(s): [%s]" % (
@@ -118,6 +123,9 @@ class RunAnalyserCore:
         -------
         list
         """
+        if not isinstance(self.jsobj, Simulation):
+            raise ValueError("Please call `fit_predict` first")
+
         df_sim = self.swarm
         df_obs = self.obs
 
@@ -262,7 +270,7 @@ class RunAnalyserDiagnostics(RunAnalyserPredictor):
         This populates the ``self.jsobj.observations`` property (``self.jsobj`` was created by the ``fit_predict`` method)
 
         """
-        if len(self.jsobj.predictions) == 0:
+        if not isinstance(self.jsobj, Simulation):
             raise ValueError("Please call `fit_predict` first")
 
         # Observed profiles that were simulated:
@@ -296,7 +304,7 @@ class RunAnalyserDiagnostics(RunAnalyserPredictor):
         (assume a 12 kts boat speed with 1 kt = 1.852 km/h)
 
         """
-        if len(self.jsobj.predictions) == 0:
+        if not isinstance(self.jsobj, Simulation):
             raise ValueError("Please call `fit_predict` first")
 
         Plist_updated = []
@@ -349,8 +357,7 @@ class RunAnalyserDiagnostics(RunAnalyserPredictor):
         1. Compute surface drift due to the time lag between the predicted profile timing and the expected one
 
         """
-        # cyc0 = self.obs_cycles[0]
-        if len(self.jsobj.predictions) == 0:
+        if not isinstance(self.jsobj, Simulation):
             raise ValueError("Please call `predict` first")
 
         Plist_updated = []
@@ -381,16 +388,20 @@ class RunAnalyserDiagnostics(RunAnalyserPredictor):
 class RunAnalyserView(RunAnalyserDiagnostics):
 
     def plot_predictions(self,
-                         VFvel,
-                         cfg,
-                         sim_suffix='',  # get_sim_suffix(this_args, cfg)
+                         vel: VelocityField = None,
+                         vel_depth: float = 0.,
+
                          s=0.2,
                          alpha=False,
-                         save_figure=False,
-                         workdir='.',
+
+                         save: bool = False,
+                         workdir: Path = Path('.'),
+                         fname: str = 'predictions',
+
                          figsize=None,
                          dpi=120,
-                         orient='portrait'):
+                         orient='portrait'
+                         ):
         ebox = self.bbox(s=s)
         pred_traj = self.trajectory
 
@@ -398,43 +409,47 @@ class RunAnalyserView(RunAnalyserDiagnostics):
             if self.n_cycles == 1:
                 nrows, ncols = 2, 1
                 if figsize is None:
-                    figsize = (5, 5)
+                    figsize = (10, 10)
             else:
                 nrows, ncols = self.n_cycles, 2
                 if figsize is None:
-                    figsize = (5, (self.n_cycles - 1) * 5)
+                    figsize = (10, (self.n_cycles - 1) * 10)
         else:
             if self.n_cycles == 1:
                 nrows, ncols = 1, 2
             else:
                 nrows, ncols = 2, self.n_cycles
             if figsize is None:
-                figsize = (ncols * 5, 5)
+                figsize = (ncols * 10, 10)
 
         def plot_this(this_ax, i_cycle, ip):
-            df_sim = self.swarm[self.swarm['cyc'] == i_cycle + 1]
-            weights = self._prediction_data['cyc'][i_cycle + 1]['weights'].values
+            virtual_cycle_number = i_cycle + 1
+            df_sim = self.swarm[self.swarm['cyc'] == virtual_cycle_number]
+            df_sim = df_sim.reset_index(drop=True)
+
             if self.sim_cycles[i_cycle] in self.obs_cycles:
                 this_profile = self.obs[self.obs['cyc'] == self.sim_cycles[i_cycle]]
             else:
                 this_profile = None
 
-            xpred = self.predictions['predictions'][i_cycle + 1]['location']['longitude']
-            ypred = self.predictions['predictions'][i_cycle + 1]['location']['latitude']
+            for p in self.jsobj.predictions:
+                if p.virtual_cycle_number == virtual_cycle_number:
+                    xpred, ypred, tpred = p.location.longitude, p.location.latitude, p.location.time
 
             this_ax.set_extent(ebox)
             this_ax = map_add_features(ax[ix])
 
-            v = VFvel.field.isel(time=0).interp(depth=cfg.mission['parking_depth'])
-            v.plot.quiver(x="longitude",
-                          y="latitude",
-                          u=VFvel.var['U'],
-                          v=VFvel.var['V'],
-                          ax=this_ax,
-                          color='grey',
-                          alpha=0.5,
-                          scale=5,
-                          add_guide=False)
+            if vel is not None:
+                v = vel.field.isel(time=-1).interp(depth=vel_depth)
+                v.plot.quiver(x="longitude",
+                              y="latitude",
+                              u=vel.var['U'],
+                              v=vel.var['V'],
+                              ax=this_ax,
+                              color='grey',
+                              alpha=0.5,
+                              scale=5,
+                              add_guide=False)
 
             this_ax.plot(df_sim['deploy_lon'], df_sim['deploy_lat'], '.',
                          markersize=3,
@@ -444,8 +459,9 @@ class RunAnalyserView(RunAnalyserDiagnostics):
                          zorder=0)
 
             this_ax.plot(pred_traj[:, 0], pred_traj[:, 1], color='k', linewidth=1, marker='+')
-            this_ax.plot(xpred, ypred, color='g', marker='+')
+            this_ax.plot(xpred, ypred, color='lightgreen', marker='+')
 
+            weights = df_sim['weights']
             w = weights / np.max(np.abs(weights), axis=0)
             ii = np.argsort(w)
             cmap = plt.cm.cool
@@ -454,29 +470,20 @@ class RunAnalyserView(RunAnalyserDiagnostics):
             if ip == 0:
                 x, y = df_sim['deploy_lon'], df_sim['deploy_lat']
                 title = 'Initial virtual float positions'
-                if not alpha:
-                    this_ax.scatter(x.iloc[ii], y.iloc[ii], c=w[ii],
-                                    marker='o', s=4, edgecolor=None, vmin=0, vmax=1, cmap=cmap)
-                else:
-                    this_ax.scatter(x.iloc[ii], y.iloc[ii], c=w[ii],
-                                    alpha=w[ii],
-                                    marker='o', s=4, edgecolor=None, vmin=0, vmax=1, cmap=cmap)
             elif ip == 1:
                 x, y = df_sim['longitude'], df_sim['latitude']
                 title = 'Final virtual float positions'
-                if not alpha:
-                    this_ax.scatter(x, y, c=w, marker='o', s=4, edgecolor=None, vmin=0, vmax=1, cmap=cmap)
-                else:
-                    this_ax.scatter(x, y, c=w, marker='o', s=4, alpha=w, edgecolor=None, vmin=0, vmax=1, cmap=cmap)
             elif ip == 2:
                 x, y = df_sim['rel_lon'], df_sim['rel_lat']
                 title = 'Final virtual floats positions relative to observed float'
-                if not alpha:
-                    this_ax.scatter(x.iloc[ii], y.iloc[ii], c=w[ii],
-                                    marker='o', s=4, edgecolor=None, vmin=0, vmax=1, cmap=cmap)
-                else:
-                    this_ax.scatter(x.iloc[ii], y.iloc[ii], c=w[ii],
-                                    marker='o', s=4, alpha=w[ii], edgecolor=None, vmin=0, vmax=1, cmap=cmap)
+
+            if not alpha:
+                this_ax.scatter(x.iloc[ii], y.iloc[ii], c=w[ii],
+                                marker='o', s=4, edgecolor=None, vmin=0, vmax=1, cmap=cmap)
+            else:
+                this_ax.scatter(x.iloc[ii], y.iloc[ii], c=w[ii],
+                                alpha=w[ii],
+                                marker='o', s=4, edgecolor=None, vmin=0, vmax=1, cmap=cmap)
 
             # Display full trajectory prediction:
             if ip != 0 and this_profile is not None:
@@ -515,8 +522,8 @@ class RunAnalyserView(RunAnalyserDiagnostics):
                     plot_this(ax[ix], i_cycle, ip)
 
         plt.tight_layout()
-        if save_figure:
-            save_figurefile(fig, 'vfrecov_predictions_%s' % sim_suffix, workdir)
+        if save:
+            save_figurefile(fig, fname, workdir)
 
         return fig, ax
 
