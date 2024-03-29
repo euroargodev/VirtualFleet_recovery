@@ -19,3 +19,4 @@ logging.Formatter.converter = time.gmtime
 
 from vfrecovery.python_interface.predict import predict
 from vfrecovery.downloaders import Armor3d, Glorys
+from vfrecovery.core.db import DB

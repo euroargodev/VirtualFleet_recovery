@@ -90,7 +90,7 @@ def describe_run(wmo, cyc):
     partial_data = {'wmo': wmo}
     if len(cyc) > 0:
         partial_data.update({'cyc': cyc[0]})
-    click.echo(DB.from_dict(partial_data).record.T)
+    click.echo(DB.from_dict(partial_data).record.T.to_string(max_colwidth=15))
 
 
 def describe_velocity(wmo, cyc):
