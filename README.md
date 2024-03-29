@@ -19,7 +19,12 @@ Primary groups of commands are ``predict`` and ``describe``.
 ```
 Usage: vfrecovery predict [OPTIONS] WMO CYC
 
-  Execute VirtualFleet-Recovery predictor
+  Execute the VirtualFleet-Recovery predictor
+
+  WMO is the float World Meteorological Organisation number.
+
+  CYC is the cycle number location to predict. If you want to simulate more
+  than 1 cycle, use the `n_predictions` option (see below).
 
 Options:
   -v, --velocity TEXT             Velocity field to use. Possible values are:
@@ -35,13 +40,18 @@ Options:
   --cfg_free_surface_drift INTEGER
                                   Virtual cycle number to start free surface
                                   drift, inclusive  [default: 9999]
-  -np, --n_predictions INTEGER    Number of profiles to simulate after cycle
+  -np, --n_predictions INTEGER    Number of profiles to predict after cycle
                                   specified with argument 'CYC'  [default: 0]
-  -nf, --n_floats INTEGER         Number of virtual floats simulated to make
-                                  predictions  [default: 100]
+  -nf, --n_floats INTEGER         Swarm size, i.e. the number of virtual
+                                  floats simulated to make predictions
+                                  [default: 100]
   -s, --domain_min_size FLOAT     Minimal size (deg) of the simulation domain
                                   around the initial float position  [default:
-                                  12]
+                                  5]
+  --overwrite                     Should past simulation data be overwritten
+                                  or not, for a similar set of arguments
+  --lazy / --no-lazy              Load velocity data in lazy mode (not saved
+                                  on file).  [default: lazy]
   --log_level [DEBUG|INFO|WARN|ERROR|CRITICAL|QUIET]
                                   Set the details printed to console by the
                                   command (based on standard logging library).
@@ -50,7 +60,7 @@ Options:
 
   Examples:
 
-  vfrecovery predict 6903091 112
+          vfrecovery predict 6903091 112
  ```
 
 ### vfrecovery describe
@@ -101,7 +111,9 @@ vfrecovery.predict(
     cfg_profile_depth: float = None,
     cfg_free_surface_drift: int = 9999,
     n_floats: int = 100,
-    domain_min_size: float = 12.0,
+    domain_min_size: float = 5.0,
+    overwrite: bool = False,
+    lazy: bool = True,
     log_level: str = 'INFO',
 )
 ```
@@ -120,7 +132,7 @@ vfrecovery predict WMO CYC1 CYC2 CYC3
 Options:
 ```bash
 vfrecovery predict --n_predictions 3 WMO CYC0
-vfrecovery predict -n 3 WMO CYC0
+vfrecovery predict -np 3 WMO CYC0
 
 vfrecovery predict --n_floats 2000 WMO CYC
 vfrecovery predict -nf 2000 WMO CYC
@@ -129,29 +141,21 @@ vfrecovery predict --velocity GLORYS WMO CYC
 vfrecovery predict -v GLORYS WMO CYC
 
 vfrecovery predict --cfg_parking_depth 200 WMO CYC
-vfrecovery predict --cfg_parking_depth [200, 1000] WMO CYC1 CYC2
 
 vfrecovery predict --cfg_cycle_duration 60 WMO CYC
 
 vfrecovery predict --cfg_profile_depth 1000 WMO CYC
 ```
- 
+
 ## Describe results
 
 ```bash
-vfrecovery describe WMO CYC
-vfrecovery describe WMO CYC1 CYC2 CYC3
-```
-
-```bash
 vfrecovery describe velocity WMO CYC
+vfrecovery describe obs WMO CYC1 CYC2 CYC3
 ```
 
-## Other commands
+## Other possible commands
 
 ```bash
-vfrecovery whiterun WMO CYC
-vfrecovery whiterun WMO CYC1 CYC2 CYC3
-
 vfrecovery meetwith "cruise_track.csv" WMO CYC0
 ```

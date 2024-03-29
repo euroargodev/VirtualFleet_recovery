@@ -6,6 +6,7 @@ import os
 import logging
 
 from .simulation_handler import Simulation
+from .utils import pp_obj
 
 root_logger = logging.getLogger("vfrecovery_root_logger")
 sim_logger = logging.getLogger("vfrecovery_simulation")
@@ -49,6 +50,8 @@ def predict_function(
         cfg_free_surface_drift: int,
         n_floats: int,
         domain_min_size: float,
+        overwrite: bool,
+        lazy: bool,
         log_level: str,
 ) -> str:
     """
@@ -67,6 +70,8 @@ def predict_function(
     cfg_free_surface_drift
     n_floats
     domain_min_size
+    overwrite
+    lazy    
     log_level
 
     Returns
@@ -120,6 +125,8 @@ def predict_function(
                    n_floats=n_floats,
                    velocity=velocity,
                    output_path=output_path,
+                   overwrite=overwrite,
+                   lazy=lazy,
                    logger=log_this,
                    )
     S.setup(cfg_parking_depth=cfg_parking_depth,

@@ -71,7 +71,9 @@ def get_simulation_suffix(md: MetaData) -> str:
 
 
 def get_domain(Plist, size):
+    # Get mean position of the observed profiles:
     c = [np.mean([p.location.longitude for p in Plist]), np.mean([p.location.latitude for p in Plist])]
+    # Set the domain:
     domain = [c[0] - size / 2, c[0] + size / 2,
               c[1] - size / 2, c[1] + size / 2]
     domain = [np.round(d, 3) for d in domain]

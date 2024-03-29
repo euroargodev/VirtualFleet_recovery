@@ -16,7 +16,6 @@ from .deployment_plan import setup_deployment_plan
 from .trajfile_handler import Trajectories
 from .analysis_handler import RunAnalyser
 
-
 root_logger = logging.getLogger("vfrecovery_root_logger")
 
 
@@ -43,7 +42,6 @@ class default_logger:
         return default_logger(txt, 'ERROR')
 
 
-
 class Simulation:
     """Base class to execute the simulation/prediction workflow
 
@@ -60,6 +58,9 @@ class Simulation:
         self.cyc = cyc
         self.output_path = kwargs['output_path']
         self.logger = default_logger if 'logger' not in kwargs else kwargs['logger']
+
+        self.overwrite = kwargs['overwrite'] if 'overwrite' in kwargs else False
+        self.lazy = kwargs['lazy'] if 'lazy' in kwargs else True
 
         self.logger.info("%s \\" % ("=" * 55))
         self.logger.info("STARTING SIMULATION: WMO=%i / CYCLE_NUMBER=%i" % (self.wmo, self.cyc[1]))
@@ -119,22 +120,31 @@ class Simulation:
         domain, domain_center = get_domain(self.P_obs, kwargs['domain_min_size'])
         # and time:
         cycle_period = int(np.round(self.CFG.mission['cycle_duration'] / 24))  # Get the float cycle period (in days)
-        self.n_days = (len(self.cyc) - 1) * cycle_period + 1
+        self.n_days = len(self.cyc) * cycle_period + 1
 
-        self.logger.info("Loading %s velocity field to cover %i days starting on %s" % (
-            self.MD.velocity_field, self.n_days, self.P_obs[0].location.time))
+        self.logger.info("Velocity field should cover %i cycles of %i hours" % (len(self.cyc), 24 * cycle_period))
+        self.logger.info("Loading %i days of %s velocity starting on %s" % (
+            self.n_days, self.MD.velocity_field, self.P_obs[0].location.time))
 
-        self.ds_vel, velocity_file = get_velocity_field(domain, self.P_obs[0].location.time,
-                                                        n_days=self.n_days,
-                                                        output=self.output_path,
-                                                        dataset=self.MD.velocity_field)
+        self.ds_vel, velocity_file, new_file = get_velocity_field(domain, self.P_obs[0].location.time,
+                                                                  n_days=self.n_days,
+                                                                  output=self.output_path,
+                                                                  dataset=self.MD.velocity_field,
+                                                                  logger=self.logger,
+                                                                  lazy=self.lazy,
+                                                                  )
+        if new_file:
+            # We force overwrite results because we're using a new velocity field
+            self.logger.warning("Found a new velocity field, force overwriting results")
+            self.overwrite = True
+
         self.velocity_file = velocity_file
         self.logger.debug(pp_obj(self.ds_vel))
         self.logger.info("Loaded %s field from %s to %s" % (
             self.MD.velocity_field,
             pd.to_datetime(self.ds_vel['time'][0].values).strftime("%Y-%m-%dT%H:%M:%S"),
             pd.to_datetime(self.ds_vel['time'][-1].values).strftime("%Y-%m-%dT%H:%M:%S"))
-                      )
+                         )
 
     def setup(self, **kwargs):
         """Fulfill all requirements for the simulation"""
@@ -142,15 +152,17 @@ class Simulation:
         self._setup_float_config(**kwargs)
         self._setup_load_velocity_data(**kwargs)
         self.logger.info("Simulation data will be registered under: %s%s*%s*" % (self.output_path,
-                                                                              os.path.sep,
-                                                                              get_simulation_suffix(self.MD)))
+                                                                                 os.path.sep,
+                                                                                 get_simulation_suffix(self.MD)))
         self.logger.debug("Setup terminated")
         return self
 
     def _execute_get_velocity(self):
         self.logger.info("Create a velocity object")
         self.VEL = Velocity(model='GLORYS12V1' if self.MD.velocity_field == 'GLORYS' else self.MD.velocity_field,
-                            src=self.ds_vel)
+                            src=self.ds_vel,
+                            logger=self.logger,
+                            )
 
         self.logger.info("Plot velocity")
         for it in [0, -1]:
@@ -163,7 +175,8 @@ class Simulation:
         # VirtualFleet, get a deployment plan:
         self.logger.info("Create a deployment plan")
         df_plan = setup_deployment_plan(self.P_obs[0], nfloats=self.MD.n_floats)
-        self.logger.info("Set %i virtual floats to deploy (i.e. swarm size = %i)" % (df_plan.shape[0], df_plan.shape[0]))
+        self.logger.info(
+            "Set %i virtual floats to deploy (i.e. swarm size = %i)" % (df_plan.shape[0], df_plan.shape[0]))
 
         self.PLAN = {'lon': df_plan['longitude'],
                      'lat': df_plan['latitude'],
@@ -182,6 +195,7 @@ class Simulation:
                                    fieldset=self.VEL,
                                    mission=self.CFG,
                                    verbose_events=False)
+        self.logger.debug(pp_obj(self.VFleet))
 
         # Execute the simulation:
         self.logger.info("Starting simulation")
@@ -192,7 +206,7 @@ class Simulation:
         #     shutil.rmtree(output_path)
 
         self.traj_file = os.path.join(self.output_path, 'trajectories_%s.zarr' % get_simulation_suffix(self.MD))
-        if os.path.exists(self.traj_file):
+        if os.path.exists(self.traj_file) and not self.overwrite:
             self.logger.warning("Using data from a previous similar run (no simulation executed)")
         else:
             self.VFleet.simulate(duration=timedelta(hours=self.n_days * 24 + 1),
@@ -204,6 +218,7 @@ class Simulation:
                                  verbose_progress=True,
                                  )
             self.logger.info("Simulation ended with success")
+        self.logger.info(pp_obj(self.VFleet))
         return self
 
     def _predict_read_trajectories(self):
@@ -274,7 +289,9 @@ class Simulation:
             'date': pd.to_datetime('now', utc=True),
             'wall_time': pd.Timedelta(time.time() - execution_start, 's'),
             'cpu_time': pd.Timedelta(time.process_time() - process_start, 's'),
+            'description': None,
         })
+        self.logger.debug(pp_obj(self.MD.computation))
 
         self.run_file = os.path.join(self.output_path, 'results_%s.json' % get_simulation_suffix(self.MD))
         self.to_json(fp=self.run_file)

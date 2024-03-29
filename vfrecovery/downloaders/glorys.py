@@ -4,6 +4,32 @@ import glob
 import pandas as pd
 import xarray as xr
 import copernicusmarine
+import logging
+
+
+logger = logging.getLogger("vfrecovery.downloaders")
+
+class default_logger:
+
+    def __init__(self, txt, log_level):
+        """Log text"""
+        getattr(logger, log_level.lower())(txt)
+
+    @staticmethod
+    def info(txt) -> 'default_logger':
+        return default_logger(txt, 'INFO')
+
+    @staticmethod
+    def debug(txt) -> 'default_logger':
+        return default_logger(txt, 'DEBUG')
+
+    @staticmethod
+    def warning(txt) -> 'default_logger':
+        return default_logger(txt, 'WARNING')
+
+    @staticmethod
+    def error(txt) -> 'default_logger':
+        return default_logger(txt, 'ERROR')
 
 
 def get_glorys_forecast_from_datarmor(a_box, a_start_date, n_days=1):
@@ -69,7 +95,7 @@ class Glorys:
 
     """
 
-    def __init__(self, box, start_date, n_days=1, max_depth=2500):
+    def __init__(self, box, start_date, n_days=1, max_depth=2500, **kwargs):
         """
         Parameters
         ----------
@@ -95,6 +121,10 @@ class Glorys:
             self._loader = self._get_forecast
             self.dataset_id = "cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m"
 
+        self.logger = kwargs['logger'] if 'logger' in kwargs else default_logger
+        self.overwrite_metadata_cache = kwargs['overwrite_metadata_cache'] if 'overwrite_metadata_cache' in kwargs else False
+        self.disable_progress_bar = kwargs['disable_progress_bar'] if 'disable_progress_bar' in kwargs else False
+
     def _get_this(self, dataset_id, dates):
         ds = copernicusmarine.open_dataset(
             dataset_id=dataset_id,
@@ -106,7 +136,8 @@ class Glorys:
             start_datetime=dates[0].strftime("%Y-%m-%dT%H:%M:%S"),
             end_datetime=dates[1].strftime("%Y-%m-%dT%H:%M:%S"),
             variables=['uo', 'vo'],
-            disable_progress_bar=True,
+            disable_progress_bar=self.disable_progress_bar,
+            overwrite_metadata_cache=self.overwrite_metadata_cache,
         )
         return ds
 
@@ -147,7 +178,7 @@ class Glorys:
     def __repr__(self):
         summary = ["<CopernicusMarineData.Loader><Glorys>"]
         summary.append("dataset_id: %s" % self.dataset_id)
-        summary.append("First day: %s" % self.start_date)
+        summary.append("Starting date: %s" % self.start_date)
         summary.append("N days: %s" % self.n_days)
         summary.append("Domain: %s" % self.box)
         summary.append("Max depth (m): %s" % self.max_depth)

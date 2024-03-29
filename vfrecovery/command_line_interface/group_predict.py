@@ -90,7 +90,7 @@ Examples:
     required=False,
     default=0,
     show_default=True,
-    help="Number of profiles to simulate after cycle specified with argument 'CYC'",
+    help="Number of profiles to predict after cycle specified with argument 'CYC'",
 )
 @click.option(
     "-nf", "--n_floats",
@@ -98,16 +98,25 @@ Examples:
     required=False,
     default=100,
     show_default=True,
-    help="Number of virtual floats simulated to make predictions",
+    help="Swarm size, i.e. the number of virtual floats simulated to make predictions",
 )
 @click.option(
     "-s", "--domain_min_size",
     type=float,
     required=False,
-    default=12,
+    default=5,
     show_default=True,
     help="Minimal size (deg) of the simulation domain around the initial float position",
 )
+@click.option('--overwrite',
+              is_flag=True,
+              help="Should past simulation data be overwritten or not, for a similar set of arguments"
+              )
+@click.option('--lazy/--no-lazy',
+              default=True,
+              show_default=True,
+              help="Load velocity data in lazy mode (not saved on file)."
+              )
 @click.option(
     "--log_level",
     type=click.Choice(["DEBUG", "INFO", "WARN", "ERROR", "CRITICAL", "QUIET"]),
@@ -132,6 +141,8 @@ def predict(
         cfg_free_surface_drift,
         n_floats,
         domain_min_size,
+        overwrite,
+        lazy,
         log_level,
 ) -> None:
     """
@@ -156,5 +167,7 @@ def predict(
                                  cfg_free_surface_drift=cfg_free_surface_drift,
                                  n_floats=n_floats,
                                  domain_min_size=domain_min_size,
+                                 overwrite=overwrite,
+                                 lazy=lazy,
                                  log_level=log_level)
     # blank_logger.info(json_dump)
