@@ -5,6 +5,7 @@ import argopy.plot as argoplot
 from argopy import ArgoIndex
 
 from vfrecovery.utils.misc import list_float_simulation_folders
+from vfrecovery.core.db import DB
 
 
 root_logger = logging.getLogger("vfrecovery_root_logger")
@@ -21,7 +22,7 @@ def cli_group_describe() -> None:
     short_help="Describe VirtualFleet-Recovery data and simulation results",
     help="""
 
-    TARGET select what is to be described. A string in: ['obs', 'velocity'].
+    TARGET select what is to be described. A string in: ['obs', 'velocity', 'run'].
     
     WMO is the float World Meteorological Organisation number
     
@@ -65,8 +66,8 @@ def describe(
         root_logger.debug("DEBUG mode activated")
 
     # Validate arguments:
-    if target.lower() not in ["all", "obs", "velocity"]:
-        raise ValueError("The first argument TARGET must be one in ['all', 'obs', 'velocity']")
+    if target.lower() not in ["run", "obs", "velocity"]:
+        raise ValueError("The first argument TARGET must be one in ['run', 'obs', 'velocity']")
 
     assert is_wmo(wmo)
     wmo = check_wmo(wmo)[0]
@@ -80,6 +81,13 @@ def describe(
 
     elif target == 'velocity':
         describe_velocity(wmo, cyc)
+
+    elif target == 'run':
+        describe_run(wmo, cyc)
+
+
+def describe_run(wmo, cyc):
+    print(DB.read_data().T)
 
 
 def describe_velocity(wmo, cyc):

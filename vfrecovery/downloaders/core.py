@@ -24,9 +24,10 @@ def get_velocity_field(a_box, a_date, n_days=1, output='.', dataset='ARMOR3D', l
     tuple
     """
 
+    access_date = pd.to_datetime('now', utc='now').strftime("%Y%m%d")
+
     def get_velocity_filename(dataset, n_days):
-        download_date = pd.to_datetime('now', utc='now').strftime("%Y%m%d")
-        fname = os.path.join(output, 'velocity_%s_%idays_%s.nc' % (dataset, n_days, download_date))
+        fname = os.path.join(output, 'velocity_%s_%idays_%s.nc' % (dataset, n_days, access_date))
         return fname
 
     velocity_file = get_velocity_filename(dataset, n_days)
@@ -55,5 +56,7 @@ def get_velocity_field(a_box, a_date, n_days=1, output='.', dataset='ARMOR3D', l
     else:
         new = False
         ds = xr.open_dataset(velocity_file)
+
+    ds.attrs['access_date'] = access_date
 
     return ds, velocity_file, new

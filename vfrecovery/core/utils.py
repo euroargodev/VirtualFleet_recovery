@@ -4,6 +4,9 @@ from typing import List
 from argopy import ArgoIndex
 import argopy.plot as argoplot
 from argopy.errors import DataNotFound
+import hashlib
+import base64
+
 
 from vfrecovery.json import Profile, MetaData
 
@@ -78,3 +81,22 @@ def get_domain(Plist, size):
               c[1] - size / 2, c[1] + size / 2]
     domain = [np.round(d, 3) for d in domain]
     return domain, c
+
+
+def make_hash_sha256(o):
+    hasher = hashlib.sha256()
+    hasher.update(repr(make_hashable(o)).encode())
+    return base64.b64encode(hasher.digest()).decode()
+
+
+def make_hashable(o):
+    if isinstance(o, (tuple, list)):
+        return tuple((make_hashable(e) for e in o))
+
+    if isinstance(o, dict):
+        return tuple(sorted((k, make_hashable(v)) for k, v in o.items()))
+
+    if isinstance(o, (set, frozenset)):
+        return tuple(sorted(make_hashable(e) for e in o))
+
+    return o

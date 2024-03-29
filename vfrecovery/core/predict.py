@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Union
 import os
 import logging
+import json
+
 
 from .simulation_handler import Simulation
 from .utils import pp_obj
@@ -135,15 +137,21 @@ def predict_function(
             cfg_free_surface_drift=cfg_free_surface_drift,
             domain_min_size=domain_min_size,
             )
-    S.execute()
-    S.predict()
-    S.postprocess()
-    S.finish(execution_start, process_start)
+    if not S.is_registered or overwrite:
+        S.execute()
+        S.predict()
+        S.postprocess()
+        S.finish(execution_start, process_start)
+        # return S.MD.computation.to_json()
+        # return S.MD.to_json()
+        return S.to_json()
+    else:
+        log_this.info("This simulation already exists, stopping here !")
+        # Loading json results from previous run
+        with open(S.run_file, 'r') as f:
+            jsdata = json.load(f)
+        return json.dumps(jsdata, indent=4)
 
-    #
-    # return S.MD.computation.to_json()
-    # return S.MD.to_json()
-    return S.to_json()
 
 
 # def predictor(args):

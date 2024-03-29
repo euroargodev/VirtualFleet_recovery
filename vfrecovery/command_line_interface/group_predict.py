@@ -170,4 +170,4 @@ def predict(
                                  overwrite=overwrite,
                                  lazy=lazy,
                                  log_level=log_level)
-    # blank_logger.info(json_dump)
+    blank_logger.info(json_dump)

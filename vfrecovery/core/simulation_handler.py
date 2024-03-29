@@ -15,6 +15,8 @@ from .floats_config import setup_floats_config
 from .deployment_plan import setup_deployment_plan
 from .trajfile_handler import Trajectories
 from .analysis_handler import RunAnalyser
+from .db import DB
+
 
 root_logger = logging.getLogger("vfrecovery_root_logger")
 
@@ -117,7 +119,8 @@ class Simulation:
     def _setup_load_velocity_data(self, **kwargs):
         # Define domain to load velocity for:
         # In space:
-        domain, domain_center = get_domain(self.P_obs, kwargs['domain_min_size'])
+        self.domain_min_size = kwargs['domain_min_size']
+        domain, domain_center = get_domain(self.P_obs, self.domain_min_size)
         # and time:
         cycle_period = int(np.round(self.CFG.mission['cycle_duration'] / 24))  # Get the float cycle period (in days)
         self.n_days = len(self.cyc) * cycle_period + 1
@@ -146,6 +149,26 @@ class Simulation:
             pd.to_datetime(self.ds_vel['time'][-1].values).strftime("%Y-%m-%dT%H:%M:%S"))
                          )
 
+    def _instance2rec(self):
+        """Convert this instance data to a dictionnary to be used with DB"""
+        cyc = self.cyc[1]
+        n_predictions = len(self.cyc) - 1 - 1  # Remove initial conditions and cyc target
+
+        data = {'wmo': self.wmo, 'cyc': cyc, 'n_predictions': n_predictions,
+                'cfg': self.MD.vfconfig,
+                'velocity': {'name': self.MD.velocity_field,
+                             'download': self.ds_vel.attrs['access_date'],
+                             'domain_size': self.domain_min_size},
+                'output': self.output_path,
+                'swarm_size': self.MD.n_floats}
+
+        return data
+
+    @property
+    def is_registered(self):
+        """Check is this simulation  has laready been registered"""
+        return DB.from_dict(self._instance2rec()).registered
+
     def setup(self, **kwargs):
         """Fulfill all requirements for the simulation"""
         self._setup_load_observed_profiles()
@@ -154,7 +177,10 @@ class Simulation:
         self.logger.info("Simulation data will be registered under: %s%s*%s*" % (self.output_path,
                                                                                  os.path.sep,
                                                                                  get_simulation_suffix(self.MD)))
+        self.run_file = os.path.join(self.output_path, 'results_%s.json' % get_simulation_suffix(self.MD))
+        self.logger.info("Check if such a simulation has already been registered: %s" % self.is_registered)
         self.logger.debug("Setup terminated")
+
         return self
 
     def _execute_get_velocity(self):
@@ -283,6 +309,10 @@ class Simulation:
         self._postprocess_swarm_metrics()
         return self
 
+    def register(self):
+        """Save simulation to the registry"""
+        return DB.from_dict(self._instance2rec()).register()
+
     def finish(self, execution_start: float, process_start: float):
         """Click timers and save results to finish"""
         self.MD.computation = MetaDataComputation.from_dict({
@@ -293,9 +323,11 @@ class Simulation:
         })
         self.logger.debug(pp_obj(self.MD.computation))
 
-        self.run_file = os.path.join(self.output_path, 'results_%s.json' % get_simulation_suffix(self.MD))
         self.to_json(fp=self.run_file)
         self.logger.info("Simulation results and analysis saved in: %s" % self.run_file)
+
+        self.register()
+        self.logger.debug("Simulation recorded in registry")
 
         self.logger.info("END OF SIMULATION: WMO=%i / CYCLE_NUMBER=%i" % (self.wmo, self.cyc[1]))
         self.logger.info("%s /" % ("=" * 55))
