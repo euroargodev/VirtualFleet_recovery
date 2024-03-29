@@ -39,12 +39,15 @@ class DB:
     >>> DB.read_data()  # Return db content as :class:`pd.DataFrame`
 
     >>> data = {'wmo': 6903091, 'cyc': 120, 'n_predictions': 0, 'cfg': FloatConfiguration('recovery'), 'velocity': {'name': 'GLORYS', 'download': pd.to_datetime('now', utc=True), 'domain_size': 5}, 'output': Path('.'), 'swarm_size': 1000}
-    >>> DB.from_dict(data).register()  # save to db
+    >>> DB.from_dict(data).checkin()  # save to db
     >>> DB.from_dict(data).checkout()  # delete from db
+    >>> DB.from_dict(data).checked
+    >>> DB.from_dict(data).uid
+    >>> DB.from_dict(data).record
 
     >>> partial_data = {'wmo': 6903091}
     >>> DB.from_dict(partial_data)  # Create new instance for actions
-    >>> DB.from_dict(partial_data).list()
+    >>> DB.from_dict(partial_data).record
 
     """
     wmo: int
@@ -52,14 +55,14 @@ class DB:
     n_predictions: int
     cfg: FloatConfiguration
     velocity: Dict
-    output: Path
     swarm_size: int
+    output: Path
 
     required: List = ['wmo', 'cyc', 'n_predictions', 'cfg_cycle_duration',
                       'cfg_life_expectancy', 'cfg_parking_depth', 'cfg_profile_depth',
                       'cfg_reco_free_surface_drift', 'cfg_vertical_speed', 'velocity_name',
-                      'velocity_download', 'velocity_domain_size', 'output', 'swarm_size']
-    properties: List = ['wmo', 'cyc', 'n_predictions', 'cfg', 'velocity', 'output', 'swarm_size']
+                      'velocity_download', 'velocity_domain_size', 'swarm_size', 'output']
+    properties: List = ['wmo', 'cyc', 'n_predictions', 'cfg', 'velocity', 'swarm_size', 'output']
 
     _data: pd.DataFrame
     dbfile: Path = (Path(__file__).parent.parent).joinpath('static').joinpath('assets').joinpath(
@@ -98,8 +101,8 @@ class DB:
                            'velocity_name': pd.Series(dtype='string'),
                            'velocity_download': pd.Series(dtype='datetime64[ns]'),
                            'velocity_domain_size': pd.Series(dtype='float'),
-                           'output': pd.Series(dtype='string'),
                            'swarm_size': pd.Series(dtype='int'),
+                           'output': pd.Series(dtype='string'),
                            'uid': pd.Series(dtype='string'),
                            })
         df.name = pd.to_datetime('now', utc=True)
@@ -136,7 +139,6 @@ class DB:
         if not cls.exists(row):
             df = cls.read_data()
             df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
-            df.app
             df.to_pickle(cls.dbfile)
         else:
             print("This record is already in the database")
@@ -153,10 +155,11 @@ class DB:
     @classmethod
     def get_data(cls, row):
         df = cls.read_data()
-        v = df.iloc[:, 0] == df.iloc[:, 0]
-        for key, value in row.items():
-            v &= (df[key] == value)
-        return df[v == True]
+        mask = df.iloc[:, 0] == df.iloc[:, 0]
+        for key in row:
+            if row[key] is not None:
+                mask &= df[key] == row[key]
+        return df[mask]
 
     @classmethod
     def info(cls) -> str:
@@ -169,14 +172,6 @@ class DB:
         summary.append("connected: %s" % self.isconnected())
         summary.append("Number of records: %i" % self.read_data().shape[0])
 
-        if hasattr(self, 'wmo'):
-            summary.append("Current record:")
-            for p in self.properties:
-                v = getattr(self, p)
-                if np.asarray(v).dtype.kind in set('buifc'):
-                    summary.append("\t%s: %s" % (p, v))
-                else:
-                    summary.append("\t%s: '%s'" % (p, v))
         return "\n".join(summary)
 
     @staticmethod
@@ -188,7 +183,7 @@ class DB:
         for key in ['wmo', 'cyc', 'n_predictions', 'cfg_cycle_duration',
                     'cfg_life_expectancy', 'cfg_parking_depth', 'cfg_profile_depth',
                     'cfg_reco_free_surface_drift', 'cfg_vertical_speed', 'velocity_name',
-                    'velocity_download', 'velocity_domain_size', 'output', 'swarm_size']:
+                    'velocity_download', 'velocity_domain_size', 'swarm_size', 'output']:
             row.update({key: getattr(self, key, None)})
 
         if hasattr(self, 'cfg'):
@@ -202,15 +197,16 @@ class DB:
 
         if hasattr(self, 'output'):
             row.update({'output': str(getattr(self, 'output', None))})
+
         return row
 
-    def register(self):
+    def checkin(self):
         """Add one new record to the database"""
         new_row = self._instance2row()
 
         for key, value in new_row.items():
             if value is None:
-                raise ValueError("Cannot register a new record with missing value for '%s'" % key)
+                raise ValueError("Cannot checkin a new record with missing value for '%s'" % key)
 
         self.put_data(new_row)
 
@@ -225,7 +221,7 @@ class DB:
         self.del_data(row)
 
     @property
-    def registered(self):
+    def checked(self):
         row = self._instance2row()
         return self.exists(row)
 

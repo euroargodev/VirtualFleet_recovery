@@ -87,7 +87,10 @@ def describe(
 
 
 def describe_run(wmo, cyc):
-    print(DB.read_data().T)
+    partial_data = {'wmo': wmo}
+    if len(cyc) > 0:
+        partial_data.update({'cyc': cyc[0]})
+    click.echo(DB.from_dict(partial_data).record.T)
 
 
 def describe_velocity(wmo, cyc):

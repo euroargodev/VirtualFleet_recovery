@@ -167,7 +167,7 @@ class Simulation:
     @property
     def is_registered(self):
         """Check is this simulation  has laready been registered"""
-        return DB.from_dict(self._instance2rec()).registered
+        return DB.from_dict(self._instance2rec()).checked
 
     def setup(self, **kwargs):
         """Fulfill all requirements for the simulation"""
@@ -311,7 +311,7 @@ class Simulation:
 
     def register(self):
         """Save simulation to the registry"""
-        return DB.from_dict(self._instance2rec()).register()
+        return DB.from_dict(self._instance2rec()).checkin()
 
     def finish(self, execution_start: float, process_start: float):
         """Click timers and save results to finish"""

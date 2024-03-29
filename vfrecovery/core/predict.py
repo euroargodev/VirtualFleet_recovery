@@ -14,7 +14,6 @@ root_logger = logging.getLogger("vfrecovery_root_logger")
 sim_logger = logging.getLogger("vfrecovery_simulation")
 
 
-
 class log_this:
 
     def __init__(self, txt, log_level):
@@ -37,7 +36,6 @@ class log_this:
     @staticmethod
     def error(txt) -> 'log_this':
         return log_this(txt, 'ERROR')
-
 
 
 def predict_function(
