@@ -7,11 +7,38 @@ from sklearn.metrics import pairwise_distances
 import matplotlib.pyplot as plt
 from virtualargofleet import VelocityField
 from pathlib import Path
+import logging
 
 from vfrecovery.utils.misc import get_cfg_str
 from vfrecovery.plots.utils import map_add_features, save_figurefile
 from vfrecovery.json import Profile
 from vfrecovery.json import Metrics, TrajectoryLengths, PairwiseDistances, PairwiseDistancesState
+
+
+root_logger = logging.getLogger("vfrecovery_root_logger")
+
+
+class default_logger:
+
+    def __init__(self, txt, log_level):
+        """Log text to simulation and possibly root logger(s)"""
+        getattr(root_logger, log_level.lower())(txt)
+
+    @staticmethod
+    def info(txt) -> 'default_logger':
+        return default_logger(txt, 'INFO')
+
+    @staticmethod
+    def debug(txt) -> 'default_logger':
+        return default_logger(txt, 'DEBUG')
+
+    @staticmethod
+    def warning(txt) -> 'default_logger':
+        return default_logger(txt, 'WARNING')
+
+    @staticmethod
+    def error(txt) -> 'default_logger':
+        return default_logger(txt, 'ERROR')
 
 
 class Trajectories:
@@ -24,13 +51,14 @@ class Trajectories:
     T.sim_cycles
     df = T.to_index()
     df = T.get_index().add_distances()
-    jsdata, fig, ax = T.analyse_pairwise_distances(cycle=1, show_plot=True)
+    jsdata, fig, ax = T.analyse_pairwise_distances(cycle=1, save_figure=True)
     """
 
-    def __init__(self, zfile):
+    def __init__(self, zfile, **kwargs):
         self.zarr_file = zfile
         self.obj = xr.open_zarr(zfile)
         self._index = None
+        self.logger = default_logger if 'logger' not in kwargs else kwargs['logger']
 
     @property
     def n_floats(self):
@@ -137,6 +165,14 @@ class Trajectories:
                 mask = np.logical_and((ds['cycle_number'] == cyc).compute(),
                                       (ds['cycle_phase'] >= 3).compute())
                 this_cyc = ds.where(mask, drop=True)
+
+                # Check if we didn't lose some particles:
+                if len(x0) > len(this_cyc.isel(obs=-1)['time'].values):
+                    n = len(x0) - len(this_cyc.isel(obs=-1)['time'].values)
+                    raise ValueError("%i virtual floats did not make it to the end of required cycles. "
+                                     "They probably reached the edge of the velocity field domain. You should "
+                                     "try to increase the domain size of the simulation." % n)
+
                 if len(this_cyc['time']) > 0:
                     data = {
                         'date': this_cyc.isel(obs=-1)['time'].values,
@@ -155,8 +191,9 @@ class Trajectories:
             cycles = np.unique(self.obj['cycle_number'])
             rows = []
             for cyc in cycles:
-                df = worker(self.obj, cyc, deploy_lon, deploy_lat)
-                rows.append(df)
+                if ~ np.isnan(cyc):
+                    df = worker(self.obj, cyc, deploy_lon, deploy_lat)
+                    rows.append(df)
             rows = [r for r in rows if r is not None]
             df = pd.concat(rows).reset_index()
             df['wmo'] = df['wmo'].astype(int)
@@ -230,12 +267,13 @@ class Trajectories:
 
     def analyse_pairwise_distances(self,
                                    virtual_cycle_number: int = 1,
-                                   show_plot: bool = False,
                                    save_figure: bool = False,
                                    workdir: str = '.',
                                    sim_suffix=None,
+                                   mplbackend: str = 'Agg',
                                    this_cfg=None,
-                                   this_args: dict = None):
+                                   this_args: dict = None,
+                                   ):
 
         def pairs_pdf(longitude, latitude):
             Xi = np.array((longitude, latitude)).T
@@ -344,10 +382,9 @@ class Trajectories:
         })
 
         # Figure:
-        if show_plot:
-            backend = matplotlib.get_backend()
-            if this_args is not None and this_args.json:
-                matplotlib.use('Agg')
+        if save_figure:
+            initial_mplbackend = matplotlib.get_backend()
+            matplotlib.use(mplbackend)
 
             fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(18, 10), dpi=90)
             ax, ix = ax.flatten(), -1
@@ -392,17 +429,17 @@ class Trajectories:
             fig.suptitle("%s\n%s" % (line0, line1), fontsize=15)
             plt.tight_layout()
 
-            if save_figure:
-                if sim_suffix is not None:
-                    filename = 'vfrecov_metrics01_%s_cyc%i' % (sim_suffix, virtual_cycle_number)
-                else:
-                    filename = 'vfrecov_metrics01_cyc%i' % (virtual_cycle_number)
-                save_figurefile(fig, filename, workdir)
+            if sim_suffix is not None:
+                filename = 'vfrecov_metrics01_%s_cyc%i' % (sim_suffix, virtual_cycle_number)
+            else:
+                filename = 'vfrecov_metrics01_cyc%i' % (virtual_cycle_number)
+            save_figurefile(fig, filename, workdir)
 
-            if this_args is not None and this_args.json:
-                matplotlib.use(backend)
+            # Rewind mpl backend to initial position:
+            matplotlib.use(initial_mplbackend)
 
-        if show_plot:
+        # Exit
+        if save_figure:
             return M, fig, ax
         else:
             return M
@@ -438,6 +475,7 @@ class Trajectories:
                        save: bool = True,
                        workdir: Path = Path('.'),
                        fname: str = 'swarm_positions',
+                       mplbackend: str = 'Agg',
                        ):
         """
 
@@ -445,6 +483,9 @@ class Trajectories:
         >>> T.plot_positions(vel_depth=cfg.mission['parking_depth'])
         """
         import cartopy.crs as ccrs
+
+        initial_mplbackend = matplotlib.get_backend()
+        matplotlib.use(mplbackend)
 
         ebox = self.HBOX(s=domain_scale)
 
@@ -490,4 +531,8 @@ class Trajectories:
         plt.tight_layout()
         if save:
             save_figurefile(fig, fname, workdir)
+
+        # Rewind mpl backend to initial position:
+        matplotlib.use(initial_mplbackend)
+
         return fig, ax

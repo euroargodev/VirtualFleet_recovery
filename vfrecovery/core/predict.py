@@ -52,6 +52,7 @@ def predict_function(
         domain_min_size: float,
         overwrite: bool,
         lazy: bool,
+        figure: bool,
         log_level: str,
 ) -> str:
     """
@@ -71,7 +72,8 @@ def predict_function(
     n_floats
     domain_min_size
     overwrite
-    lazy    
+    lazy
+    figure
     log_level
 
     Returns
@@ -109,7 +111,8 @@ def predict_function(
 
     if output_path is None:
         # output_path = "vfrecovery_sims" % pd.to_datetime('now', utc=True).strftime("%Y%m%d%H%M%S")
-        output_path = os.path.sep.join(["vfrecovery_simulations_data", str(wmo), str(cyc[1])])
+        # output_path = os.path.sep.join(["vfrecovery_simulations_data", str(wmo), str(cyc[1])])
+        output_path = "vfrecovery_simulations_data"
     output_path = Path(output_path)
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -128,6 +131,7 @@ def predict_function(
                    overwrite=overwrite,
                    lazy=lazy,
                    logger=log_this,
+                   figure=figure,
                    )
     S.setup(cfg_parking_depth=cfg_parking_depth,
             cfg_cycle_duration=cfg_cycle_duration,
@@ -140,8 +144,6 @@ def predict_function(
         S.predict()
         S.postprocess()
         S.finish(execution_start, process_start)
-        # return S.MD.computation.to_json()
-        # return S.MD.to_json()
         return S.to_json()
     else:
         log_this.info("This simulation already exists, stopping here !")

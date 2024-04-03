@@ -159,3 +159,23 @@ vfrecovery describe obs WMO CYC1 CYC2 CYC3
 ```bash
 vfrecovery meetwith "cruise_track.csv" WMO CYC0
 ```
+
+## Data storage
+Simulation data are stored on disk under the following architecture:
+
+```
+./vfrecovery_simulations_data
+                            |- vfrecovery_simulations.log
+                            |- WMO
+                               |----CYC
+                                    |----VELOCITY(NAME + DOWNLOAD_DATE + DOMAIN_SIZE)
+                                         |- velocity_file.nc
+                                         |- figure.png
+                                         |---- RUN_PARAMS(NP + CFG + NF)
+                                               |- float_configuration.json
+                                               |- trajectories.zarr
+                                               |- results.json
+                                               |- figure.png
+```
+
+This ensures that for a given velocity field, all possible simulations are unambiguously found under a single folder

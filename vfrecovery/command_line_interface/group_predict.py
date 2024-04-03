@@ -41,7 +41,7 @@ Examples:
     type=str,
     required=False,
     default=None,
-    help="Simulation data output folder [default: './vfrecovery_simulations_data/<WMO>/<CYC>']",
+    help="Simulation root data output folder [default: './vfrecovery_simulations_data']",
 )
 # @click.option(
 #     "-v", "--verbose",
@@ -117,6 +117,11 @@ Examples:
               show_default=True,
               help="Load velocity data in lazy mode (not saved on file)."
               )
+@click.option('--figure/--no-figure',
+              default=True,
+              show_default=True,
+              help="Display and save figures on file (png format)",
+              )
 @click.option(
     "--log_level",
     type=click.Choice(["DEBUG", "INFO", "WARN", "ERROR", "CRITICAL", "QUIET"]),
@@ -143,6 +148,7 @@ def predict(
         domain_min_size,
         overwrite,
         lazy,
+        figure,
         log_level,
 ) -> None:
     """
@@ -169,5 +175,6 @@ def predict(
                                  domain_min_size=domain_min_size,
                                  overwrite=overwrite,
                                  lazy=lazy,
+                                 figure=figure,
                                  log_level=log_level)
     blank_logger.info(json_dump)

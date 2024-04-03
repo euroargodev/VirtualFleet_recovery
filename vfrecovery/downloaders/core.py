@@ -6,7 +6,14 @@ from . import Glorys, Armor3d
 from vfrecovery.core.utils import pp_obj
 
 
-def get_velocity_field(a_box, a_date, n_days=1, output='.', dataset='ARMOR3D', logger=None, lazy=True) -> tuple:
+def get_velocity_field(a_box,
+                       a_date,
+                       n_days=1,
+                       output='.',
+                       dataset='ARMOR3D',
+                       logger=None,
+                       lazy=True,
+                       ) -> tuple:
     """Return the velocity field as an :class:`xr.Dataset`, force download/save if not lazy
 
     Parameters

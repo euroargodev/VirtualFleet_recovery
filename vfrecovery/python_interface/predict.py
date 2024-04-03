@@ -18,6 +18,7 @@ def predict(
         domain_min_size: float = 5.,
         overwrite: bool = False,
         lazy: bool = True,
+        figure: bool = True,
         log_level: str = 'INFO',
 ):
     """
@@ -38,6 +39,7 @@ def predict(
     domain_min_size
     overwrite
     lazy
+    figure
     log_level
     
     Returns
@@ -58,6 +60,7 @@ def predict(
         domain_min_size=domain_min_size,
         overwrite=overwrite,
         lazy=lazy,
+        figure=figure,
         log_level=log_level,
     )
     results = json.loads(results_json)

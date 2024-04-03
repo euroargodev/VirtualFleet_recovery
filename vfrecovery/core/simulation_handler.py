@@ -7,6 +7,8 @@ import numpy as np
 import os
 from datetime import timedelta
 import logging
+import tempfile
+
 
 from vfrecovery.json import MetaData, MetaDataSystem, MetaDataComputation
 from vfrecovery.downloaders import get_velocity_field
@@ -15,7 +17,7 @@ from .floats_config import setup_floats_config
 from .deployment_plan import setup_deployment_plan
 from .trajfile_handler import Trajectories
 from .analysis_handler import RunAnalyser
-from .db import DB
+from .db import DB, Row2Path
 
 
 root_logger = logging.getLogger("vfrecovery_root_logger")
@@ -44,25 +46,18 @@ class default_logger:
         return default_logger(txt, 'ERROR')
 
 
-class Simulation:
-    """Base class to execute the simulation/prediction workflow
-
-    >>> S = Simulation(wmo, cyc, n_floats=n_floats, velocity=velocity, output_path=Path('.'))
-    >>> S.setup()
-    >>> S.execute()
-    >>> S.predict()
-    >>> S.postprocess()
-    >>> S.to_json()
-    """
-
+class Simulation_core:
     def __init__(self, wmo, cyc, **kwargs):
+        self.run_file = None
+
         self.wmo = wmo
         self.cyc = cyc
-        self.output_path = kwargs['output_path']
+        self.path_root = kwargs['output_path']
         self.logger = default_logger if 'logger' not in kwargs else kwargs['logger']
 
-        self.overwrite = kwargs['overwrite'] if 'overwrite' in kwargs else False
-        self.lazy = kwargs['lazy'] if 'lazy' in kwargs else True
+        self.overwrite = bool(kwargs['overwrite']) if 'overwrite' in kwargs else False
+        self.lazy = bool(kwargs['lazy']) if 'lazy' in kwargs else True
+        self.figure = bool(kwargs['figure']) if 'figure' in kwargs else True
 
         self.logger.info("%s \\" % ("=" * 55))
         self.logger.info("STARTING SIMULATION: WMO=%i / CYCLE_NUMBER=%i" % (self.wmo, self.cyc[1]))
@@ -84,11 +79,56 @@ class Simulation:
             'computation': None,  # will be filled later
         })
 
+
+class Simulation_setup(Simulation_core):
+
+    def _instance2rec(self):
+        """Convert this instance data to a dictionary to be used with the DB module"""
+        cyc = self.cyc[1]
+        n_predictions = len(self.cyc) - 1 - 1  # Remove initial conditions and cyc target, as passed by user
+
+        data = {'wmo': self.wmo,
+                'cyc': cyc,
+                'n_predictions': n_predictions,
+                'cfg': self.MD.vfconfig,
+                'velocity': {'name': self.MD.velocity_field,
+                             'download': pd.to_datetime(self.ds_vel.attrs['access_date']),
+                             'domain_size': self.domain_min_size},
+                'swarm_size': self.MD.n_floats,
+                'path_root': self.path_root,
+                }
+
+        return data
+
+    @property
+    def is_registered(self):
+        """Check if this simulation has already been registered or not"""
+        return DB.from_dict(self._instance2rec()).checked
+
+    @property
+    def output_path(self):
+        """Path to run output"""
+        p = self.path_root.joinpath(DB.from_dict(self._instance2rec()).path_obj.run)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    @property
+    def velocity_path(self):
+        """Path to velocity output"""
+        p = self.path_root.joinpath(DB.from_dict(self._instance2rec()).path_obj.velocity)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    @property
+    def temp_path(self):
+        """A temporary path"""
+        return tempfile.gettempdir()
+
     def _setup_load_observed_profiles(self):
         """Load observed float profiles index"""
 
         self.logger.info("Loading float profiles index")
-        self.P_obs, self.df_obs = ArgoIndex2jsProfile(self.wmo, self.cyc, cache=False, cachedir=str(self.output_path))
+        self.P_obs, self.df_obs = ArgoIndex2jsProfile(self.wmo, self.cyc, cache=False, cachedir=str(self.path_root))
         [self.logger.debug("Observed profiles list: %s" % pp_obj(p)) for p in self.P_obs]
 
         if len(self.P_obs) == 1:
@@ -109,12 +149,8 @@ class Simulation:
                                        kwargs['cfg_free_surface_drift'],
                                        self.logger,
                                        )
-        self.MD.vfconfig = self.CFG  # Register floats configuration to the simulation meta-data class
-
-        # and save the final virtual float configuration on file:
-        self.CFG.to_json(
-            Path(os.path.join(self.output_path, "floats_configuration_%s.json" % get_simulation_suffix(self.MD))))
         self.logger.debug(pp_obj(self.CFG))
+        self.MD.vfconfig = self.CFG  # Register floats configuration to the simulation meta-data class
 
     def _setup_load_velocity_data(self, **kwargs):
         # Define domain to load velocity for:
@@ -123,65 +159,61 @@ class Simulation:
         domain, domain_center = get_domain(self.P_obs, self.domain_min_size)
         # and time:
         cycle_period = int(np.round(self.CFG.mission['cycle_duration'] / 24))  # Get the float cycle period (in days)
-        self.n_days = len(self.cyc) * cycle_period + 1
+        self.n_days = (len(self.cyc)-1) * cycle_period
 
-        self.logger.info("Velocity field should cover %i cycles of %i hours" % (len(self.cyc), 24 * cycle_period))
-        self.logger.info("Loading %i days of %s velocity starting on %s" % (
+        self.logger.info("Velocity field should cover %i cycles of %i hours" % (len(self.cyc)-1, 24 * cycle_period))
+        self.logger.info("Connecting to %i days of %s velocity starting on %s" % (
             self.n_days, self.MD.velocity_field, self.P_obs[0].location.time))
 
         self.ds_vel, velocity_file, new_file = get_velocity_field(domain, self.P_obs[0].location.time,
                                                                   n_days=self.n_days,
-                                                                  output=self.output_path,
+                                                                  output=self.temp_path,
                                                                   dataset=self.MD.velocity_field,
                                                                   logger=self.logger,
                                                                   lazy=self.lazy,
                                                                   )
         if new_file:
-            # We force overwrite results because we're using a new velocity field
+            # We force overwriting results because we're using a new velocity field
             self.logger.warning("Found a new velocity field, force overwriting results")
             self.overwrite = True
 
         self.velocity_file = velocity_file
         self.logger.debug(pp_obj(self.ds_vel))
-        self.logger.info("Loaded %s field from %s to %s" % (
+        self.logger.info("%s loaded %s field from %s to %s" % (
+            "Lazily" if self.lazy else "Hard",
             self.MD.velocity_field,
             pd.to_datetime(self.ds_vel['time'][0].values).strftime("%Y-%m-%dT%H:%M:%S"),
             pd.to_datetime(self.ds_vel['time'][-1].values).strftime("%Y-%m-%dT%H:%M:%S"))
                          )
 
-    def _instance2rec(self):
-        """Convert this instance data to a dictionnary to be used with DB"""
-        cyc = self.cyc[1]
-        n_predictions = len(self.cyc) - 1 - 1  # Remove initial conditions and cyc target
-
-        data = {'wmo': self.wmo, 'cyc': cyc, 'n_predictions': n_predictions,
-                'cfg': self.MD.vfconfig,
-                'velocity': {'name': self.MD.velocity_field,
-                             'download': self.ds_vel.attrs['access_date'],
-                             'domain_size': self.domain_min_size},
-                'output': self.output_path,
-                'swarm_size': self.MD.n_floats}
-
-        return data
-
-    @property
-    def is_registered(self):
-        """Check is this simulation  has laready been registered"""
-        return DB.from_dict(self._instance2rec()).checked
-
     def setup(self, **kwargs):
         """Fulfill all requirements for the simulation"""
+
+        # Load data in memory:
         self._setup_load_observed_profiles()
         self._setup_float_config(**kwargs)
         self._setup_load_velocity_data(**kwargs)
-        self.logger.info("Simulation data will be registered under: %s%s*%s*" % (self.output_path,
-                                                                                 os.path.sep,
-                                                                                 get_simulation_suffix(self.MD)))
-        self.run_file = os.path.join(self.output_path, 'results_%s.json' % get_simulation_suffix(self.MD))
+
+        # Possibly save setup files to proper final folders:
+
+        # and save the final virtual float configuration on file:
+        self.CFG.to_json(self.output_path.joinpath("floats_configuration.json"))
+
+        # move velocity file from temporary to final output path:
+        # self.logger.info("self.temp_path: %s" % self.temp_path)
+        # self.logger.info("self.velocity_file: %s" % self.velocity_file)
+        # self.logger.info("self.output_path: %s" % self.output_path)
+
+        #
+        self.run_file = self.output_path.joinpath("results.json")
+        self.logger.info("Simulation results will be registered under:\n%s" % self.run_file)
         self.logger.info("Check if such a simulation has already been registered: %s" % self.is_registered)
         self.logger.debug("Setup terminated")
 
         return self
+
+
+class Simulation_execute(Simulation_setup):
 
     def _execute_get_velocity(self):
         self.logger.info("Create a velocity object")
@@ -190,12 +222,21 @@ class Simulation:
                             logger=self.logger,
                             )
 
-        self.logger.info("Plot velocity")
-        for it in [0, -1]:
-            _, _, fname = self.VEL.plot(it=it, iz=0, save=True, workdir=self.output_path)
-            fname.rename(
-                str(fname).replace("velocity_%s" % self.VEL.name, Path(self.velocity_file).name.replace(".nc", ""))
-            )
+        if self.figure:
+            self.logger.info("Plot velocity")
+            for it in [0, -1]:
+                _, _, fname = self.VEL.plot(it=it,
+                                            iz=0,
+                                            save=True,
+                                            workdir=self.velocity_path
+                                            )
+                self.logger.info(fname)
+                self.logger.info(self.velocity_path.stem)
+                # fname.rename(
+                #     str(fname).replace("velocity_%s" % self.VEL.name,
+                #                        Path(self.velocity_file).name.replace(".nc", "")
+                #                        )
+                # )
 
     def _execute_get_plan(self):
         # VirtualFleet, get a deployment plan:
@@ -231,7 +272,8 @@ class Simulation:
         # if os.path.exists(output_path):
         #     shutil.rmtree(output_path)
 
-        self.traj_file = os.path.join(self.output_path, 'trajectories_%s.zarr' % get_simulation_suffix(self.MD))
+        # self.traj_file = os.path.join(self.output_path, 'trajectories_%s.zarr' % get_simulation_suffix(self.MD))
+        self.traj_file = self.output_path.joinpath('trajectories.zarr')
         if os.path.exists(self.traj_file) and not self.overwrite:
             self.logger.warning("Using data from a previous similar run (no simulation executed)")
         else:
@@ -240,12 +282,15 @@ class Simulation:
                                  record=timedelta(minutes=30),
                                  output=True,
                                  output_folder=self.output_path,
-                                 output_file='trajectories_%s.zarr' % get_simulation_suffix(self.MD),
+                                 output_file='trajectories.zarr',
                                  verbose_progress=True,
                                  )
             self.logger.info("Simulation ended with success")
         self.logger.info(pp_obj(self.VFleet))
         return self
+
+
+class Simulation_predict(Simulation_execute):
 
     def _predict_read_trajectories(self):
 
@@ -256,14 +301,15 @@ class Simulation:
         self.traj.get_index().add_distances(origin=self.P_obs[0])
         self.logger.debug(pp_obj(self.traj))
 
-        self.logger.info("Plot swarm initial and final states")
-        self.traj.plot_positions(domain_scale=2.,
-                                 vel=self.VEL,
-                                 vel_depth=self.CFG.mission['parking_depth'],
-                                 save=True,
-                                 workdir=self.output_path,
-                                 fname='swarm_states_%s' % get_simulation_suffix(self.MD)
-                                 )
+        if self.figure:
+            self.logger.info("Plot swarm initial and final states")
+            self.traj.plot_positions(domain_scale=2.,
+                                     vel=self.VEL,
+                                     vel_depth=self.CFG.mission['parking_depth'],
+                                     save=True,
+                                     workdir=self.output_path,
+                                     fname='swarm_states',
+                                     )
 
     def _predict_positions(self):
         """Make predictions based on simulated profile density"""
@@ -272,21 +318,25 @@ class Simulation:
         self.run.fit_predict()
         self.logger.debug(pp_obj(self.run))
 
-        self.logger.info("Plot predictions")
-        self.run.plot_predictions(
-            vel=self.VEL,
-            vel_depth=self.CFG.mission['parking_depth'],
-            save=True,
-            workdir=self.output_path,
-            fname='predictions_%s' % get_simulation_suffix(self.MD),
-            orient='portrait'
-        )
+        if self.figure:
+            self.logger.info("Plot predictions")
+            self.run.plot_predictions(
+                vel=self.VEL,
+                vel_depth=self.CFG.mission['parking_depth'],
+                save=True,
+                workdir=self.output_path,
+                fname='predictions',
+                orient='portrait',
+            )
 
     def predict(self):
         """Make float profile predictions based on the swarm simulation"""
         self._predict_read_trajectories()
         self._predict_positions()
         return self
+
+
+class Simulation_postprocess(Simulation_predict):
 
     def _postprocess_metrics(self):
         if self.run.has_ref:
@@ -298,7 +348,10 @@ class Simulation:
         Plist_updated = []
         for p in self.run.jsobj.predictions:
             this_cyc = p.virtual_cycle_number
-            swarm_metrics = self.traj.analyse_pairwise_distances(virtual_cycle_number=this_cyc, show_plot=False)
+            swarm_metrics = self.traj.analyse_pairwise_distances(virtual_cycle_number=this_cyc,
+                                                                 save_figure=False,
+                                                                 # save_figure=self.save_figure,
+                                                                 )
             p.metrics.trajectory_lengths = swarm_metrics.trajectory_lengths
             p.metrics.pairwise_distances = swarm_metrics.pairwise_distances
             Plist_updated.append(p)
@@ -309,6 +362,17 @@ class Simulation:
         self._postprocess_swarm_metrics()
         return self
 
+
+class Simulation(Simulation_postprocess):
+    """Base class to execute the simulation/prediction workflow
+
+    >>> S = Simulation(wmo, cyc, n_floats=n_floats, velocity=velocity, output_path=Path('.'))
+    >>> S.setup()
+    >>> S.execute()
+    >>> S.predict()
+    >>> S.postprocess()
+    >>> S.to_json()
+    """
     def register(self):
         """Save simulation to the registry"""
         return DB.from_dict(self._instance2rec()).checkin()

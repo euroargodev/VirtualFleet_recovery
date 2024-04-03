@@ -2,12 +2,14 @@ import click
 
 from vfrecovery.command_line_interface.group_describe import cli_group_describe
 from vfrecovery.command_line_interface.group_predict import cli_group_predict
+from vfrecovery.command_line_interface.group_db import cli_group_db
 
 @click.command(
     cls=click.CommandCollection,
     sources=[
         cli_group_describe,
         cli_group_predict,
+        cli_group_db,
     ],
     context_settings=dict(help_option_names=["-h", "--help"]),
 )

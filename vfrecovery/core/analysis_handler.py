@@ -6,6 +6,7 @@ from pathlib import Path
 from sklearn.neighbors import KernelDensity
 from virtualargofleet import VelocityField
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import argopy.plot as argoplot
 import cartopy.crs as ccrs
@@ -391,6 +392,7 @@ class RunAnalyserView(RunAnalyserDiagnostics):
                          save: bool = False,
                          workdir: Path = Path('.'),
                          fname: str = 'predictions',
+                         mplbackend: str = 'Agg',
 
                          figsize=None,
                          dpi=120,
@@ -492,6 +494,9 @@ class RunAnalyserView(RunAnalyserDiagnostics):
             # this_ax.set_ylabel("Cycle %i predictions" % (i_cycle+1))
             this_ax.set_title("%s\nCycle %i predictions" % (title, self.sim_cycles[i_cycle]), fontsize=6)
 
+        initial_mplbackend = mpl.get_backend()
+        mpl.use(mplbackend)
+
         fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize, dpi=dpi,
                                subplot_kw={'projection': ccrs.PlateCarree()},
                                sharex=True, sharey=True)
@@ -516,8 +521,12 @@ class RunAnalyserView(RunAnalyserDiagnostics):
                     plot_this(ax[ix], i_cycle, ip)
 
         plt.tight_layout()
+
         if save:
             save_figurefile(fig, fname, workdir)
+
+        # Rewind mpl backend to initial position:
+        mpl.use(initial_mplbackend)
 
         return fig, ax
 
