@@ -116,7 +116,7 @@ class Glorys:
         dt = pd.Timedelta(n_days, 'D') if n_days > 1 else pd.Timedelta(0, 'D')
         if start_date + dt <= pd.to_datetime('2021-01-09', utc=True):
             self._loader = self._get_reanalysis
-            self.dataset_id = "cmems_mod_glo_phy_my_0.083_P1D-m"
+            self.dataset_id = "cmems_mod_glo_phy_my_0.083deg_P1D-m"
         else:
             self._loader = self._get_forecast
             self.dataset_id = "cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m"
