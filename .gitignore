@@ -144,3 +144,4 @@ cli/build-pypi
 cli/vfrecov/
 webapi/myapp/static/data
 vfrecovery_simulations_data/
+vfrecovery/static/assets/simulations_registry.pkl
