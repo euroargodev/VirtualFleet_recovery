@@ -12,7 +12,7 @@ import tempfile
 
 from vfrecovery.json import MetaData, MetaDataSystem, MetaDataComputation
 from vfrecovery.downloaders import get_velocity_field
-from .utils import ArgoIndex2jsProfile, get_simulation_suffix, get_domain, pp_obj
+from .utils import ArgoIndex2jsProfile, get_domain, pp_obj
 from .floats_config import setup_floats_config
 from .deployment_plan import setup_deployment_plan
 from .trajfile_handler import Trajectories
@@ -72,7 +72,7 @@ class Simulation_core:
 
         # Create Simulation Meta-data class holder
         self.MD = MetaData.from_dict({
-            'n_floats': kwargs['n_floats'],
+            'swarm_size': kwargs['swarm_size'],
             'velocity_field': kwargs['velocity'],
             'system': MetaDataSystem.auto_load(),
             'vfconfig': None,  # will be filled later
@@ -94,7 +94,7 @@ class Simulation_setup(Simulation_core):
                 'velocity': {'name': self.MD.velocity_field,
                              'download': pd.to_datetime(self.ds_vel.attrs['access_date']),
                              'domain_size': self.domain_min_size},
-                'swarm_size': self.MD.n_floats,
+                'swarm_size': self.MD.swarm_size,
                 'path_root': self.path_root,
                 }
 
@@ -161,9 +161,11 @@ class Simulation_setup(Simulation_core):
         cycle_period = int(np.round(self.CFG.mission['cycle_duration'] / 24))  # Get the float cycle period (in days)
         self.n_days = (len(self.cyc)-1) * cycle_period
 
-        self.logger.info("Velocity field should cover %i cycles of %i hours" % (len(self.cyc)-1, 24 * cycle_period))
-        self.logger.info("Connecting to %i days of %s velocity starting on %s" % (
-            self.n_days, self.MD.velocity_field, self.P_obs[0].location.time))
+        self.logger.info("Velocity field should cover %i cycles of %i hours (%i days)" % (len(self.cyc)-1,
+                                                                                          24 * cycle_period,
+                                                                                          self.n_days))
+        self.logger.info("Retrieve info for %s velocity starting on %s" % (
+            self.MD.velocity_field, self.P_obs[0].location.time))
 
         self.ds_vel, velocity_file, new_file = get_velocity_field(domain, self.P_obs[0].location.time,
                                                                   n_days=self.n_days,
@@ -206,7 +208,7 @@ class Simulation_setup(Simulation_core):
 
         #
         self.run_file = self.output_path.joinpath("results.json")
-        self.logger.info("Simulation results will be registered under:\n%s" % self.run_file)
+        # self.logger.info("Simulation results will be registered under:\n%s" % self.run_file)
         self.logger.info("Check if such a simulation has already been registered: %s" % self.is_registered)
         self.logger.debug("Setup terminated")
 
@@ -216,7 +218,7 @@ class Simulation_setup(Simulation_core):
 class Simulation_execute(Simulation_setup):
 
     def _execute_get_velocity(self):
-        self.logger.info("Create a velocity object")
+        self.logger.info("Create a velocity object (this can take a while)")
         self.VEL = Velocity(model='GLORYS12V1' if self.MD.velocity_field == 'GLORYS' else self.MD.velocity_field,
                             src=self.ds_vel,
                             logger=self.logger,
@@ -230,8 +232,8 @@ class Simulation_execute(Simulation_setup):
                                             save=True,
                                             workdir=self.velocity_path
                                             )
-                self.logger.info(fname)
-                self.logger.info(self.velocity_path.stem)
+                # self.logger.info(fname)
+                # self.logger.info(self.velocity_path.stem)
                 # fname.rename(
                 #     str(fname).replace("velocity_%s" % self.VEL.name,
                 #                        Path(self.velocity_file).name.replace(".nc", "")
@@ -241,7 +243,7 @@ class Simulation_execute(Simulation_setup):
     def _execute_get_plan(self):
         # VirtualFleet, get a deployment plan:
         self.logger.info("Create a deployment plan")
-        df_plan = setup_deployment_plan(self.P_obs[0], nfloats=self.MD.n_floats)
+        df_plan = setup_deployment_plan(self.P_obs[0], swarm_size=self.MD.swarm_size)
         self.logger.info(
             "Set %i virtual floats to deploy (i.e. swarm size = %i)" % (df_plan.shape[0], df_plan.shape[0]))
 
@@ -366,7 +368,7 @@ class Simulation_postprocess(Simulation_predict):
 class Simulation(Simulation_postprocess):
     """Base class to execute the simulation/prediction workflow
 
-    >>> S = Simulation(wmo, cyc, n_floats=n_floats, velocity=velocity, output_path=Path('.'))
+    >>> S = Simulation(wmo, cyc, swarm_size=swarm_size, velocity=velocity, output_path=Path('.'))
     >>> S.setup()
     >>> S.execute()
     >>> S.predict()
@@ -388,7 +390,7 @@ class Simulation(Simulation_postprocess):
         self.logger.debug(pp_obj(self.MD.computation))
 
         self.to_json(fp=self.run_file)
-        self.logger.info("Simulation results and analysis saved in: %s" % self.run_file)
+        self.logger.info("Simulation results and analysis saved in:\n%s" % self.run_file)
 
         self.register()
         self.logger.debug("Simulation recorded in registry")

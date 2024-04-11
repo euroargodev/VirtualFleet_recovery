@@ -47,7 +47,7 @@ class Trajectories:
     Examples:
     ---------
     T = Trajectories(traj_zarr_file)
-    T.n_floats
+    T.swarm_size
     T.sim_cycles
     df = T.to_index()
     df = T.get_index().add_distances()
@@ -61,7 +61,7 @@ class Trajectories:
         self.logger = default_logger if 'logger' not in kwargs else kwargs['logger']
 
     @property
-    def n_floats(self):
+    def swarm_size(self):
         # len(self.obj['trajectory'])
         return self.obj['trajectory'].shape[0]
 
@@ -78,7 +78,7 @@ class Trajectories:
 
     def __repr__(self):
         summary = ["<VRecovery.Trajectories>"]
-        summary.append("Swarm size: %i floats" % self.n_floats)
+        summary.append("Swarm size: %i floats" % self.swarm_size)
         start_date = pd.to_datetime(self.obj['time'].isel(trajectory=0, obs=0).values)
         end_date = pd.to_datetime(self.obj['time'].isel(trajectory=0, obs=-1).values)
         summary.append("Simulation length: %s, from %s to %s" % (
@@ -166,25 +166,26 @@ class Trajectories:
                                       (ds['cycle_phase'] >= 3).compute())
                 this_cyc = ds.where(mask, drop=True)
 
-                # Check if we didn't lose some particles:
-                if len(x0) > len(this_cyc.isel(obs=-1)['time'].values):
-                    n = len(x0) - len(this_cyc.isel(obs=-1)['time'].values)
-                    raise ValueError("%i virtual floats did not make it to the end of required cycles. "
-                                     "They probably reached the edge of the velocity field domain. You should "
-                                     "try to increase the domain size of the simulation." % n)
-
                 if len(this_cyc['time']) > 0:
-                    data = {
-                        'date': this_cyc.isel(obs=-1)['time'].values,
-                        'latitude': this_cyc.isel(obs=-1)['lat'].values,
-                        'longitude': this_cyc.isel(obs=-1)['lon'].values,
-                        'wmo': 9000000 + this_cyc.isel(obs=-1)['trajectory'].values,
-                        'cyc': cyc,
-                        # 'cycle_phase': this_cyc.isel(obs=-1)['cycle_phase'].values,
-                        'deploy_lon': x0,
-                        'deploy_lat': y0,
-                    }
-                    return pd.DataFrame(data)
+
+                    # Check if we didn't lose some particles:
+                    n = len(x0) - len(this_cyc.isel(obs=-1)['time'].values)
+                    if n > 0:
+                        raise ValueError("%i virtual floats did not make all required cycles. They probably reached "
+                                         "the edge of the velocity field domain. You should try to increase the domain "
+                                         "size of the simulation." % n)
+                    else:
+                        data = {
+                            'date': this_cyc.isel(obs=-1)['time'].values,
+                            'latitude': this_cyc.isel(obs=-1)['lat'].values,
+                            'longitude': this_cyc.isel(obs=-1)['lon'].values,
+                            'wmo': 9000000 + this_cyc.isel(obs=-1)['trajectory'].values,
+                            'cyc': this_cyc.isel(obs=-1)['cycle_number'].values,
+                            # 'cycle_phase': this_cyc.isel(obs=-1)['cycle_phase'].values,
+                            'deploy_lon': x0,
+                            'deploy_lat': y0,
+                        }
+                        return pd.DataFrame(data)
                 else:
                     return None
 
@@ -195,11 +196,14 @@ class Trajectories:
                     df = worker(self.obj, cyc, deploy_lon, deploy_lat)
                     rows.append(df)
             rows = [r for r in rows if r is not None]
-            df = pd.concat(rows).reset_index()
-            df['wmo'] = df['wmo'].astype(int)
-            df['cyc'] = df['cyc'].astype(int)
-            # df['cycle_phase'] = df['cycle_phase'].astype(int)
-            self._index = df
+            if len(rows) > 0:
+                df = pd.concat(rows).reset_index()
+                df['wmo'] = df['wmo'].astype(int)
+                df['cyc'] = df['cyc'].astype(int)
+                # df['cycle_phase'] = df['cycle_phase'].astype(int)
+                self._index = df
+            else:
+                raise ValueError("")
 
         return self._index
 
@@ -424,7 +428,7 @@ class Trajectories:
                 line1 = "Simulation made with %s and %i virtual floats" % (this_args.velocity, this_args.nfloats)
             else:
                 line0 = "VirtualFleet recovery swarm simulation for cycle %i" % virtual_cycle_number
-                line1 = "Simulation made with %i virtual floats" % (self.n_floats)
+                line1 = "Simulation made with %i virtual floats" % (self.swarm_size)
 
             fig.suptitle("%s\n%s" % (line0, line1), fontsize=15)
             plt.tight_layout()

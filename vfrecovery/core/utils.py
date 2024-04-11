@@ -64,8 +64,8 @@ def ArgoIndex2jsProfile(a_wmo, a_cyc, cache:bool=False, cachedir:str='.') -> Lis
 def get_simulation_suffix(md: MetaData) -> str:
     """Compose a simulation unique ID for output files"""
     # suf = '%s_%i' % (this_args.velocity, this_args.nfloats)
-    suf = 'VEL%s_NFL%i_CYT%i_PKD%i_PFD%i_FSD%i' % (md.velocity_field,
-                                                         md.n_floats,
+    suf = 'VEL%s_SWS%i_CYT%i_PKD%i_PFD%i_FSD%i' % (md.velocity_field,
+                                                         md.swarm_size,
                                                          int(md.vfconfig.mission['cycle_duration']),
                                                          int(md.vfconfig.mission['parking_depth']),
                                                          int(md.vfconfig.mission['profile_depth']),
@@ -100,3 +100,11 @@ def make_hashable(o):
         return tuple(sorted(make_hashable(e) for e in o))
 
     return o
+
+
+def get_a_log_filename(op, name='simulation'):
+    fname = lambda i: "%s%0.3d.log" % (name, i)
+    i = 1
+    while op.joinpath(fname(i)).exists():
+        i += 1
+    return op.joinpath(fname(i))

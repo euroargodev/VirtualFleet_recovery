@@ -14,7 +14,7 @@ def predict(
         cfg_cycle_duration: float = None,
         cfg_profile_depth: float = None,
         cfg_free_surface_drift: int = 9999,
-        n_floats: int = 100,
+        swarm_size: int = 100,
         domain_min_size: float = 5.,
         overwrite: bool = False,
         lazy: bool = True,
@@ -35,7 +35,7 @@ def predict(
     cfg_cycle_duration
     cfg_profile_depth
     cfg_free_surface_drift
-    n_floats
+    swarm_size
     domain_min_size
     overwrite
     lazy
@@ -56,7 +56,7 @@ def predict(
         cfg_cycle_duration=cfg_cycle_duration,
         cfg_profile_depth=cfg_profile_depth,
         cfg_free_surface_drift=cfg_free_surface_drift,
-        n_floats=n_floats,
+        swarm_size=swarm_size,
         domain_min_size=domain_min_size,
         overwrite=overwrite,
         lazy=lazy,

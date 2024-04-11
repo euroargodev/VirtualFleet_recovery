@@ -20,7 +20,7 @@ def cli_group_predict() -> None:
     
     WMO is the float World Meteorological Organisation number.
     
-    CYC is the cycle number location to predict. If you want to simulate more than 1 cycle, use the `n_predictions` option (see below).
+    CYC is the cycle number to predict. If you want to simulate more than 1 cycle, use the `n_predictions` option (see below).
     """,
     epilog="""
 Examples:
@@ -34,7 +34,7 @@ Examples:
     required=False,
     default='GLORYS',
     show_default=True,
-    help="Velocity field to use. Possible values are: 'GLORYS', 'ARMOR3D'",
+    help="Velocity field to use. Velocity data are downloaded with the Copernicus Marine Toolbox. Possible values are: 'GLORYS', 'ARMOR3D'",
 )
 @click.option(
     "--output_path",
@@ -43,15 +43,6 @@ Examples:
     default=None,
     help="Simulation root data output folder [default: './vfrecovery_simulations_data']",
 )
-# @click.option(
-#     "-v", "--verbose",
-#     type=bool,
-#     required=False,
-#     is_flag=True,
-#     default=True,
-#     show_default=True,
-#     help="Display verbose information along the execution",
-# )
 @click.option(
     "--cfg_parking_depth",
     type=float,
@@ -85,7 +76,7 @@ Examples:
     help="Virtual cycle number to start free surface drift, inclusive",
 )
 @click.option(
-    "-np", "--n_predictions",
+    "-n", "--n_predictions",
     type=int,
     required=False,
     default=0,
@@ -93,15 +84,15 @@ Examples:
     help="Number of profiles to predict after cycle specified with argument 'CYC'",
 )
 @click.option(
-    "-nf", "--n_floats",
+    "-s", "--swarm_size",
     type=int,
     required=False,
     default=100,
     show_default=True,
-    help="Swarm size, i.e. the number of virtual floats simulated to make predictions",
+    help="Swarm size, i.e. the number of virtual floats simulated to make predictions for 1 real float",
 )
 @click.option(
-    "-s", "--domain_min_size",
+    "-d", "--domain_min_size",
     type=float,
     required=False,
     default=5,
@@ -144,7 +135,7 @@ def predict(
         cfg_cycle_duration,
         cfg_profile_depth,
         cfg_free_surface_drift,
-        n_floats,
+        swarm_size,
         domain_min_size,
         overwrite,
         lazy,
@@ -171,7 +162,7 @@ def predict(
                                  cfg_cycle_duration=cfg_cycle_duration,
                                  cfg_profile_depth=cfg_profile_depth,
                                  cfg_free_surface_drift=cfg_free_surface_drift,
-                                 n_floats=n_floats,
+                                 swarm_size=swarm_size,
                                  domain_min_size=domain_min_size,
                                  overwrite=overwrite,
                                  lazy=lazy,

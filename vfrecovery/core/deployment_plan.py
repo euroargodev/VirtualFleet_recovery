@@ -3,7 +3,7 @@ import pandas as pd
 from vfrecovery.json import Profile
 
 
-def setup_deployment_plan(P: Profile, nfloats: int = 120) -> pd.DataFrame:
+def setup_deployment_plan(P: Profile, swarm_size: int = 120) -> pd.DataFrame:
     """Create a deployment plan as a :class:`pandas.DataFrame`
 
     We will deploy a collection of virtual floats that are located around the real float with random perturbations in space and time
@@ -19,13 +19,13 @@ def setup_deployment_plan(P: Profile, nfloats: int = 120) -> pd.DataFrame:
     # box = [lonc - rx / 2, lonc + rx / 2, latc - ry / 2, latc + ry / 2]
 
     a, b = lonc - rx / 2, lonc + rx / 2
-    lon = (b - a) * np.random.random_sample((nfloats,)) + a
+    lon = (b - a) * np.random.random_sample((swarm_size,)) + a
 
     a, b = latc - ry / 2, latc + ry / 2
-    lat = (b - a) * np.random.random_sample((nfloats,)) + a
+    lat = (b - a) * np.random.random_sample((swarm_size,)) + a
 
     a, b = 0, rt
-    dtim = (b - a) * np.random.random_sample((nfloats,)) + a
+    dtim = (b - a) * np.random.random_sample((swarm_size,)) + a
     dtim = np.round(dtim).astype(int)
     tim = pd.to_datetime([P.location.time + np.timedelta64(dt, 'h') for dt in dtim])
     # dtim = (b-a) * np.random.random_sample((nfloats, )) + a
@@ -38,7 +38,7 @@ def setup_deployment_plan(P: Profile, nfloats: int = 120) -> pd.DataFrame:
 
     #
     df = pd.DataFrame(
-        [tim, lat, lon, np.arange(0, nfloats) + 9000000, np.full_like(lon, 0), ['VF' for l in lon], ['?' for l in lon]],
+        [tim, lat, lon, np.arange(0, swarm_size) + 9000000, np.full_like(lon, 0), ['VF' for l in lon], ['?' for l in lon]],
         index=['date', 'latitude', 'longitude', 'wmo', 'cycle_number', 'institution_code', 'file']).T
     df['date'] = pd.to_datetime(df['date'])
 

@@ -6,10 +6,10 @@
   "format_version": {
     "const": "0.1"
   },
-  "required": ["n_floats", "velocity_field", "vfconfig"],
+  "required": ["swarm_size", "velocity_field", "vfconfig"],
   "type": "object",
   "properties": {
-    "n_floats": {
+    "swarm_size": {
       "description": "Number of virtual floats simulated",
       "type": "integer"
     },

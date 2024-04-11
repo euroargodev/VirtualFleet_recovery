@@ -86,7 +86,7 @@ class MetaDataComputation(VFvalidators):
 
 
 class MetaData(VFvalidators):
-    n_floats: int = None
+    swarm_size: int = None
     velocity_field: str = None
     vfconfig: VFschema_configuration = None
     computation: MetaDataComputation = None
@@ -94,14 +94,14 @@ class MetaData(VFvalidators):
 
     schema: str = "VFrecovery-schema-metadata"
     description: str = "A set of meta-data to describe one simulation"
-    required: List = ["n_floats", "velocity_field", "vfconfig"]
+    required: List = ["swarm_size", "velocity_field", "vfconfig"]
     properties: List = ["description",
-                        "n_floats", "velocity_field",
+                        "swarm_size", "velocity_field",
                         "vfconfig", "computation", "system"]
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._is_integer(self.n_floats)
+        self._is_integer(self.swarm_size)
         if 'vfconfig' not in kwargs:
             self.vfconfig = None
 

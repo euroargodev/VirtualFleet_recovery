@@ -5,10 +5,10 @@ from typing import Union
 import os
 import logging
 import json
-
+import pandas as pd
 
 from .simulation_handler import Simulation
-from .utils import pp_obj
+from .utils import pp_obj, get_a_log_filename
 
 root_logger = logging.getLogger("vfrecovery_root_logger")
 sim_logger = logging.getLogger("vfrecovery_simulation")
@@ -48,7 +48,7 @@ def predict_function(
         cfg_cycle_duration: float,
         cfg_profile_depth: float,
         cfg_free_surface_drift: int,
-        n_floats: int,
+        swarm_size: int,
         domain_min_size: float,
         overwrite: bool,
         lazy: bool,
@@ -69,7 +69,7 @@ def predict_function(
     cfg_cycle_duration
     cfg_profile_depth
     cfg_free_surface_drift
-    n_floats
+    swarm_size
     domain_min_size
     overwrite
     lazy
@@ -110,22 +110,24 @@ def predict_function(
     [cyc.append(cyc[1] + n + 1) for n in range(n_predictions)]
 
     if output_path is None:
-        # output_path = "vfrecovery_sims" % pd.to_datetime('now', utc=True).strftime("%Y%m%d%H%M%S")
-        # output_path = os.path.sep.join(["vfrecovery_simulations_data", str(wmo), str(cyc[1])])
-        output_path = "vfrecovery_simulations_data"
+        output_path = Path(__file__).parents[2].joinpath("vfrecovery_simulations_data")
     output_path = Path(output_path)
     output_path.mkdir(parents=True, exist_ok=True)
 
     # Set-up simulation logger
-    simlogfile = logging.FileHandler(os.path.join(output_path, "vfrecovery_simulations.log"), mode='a')
+    templogfile = get_a_log_filename(output_path, name='simulation_')
+    simlogfile = logging.FileHandler(templogfile, mode='a')
     simlogfile.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(name)s:%(filename)s | %(message)s",
                                               datefmt='%Y/%m/%d %I:%M:%S'))
     sim_logger.handlers = []
     sim_logger.addHandler(simlogfile)
 
+    # Redirect all warnings to log files
+    logging.captureWarnings(True)
+
     #
     S = Simulation(wmo, cyc,
-                   n_floats=n_floats,
+                   swarm_size=swarm_size,
                    velocity=velocity,
                    output_path=output_path,
                    overwrite=overwrite,
@@ -143,14 +145,17 @@ def predict_function(
         S.execute()
         S.predict()
         S.postprocess()
-        S.finish(execution_start, process_start)
-        return S.to_json()
+        S.finish(execution_start, process_start)  # Save on disk in json file
     else:
-        log_this.info("This simulation already exists, stopping here !")
-        # Loading json results from previous run
-        with open(S.run_file, 'r') as f:
-            jsdata = json.load(f)
-        return json.dumps(jsdata, indent=4)
+        log_this.info("This simulation already exists, stop here and return existing results")
+
+    # Move log file to the appropriate final destination:
+    templogfile.rename(get_a_log_filename(S.output_path))
+
+    # Load json results to return
+    with open(S.run_file, 'r') as f:
+        jsdata = json.load(f)
+    return json.dumps(jsdata, indent=4)
 
 
 
