@@ -11,6 +11,7 @@ def get_velocity_field(a_box,
                        n_days=1,
                        output='.',
                        dataset='ARMOR3D',
+                       max_depth=6000,
                        logger=None,
                        lazy=True,
                        ) -> tuple:
@@ -23,6 +24,7 @@ def get_velocity_field(a_box,
     n_days
     output
     dataset
+    max_depth
     logger
     lazy
 
@@ -46,7 +48,7 @@ def get_velocity_field(a_box,
 
         # Make an instance
         # (we add a 1-day security delay at the beginning to make sure that we have velocity at the deployment time)
-        loader = loader(a_box, a_date - pd.Timedelta(1, 'D'), n_days=n_days+1, logger=logger)
+        loader = loader(a_box, a_date - pd.Timedelta(1, 'D'), n_days=n_days+1, logger=logger, max_depth=max_depth)
 
         # Load data from the Copernicus Marine Data store:
         ds = loader.to_xarray()  # Lazy by default
