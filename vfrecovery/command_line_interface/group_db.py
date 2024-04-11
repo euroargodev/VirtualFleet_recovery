@@ -20,6 +20,7 @@ def cli_group_db() -> None:
     "db",
     short_help="Helper for VirtualFleet-Recovery simulations database",
     help="""
+    Internal simulation database helper
 
     """,
     epilog="""

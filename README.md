@@ -13,7 +13,7 @@ More about Argo floats recovery in here:
 
 ## Command Line Interface
 
-Primary groups of commands are ``predict`` and ``describe``.
+Primary groups of commands are ``predict``, ``describe`` and ``db``.
 
 ### vfrecovery predict
 ```
@@ -66,11 +66,14 @@ Options:
 ### vfrecovery describe
 
 ```
-Usage: vfrecovery describe [OPTIONS] WMO [CYC]...
+Usage: vfrecovery describe [OPTIONS] TARGET WMO [CYC]...
 
-  Returns data about an existing VirtualFleet-Recovery prediction
+  TARGET select what is to be described. A string in: ['obs', 'velocity',
+  'run'].
 
-  Data could be a JSON file, specific metrics or images
+  WMO is the float World Meteorological Organisation number
+
+  CYC is the cycle number location to restrict description to
 
 Options:
   --log-level [DEBUG|INFO|WARN|ERROR|CRITICAL|QUIET]
@@ -81,10 +84,37 @@ Options:
 
   Examples:
 
-  vfrecovery describe 6903091
+  vfrecovery describe velocity 6903091
 
-  vfrecovery describe 6903091 112
+  vfrecovery describe obs 6903091 112
  ```
+
+### vfrecovery db
+
+```
+Usage: vfrecovery db [OPTIONS] ACTION
+
+  Internal simulation database helper
+  
+Options:
+  --log-level [DEBUG|INFO|WARN|ERROR|CRITICAL|QUIET]
+                                  Set the details printed to console by the
+                                  command (based on standard logging library).
+                                  [default: INFO]
+  -i, --index INTEGER             Record index to work with
+  -h, --help                      Show this message and exit.
+
+  Examples:
+
+  vfrecovery db info
+
+  vfrecovery db read
+
+  vfrecovery db read --index 3
+
+  vfrecovery db drop
+```
+
 
 ## Python interface
 
