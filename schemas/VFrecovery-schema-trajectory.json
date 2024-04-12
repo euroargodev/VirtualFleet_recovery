@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/refactoring-as-a-clean-module-and-cli/schemas/VFrecovery-schema-trajectory.json",
+  "title": "VirtualFleet-Recovery trajectory",
+  "description": "Represents two or more VirtualFleet-Recovery locations that share a relationship",
+  "format_version": {
+    "const": "0.1"
+  },
+  "required": [ "locations" ],
+  "type": "object",
+  "properties": {
+    "locations": {
+      "type": "array",
+      "items": {
+        "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/refactoring-as-a-clean-module-and-cli/schemas/VFrecovery-schema-location.json"
+      },
+      "uniqueItems": false
+    }
+  }
+}

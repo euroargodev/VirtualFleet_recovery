@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2019-09/schema",
-  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas/VFrecovery-schema-metrics.json",
+  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/refactoring-as-a-clean-module-and-cli/schemas/VFrecovery-schema-metrics.json",
   "title": "VirtualFleet-Recovery Predicted profile metrics",
   "description": "A set of metrics to describe/interpret one VFrecovery predicted profile location",
   "format_version": {
@@ -71,7 +71,7 @@
     },
     "surface_drift": {
       "description": "Drift by surface currents due to the float ascent time error (difference between simulated profile time and the observed one)",
-      "type": "object",
+      "type": ["object", "null"],
       "properties": {
         "surface_currents_speed": {"type": "number"},
         "surface_currents_speed_unit": {"type": "string"},
@@ -81,12 +81,20 @@
     },
     "transit": {
       "description": "Transit time to cover the distance error (assume a 12 kts boat speed with 1 kt = 1.852 km/h)",
-      "type": "object",
+      "type": ["object", "null"],
       "properties": {
         "unit": {"type": "string"},
         "value": {"type": "number"}
       }
+    },
+    "error": {
+      "description": "Error amplitude in space/time",
+      "type": ["object", "null"],
+      "properties": {
+        "distance": {"type": "number", "unit": "km"},
+        "bearing": {"type": "number", "unit":  "degree"},
+        "time": {"type": ["string", "null"], "format": "time-delta"}
+      }
     }
-  },
-  "maxProperties": 4
+  }
 }

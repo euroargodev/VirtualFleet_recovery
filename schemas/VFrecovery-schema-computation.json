@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2019-09/schema",
-  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas/VFrecovery-schema-computation.json",
+  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/refactoring-as-a-clean-module-and-cli/schemas/VFrecovery-schema-computation.json",
   "title": "VirtualFleet-Recovery Simulation Computation",
   "description": "A set of meta-data documenting one computation run",
   "format_version": {
@@ -14,10 +14,6 @@
       "type": ["string", "null"],
       "format": "date-time"
     },
-    "system": {
-      "description": "System the computation was executed on",
-      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas/VFrecovery-schema-system.json"
-    },
     "cpu_time": {
       "description": "CPU time used by the computation",
       "type": ["string", "null"],
@@ -28,6 +24,5 @@
       "type": ["string", "null"],
       "format": "time-delta"
     }
-  },
-  "maxProperties": 4
+  }
 }

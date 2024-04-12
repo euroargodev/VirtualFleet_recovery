@@ -1,15 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2019-09/schema",
-  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas/VFrecovery-schema-metadata.json",
+  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/refactoring-as-a-clean-module-and-cli/schemas/VFrecovery-schema-metadata.json",
   "title": "VirtualFleet-Recovery Simulation Meta-data",
   "description": "A set of meta-data documenting one simulation",
   "format_version": {
     "const": "0.1"
   },
-  "required": ["nfloats", "velocity_field", "vfconfig"],
+  "required": ["swarm_size", "velocity_field", "vfconfig"],
   "type": "object",
   "properties": {
-    "nfloats": {
+    "swarm_size": {
       "description": "Number of virtual floats simulated",
       "type": "integer"
     },
@@ -19,12 +19,14 @@
       "enum": ["ARMOR3D", "GLORYS"]
     },
     "vfconfig": {
-      "description": "Configuration of the virtual floats",
+      "description": "Configuration of virtual floats",
       "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet/json-schemas-FloatConfiguration/schemas/VF-ArgoFloat-Configuration.json"
     },
     "computation": {
-      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas/VFrecovery-schema-computation.json"
+      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/refactoring-as-a-clean-module-and-cli/schemas/VFrecovery-schema-computation.json"
+    },
+    "system": {
+      "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/refactoring-as-a-clean-module-and-cli/schemas/VFrecovery-schema-system.json"
     }
-  },
-  "maxProperties": 4
+  }
 }

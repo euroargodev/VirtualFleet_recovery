@@ -1,6 +1,6 @@
 """
 
-Re-usable base class
+Re-usable base class to handle JSON schema compliance
 
 """
 
@@ -8,9 +8,9 @@ import json
 import numpy as np
 import pandas as pd
 import ipaddress
-from typing import List, Dict, Union
+from typing import List, Union, TextIO
 import jsonschema
-from jsonschema import Draft202012Validator
+# from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 from pathlib import Path
 import logging
@@ -19,8 +19,9 @@ log = logging.getLogger("vfrecovery.json.schema")
 
 
 class VFschema:
-    """A base class to export json files following a schema"""
-    schema_root: str = "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas"
+    """A base class to export json files complying to a public schema"""
+    # schema_root: str = "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/main/schemas"
+    schema_root: str = "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/refactoring-as-a-clean-module-and-cli/schemas"
 
     def __init__(self, **kwargs):
         for key in self.required:
@@ -35,10 +36,13 @@ class VFschema:
         summary = []
         for p in self.properties:
             if p != 'description':
-                summary.append("%s=%s" % (p, getattr(self, p)))
-        if hasattr(self, 'description'):
+                v = getattr(self, p)
+                if np.asarray(v).dtype.kind in set('buifc'):
+                    summary.append("%s=%s" % (p, v))
+                else:
+                    summary.append("%s='%s'" % (p, v))
+        if hasattr(self, 'description') and getattr(self, 'description') is not None:
             summary.append("%s='%s'" % ('description', getattr(self, 'description')))
-
         return "%s(%s)" % (name, ", ".join(summary))
 
     def _repr_html_(self):
@@ -64,9 +68,13 @@ class VFschema:
                 return obj.isoformat()
             if isinstance(obj, pd.Timedelta):
                 return obj.isoformat()
-            if getattr(type(obj), '__name__') in ['Location', 'Profile',
+            if isinstance(obj, np.float32):
+                return float(obj)
+            if isinstance(obj, np.int64):
+                return int(obj)
+            if getattr(type(obj), '__name__') in ['Location', 'Profile', 'Trajectory',
                                 'Metrics', 'TrajectoryLengths', 'PairwiseDistances', 'PairwiseDistancesState',
-                                'SurfaceDrift', 'Transit',
+                                'SurfaceDrift', 'Transit', 'Location_error',
                                 'MetaDataSystem', 'MetaDataComputation', 'MetaData']:
                 # We use "getattr(type(obj), '__name__')" in order to avoid circular import
                 return obj.__dict__
@@ -83,17 +91,27 @@ class VFschema:
             if key != "description":
                 value = getattr(self, key)
                 d.update({key: value})
+        if hasattr(self, 'schema'):
+            d.update({"$schema": "%s/%s.json" % (self.schema_root, getattr(self, 'schema'))})
         return d
 
-    def to_json(self, fp=None, indent=4):
+    def to_json(self, fp: Union[str, Path, TextIO] = None, indent=4):
         """Save to JSON file or return a JSON string that can be loaded with json.loads()"""
         jsdata = self.__dict__
-        if hasattr(self, 'schema'):
-            jsdata.update({"$schema": "%s/%s.json" % (self.schema_root, getattr(self, 'schema'))})
+        # if hasattr(self, 'schema'):
+        #     jsdata.update({"$schema": "%s/%s.json" % (self.schema_root, getattr(self, 'schema'))})
         if fp is None:
             return json.dumps(jsdata, indent=indent, cls=self.JSONEncoder)
         else:
-            return json.dump(jsdata, fp, indent=indent, cls=self.JSONEncoder)
+            if hasattr(fp, 'write'):
+                return json.dump(jsdata, fp, indent=indent, cls=self.JSONEncoder)
+            else:
+                if isinstance(fp, str):
+                    fp = Path(fp)
+
+                with fp.open('w') as fpp:
+                    o = json.dump(jsdata, fpp, indent=indent, cls=self.JSONEncoder)
+                return o
 
 
 class VFvalidators(VFschema):
@@ -127,7 +145,7 @@ class VFvalidators(VFschema):
         return True if len(errors) == 0 else errors
 
     def _is_numeric(self, x, name='?'):
-        assert isinstance(x, (int, float)), "'%s' must be a float, got '%s'" % (name, type(x))
+        assert np.asarray(x).dtype.kind in set('buifc'), "'%s' must be numeric, got '%s'" % (name, type(x))
 
     def _is_datetime(self, x, name='?'):
         assert isinstance(x, (
@@ -135,7 +153,7 @@ class VFvalidators(VFschema):
         name, type(x))
 
     def _is_integer(self, x, name='?'):
-        assert isinstance(x, int), "'%s' must be an integer, got '%s'" % (name, type(x))
+        assert isinstance(x, (int, np.integer)), "'%s' must be an integer, got '%s'" % (name, type(x))
 
     def _is_timedelta(self, x, name='?'):
         assert isinstance(x, (pd.Timedelta)), "'%s' must be castable with pd.to_timedelta, got '%s'" % (name, type(x))

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2019-09/schema",
-  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/json-schema/schemas/VFrecovery-schema-location.json",
+  "$id": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/refactoring-as-a-clean-module-and-cli/schemas/VFrecovery-schema-location.json",
   "title": "VirtualFleet-Recovery location",
   "description": "A set of longitude/latitude/time coordinates on Earth",
   "format_version": {
@@ -13,7 +13,7 @@
       "type": "number",
       "minimum": -180,
       "maximum": 180,
-      "description": "Longitude of the geo-location, [-180-180] convention"
+      "description": "Longitude of the geo-location, [-180/180] convention"
     },
     "latitude": {
       "type": "number",
@@ -26,6 +26,5 @@
       "format": "date-time",
       "description": "Date and time of the geo-location"
     }
-  },
-  "maxProperties": 3
+  }
 }
