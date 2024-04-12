@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from typing import List, Dict
+from typing import List, Dict, Iterable
 import argopy.plot as argoplot
 
 from .VFRschema import VFvalidators
@@ -41,6 +41,16 @@ class Location(VFvalidators):
     @staticmethod
     def from_dict(obj: Dict) -> 'Location':
         return Location(**obj)
+
+    @staticmethod
+    def from_tuple(obj: tuple) -> 'Location':
+        if len(obj) == 2:
+            d = {'longitude': obj[0], 'latitude': obj[1]}
+        elif len(obj) == 3:
+            d = {'longitude': obj[0], 'latitude': obj[1], 'time': obj[2]}
+        elif len(obj) == 4:
+            d = {'longitude': obj[0], 'latitude': obj[1], 'time': obj[2], 'description': obj[3]}
+        return Location(**d)
 
 
 class Profile(VFvalidators):
@@ -99,3 +109,41 @@ class Profile(VFvalidators):
             })
             Plist.append(p)
         return Plist
+
+
+class Trajectory(VFvalidators):
+    locations: List[Location]
+
+    schema: str = "VFrecovery-schema-trajectory"
+    description: str = "Represents two or more VirtualFleet-Recovery locations that share a relationship"
+    required: List = ["locations"]
+    properties: List = ["locations", "description"]
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if len(kwargs['locations']) < 2:
+            raise ValueError("'locations' must a be list with at least 2 elements")
+        L = []
+        for location in kwargs['locations']:
+            if isinstance(location, dict):
+                loc = Location.from_dict(location)
+            elif isinstance(location, Iterable):
+                loc = Location.from_tuple(location)
+            else:
+                raise ValueError("'locations' item must be a dictionary or an Iterable")
+            L.append(loc)
+        self.locations = L
+
+    @staticmethod
+    def from_dict(obj: Dict) -> 'Trajectory':
+        """
+
+        Parameters
+        ----------
+        locations: List[Location]
+        """
+        return Trajectory(**obj)
+
+    @staticmethod
+    def from_tuple(obj: tuple) -> 'Trajectory':
+        return Trajectory(**{'locations': obj})

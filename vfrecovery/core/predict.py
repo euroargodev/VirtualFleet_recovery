@@ -115,7 +115,7 @@ def predict_function(
     output_path.mkdir(parents=True, exist_ok=True)
 
     # Set-up simulation logger
-    templogfile = get_a_log_filename(output_path, name='simulation_')
+    templogfile = get_a_log_filename(output_path)
     simlogfile = logging.FileHandler(templogfile, mode='a')
     simlogfile.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(name)s:%(filename)s | %(message)s",
                                               datefmt='%Y/%m/%d %I:%M:%S'))

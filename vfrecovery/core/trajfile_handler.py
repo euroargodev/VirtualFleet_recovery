@@ -11,7 +11,7 @@ import logging
 
 from vfrecovery.utils.misc import get_cfg_str
 from vfrecovery.plots.utils import map_add_features, save_figurefile
-from vfrecovery.json import Profile
+from vfrecovery.json import Profile, Location
 from vfrecovery.json import Metrics, TrajectoryLengths, PairwiseDistances, PairwiseDistancesState
 
 
@@ -162,8 +162,9 @@ class Trajectories:
             deploy_lon, deploy_lat = self.obj.isel(obs=0)['lon'].values, self.obj.isel(obs=0)['lat'].values
 
             def worker(ds, cyc, x0, y0):
-                mask = np.logical_and((ds['cycle_number'] == cyc).compute(),
-                                      (ds['cycle_phase'] >= 3).compute())
+                mask_end_of_cycle = np.logical_or((ds['cycle_phase'] == 3).compute(), (ds['cycle_phase'] == 4).compute())
+
+                mask = np.logical_and((ds['cycle_number'] == cyc).compute(), mask_end_of_cycle)
                 this_cyc = ds.where(mask, drop=True)
 
                 if len(this_cyc['time']) > 0:
@@ -217,8 +218,12 @@ class Trajectories:
         self.get_index()
         return self._index
 
-    def add_distances(self, origin: Profile = None) -> pd.DataFrame:
+    def add_distances(self, origin: Location = None) -> pd.DataFrame:
         """Compute profiles distance to some origin
+
+        Parameters
+        ----------
+        origin: :class:`Location`
 
         Returns
         -------
@@ -235,9 +240,9 @@ class Trajectories:
         # Simulated cycles:
         # sim_cyc = np.unique(this_df['cyc'])
 
-        df = self._index
+        df = self.index
 
-        x2, y2 = origin.location.longitude, origin.location.latitude  # real float initial position
+        x2, y2 = origin.longitude, origin.latitude  # real float initial position
         df['distance'] = np.nan
         df['rel_lon'] = np.nan
         df['rel_lat'] = np.nan
@@ -267,7 +272,7 @@ class Trajectories:
         df = df.apply(worker, axis=1)
         self._index = df
 
-        return self._index
+        return self.index
 
     def analyse_pairwise_distances(self,
                                    virtual_cycle_number: int = 1,

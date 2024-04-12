@@ -21,7 +21,7 @@ Rq: the velocity field time frame is set by the WMO/CYC/n_predictions targets. s
 This first implementation relies on a simple local pickle file with a panda dataframe
 
 """
-from typing import List, Dict
+from typing import List, Dict, Iterable, Hashable
 from virtualargofleet import FloatConfiguration
 from pathlib import Path
 import pandas as pd
@@ -167,7 +167,14 @@ class DB:
     >>> DB.isconnected()
     >>> DB.read_data()  # Return db content as :class:`pd.DataFrame`
 
-    >>> data = {'wmo': 6903091, 'cyc': 120, 'n_predictions': 0, 'cfg': FloatConfiguration('recovery'), 'velocity': {'name': 'GLORYS', 'download': pd.to_datetime('now', utc=True), 'domain_size': 5}, 'path_root': Path('.'), 'swarm_size': 1000}
+    >>> data = {'wmo': 6903091, 'cyc': 120, 'n_predictions': 0,
+    >>>         'cfg': FloatConfiguration('recovery'),
+    >>>         'velocity': {'name': 'GLORYS',
+    >>>                      'download': pd.to_datetime('now', utc=True),
+    >>>                      'domain_size': 5},
+    >>>         'path_root': Path('.'),
+    >>>         'swarm_size': 1000}
+    >>>
     >>> DB.from_dict(data).checkin()  # save to db
     >>> DB.from_dict(data).checkout()  # delete from db
     >>> DB.from_dict(data).checked
@@ -198,9 +205,6 @@ class DB:
         "simulations_registry.pkl")
 
     def __init__(self, **kwargs):
-        # for key in self.required:
-        #     if key not in kwargs:
-        #         raise ValueError("Missing '%s' property" % key)
         for key in kwargs:
             if key in self.properties:
                 setattr(self, key, kwargs[key])
@@ -252,7 +256,7 @@ class DB:
         return cls
 
     @classmethod
-    def connect(cls):
+    def connect(cls) -> "DB":
         """Connect to database and refresh data holder"""
         if not cls.isconnected():
             cls.init()
@@ -281,13 +285,14 @@ class DB:
     #     df.apply(has_result_file, axis=1)
 
     @classmethod
-    def read_data(cls):
+    def read_data(cls) -> pd.DataFrame:
         """Return database content as a :class:`pd.DataFrame`"""
         cls.connect()
         return cls._data
 
     @classmethod
-    def exists(cls, dict_of_values):
+    def exists(cls, dict_of_values) -> bool:
+        """Return True if an exact match on all properties is found"""
         df = cls.read_data()
         v = df.iloc[:, 0] == df.iloc[:, 0]
         for key, value in dict_of_values.items():
@@ -319,17 +324,14 @@ class DB:
         df.to_pickle(cls.dbfile)
 
     @classmethod
-    def get_data(cls, row):
+    def get_data(cls, row) -> pd.DataFrame:
+        """Return records matching no-None properties"""
         df = cls.read_data()
         mask = df.iloc[:, 0] == df.iloc[:, 0]
         for key in row:
             if row[key] is not None:
                 mask &= df[key] == row[key]
         return df[mask]
-
-    @classmethod
-    def info(cls) -> str:
-        return cls.__repr__(cls)
 
     def __repr__(self):
         self.connect()
@@ -340,6 +342,10 @@ class DB:
         summary.append("Number of records: %i" % self.read_data().shape[0])
 
         return "\n".join(summary)
+
+    @classmethod
+    def info(cls) -> str:
+        return cls.__repr__(cls)
 
     @staticmethod
     def from_dict(obj: Dict) -> "DB":
@@ -366,6 +372,29 @@ class DB:
             row.update({'path_root': str(getattr(self, 'path_root', None))})
 
         return row
+
+    @classmethod
+    def _row2dict(self, row) -> dict:
+        """Convert a db row to a dictionary input"""
+        data = {}
+        data.update({'wmo': row['wmo']})
+        data.update({'cyc': row['cyc']})
+        data.update({'n_predictions': row['n_predictions']})
+
+        cfg = FloatConfiguration('recovery')
+        for key in cfg.mission:
+            cfg.update(key, row["cfg_%s" % key])
+        data.update({'cfg': cfg})
+
+        vel = {'name': None, 'download': None, 'domain_size': None}
+        for key in vel:
+            vel.update({key: row["velocity_%s" % key]})
+        data.update({'velocity': vel})
+
+        data.update({'swarm_size': row['swarm_size']})
+        data.update({'path_root': row['path_root']})
+
+        return data
 
     def checkin(self):
         """Add one new record to the database"""
@@ -411,3 +440,8 @@ class DB:
     def record(self) -> pd.DataFrame:
         row = self._instance2row()
         return self.get_data(row)
+
+    @property
+    def items(self) -> Iterable[tuple[Hashable, "DB"]]:
+        for irow, df_row in self.record.iterrows():
+            yield irow, DB.from_dict(self._row2dict(df_row))

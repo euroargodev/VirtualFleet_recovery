@@ -102,7 +102,7 @@ def make_hashable(o):
     return o
 
 
-def get_a_log_filename(op, name='simulation'):
+def get_a_log_filename(op, name='simulation_'):
     fname = lambda i: "%s%0.3d.log" % (name, i)
     i = 1
     while op.joinpath(fname(i)).exists():

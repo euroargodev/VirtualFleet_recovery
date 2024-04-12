@@ -70,7 +70,9 @@ class VFschema:
                 return obj.isoformat()
             if isinstance(obj, np.float32):
                 return float(obj)
-            if getattr(type(obj), '__name__') in ['Location', 'Profile',
+            if isinstance(obj, np.int64):
+                return int(obj)
+            if getattr(type(obj), '__name__') in ['Location', 'Profile', 'Trajectory',
                                 'Metrics', 'TrajectoryLengths', 'PairwiseDistances', 'PairwiseDistancesState',
                                 'SurfaceDrift', 'Transit', 'Location_error',
                                 'MetaDataSystem', 'MetaDataComputation', 'MetaData']:

@@ -39,6 +39,7 @@
       "$ref": "https://raw.githubusercontent.com/euroargodev/VirtualFleet_recovery/refactoring-as-a-clean-module-and-cli/schemas/VFrecovery-schema-metrics.json"
     },
     "dependencies": {
-      "virtual_cycle_number": ["metrics"]}
+      "virtual_cycle_number": ["metrics"]
+    }
   }
 }

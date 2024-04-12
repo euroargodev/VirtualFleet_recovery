@@ -71,6 +71,10 @@ def db(
     if root_logger.isEnabledFor(logging.DEBUG):
         root_logger.debug("DEBUG mode activated")
 
+    # Validate arguments:
+    if action.lower() not in ["read", "info", "drop"]:
+        raise ValueError("The first argument ACTION must be one in ['read', 'info', 'drop']")
+
     if action == 'read':
         df = DB.read_data()
         if index is not None:
@@ -82,8 +86,11 @@ def db(
                 click.secho("Row index #%i:" % irow, fg='green')
                 click.echo(row.T.to_string())
 
-    if action == 'drop':
+    elif action == 'drop':
         DB.clear()
 
-    if action == 'info':
+    elif action == 'info':
         click.echo(DB.info())
+
+    else:
+        raise click.BadParameter("Unknown DB action '%s'" % action)

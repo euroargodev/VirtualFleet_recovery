@@ -3,6 +3,7 @@ import logging
 from argopy.utils import is_wmo, is_cyc, check_cyc, check_wmo
 import argopy.plot as argoplot
 from argopy import ArgoIndex
+from pathlib import Path
 
 from vfrecovery.utils.misc import list_float_simulation_folders
 from vfrecovery.core.db import DB
@@ -85,6 +86,9 @@ def describe(
     elif target == 'run':
         describe_run(wmo, cyc)
 
+    else:
+        raise click.BadParameter("Unknown describe target '%s'" % target)
+
 
 def describe_run(wmo, cyc):
     partial_data = {'wmo': wmo}
@@ -94,14 +98,13 @@ def describe_run(wmo, cyc):
 
 
 def describe_velocity(wmo, cyc):
+    cyc = cyc[0] if len(cyc) > 0 else None
 
-    # List folders to examine:
-    plist = list_float_simulation_folders(wmo, cyc)
+    for ii, item in DB.from_dict({'wmo': wmo, 'cyc': cyc}).items:
+        p = Path(item.path_root).joinpath(item.path_obj.velocity)
 
-    # List all available velocity files:
-    for c in plist.keys():
-        p = plist[c]
-        click.secho("Velocity data for WMO=%s / CYC=%s:" % (wmo, c), fg='blue')
+        click.secho("Velocity data for WMO=%s / CYC=%s / DOMAIN-SIZE=%0.2f / DOWNLOAD-DATE=%s"
+                    % (item.wmo, item.cyc, item.velocity['domain_size'], item.velocity['download']), fg='blue')
 
         click.secho("\tNetcdf files:")
         vlist = sorted(p.glob("velocity_*.nc"))

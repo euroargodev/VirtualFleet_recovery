@@ -13,7 +13,7 @@
       "type": "number",
       "minimum": -180,
       "maximum": 180,
-      "description": "Longitude of the geo-location, [-180-180] convention"
+      "description": "Longitude of the geo-location, [-180/180] convention"
     },
     "latitude": {
       "type": "number",
