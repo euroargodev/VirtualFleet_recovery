@@ -152,38 +152,6 @@ vfrecovery.predict(
 
 # API Design
 
-## Making predictions
-
-```bash
-vfrecovery predict WMO CYC
-vfrecovery predict WMO CYC1 CYC2 CYC3
-```
-
-Options:
-```bash
-vfrecovery predict --n_predictions 3 WMO CYC0
-vfrecovery predict -np 3 WMO CYC0
-
-vfrecovery predict --n_floats 2000 WMO CYC
-vfrecovery predict -nf 2000 WMO CYC
-
-vfrecovery predict --velocity GLORYS WMO CYC
-vfrecovery predict -v GLORYS WMO CYC
-
-vfrecovery predict --cfg_parking_depth 200 WMO CYC
-
-vfrecovery predict --cfg_cycle_duration 60 WMO CYC
-
-vfrecovery predict --cfg_profile_depth 1000 WMO CYC
-```
-
-## Describe results
-
-```bash
-vfrecovery describe velocity WMO CYC
-vfrecovery describe obs WMO CYC1 CYC2 CYC3
-```
-
 ## Other possible commands
 
 ```bash
